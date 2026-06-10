@@ -1,0 +1,10 @@
+interact.min.js
+touch-emulator.js
+hammer-konva.js
+Transformer
+src/app/KonvaEditor/core/Tr/*.js
+src/views/PCEditorSimple/
+src/views/wufangzhai_production/*
+src/views/wufangzhai_staging/*
+src/store/*
+*.zip

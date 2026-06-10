@@ -1,0 +1,27 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+guangjiujd_*/
+*.zip
+wufangzhai_staging/
+wufangzhai_production/
+
+node_modules
+dist
+dist-ssr
+*.local
+auto-import.d.ts
+.eslintrc-auto-import
+# Editor directories and files
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
