@@ -1,0 +1,86 @@
+// UI设计视觉规范色值
+
+$html-size:16;
+// 主色
+$primaryColor: #D65F4C;
+
+// 辅助色 -- 标签、icon、装饰、提示
+$subColor1: #000000;
+$subColor2: #E50113;
+$subColor3: #ffffff;
+$subColor4: #969696;
+$subColor4: #b2b2b2;
+
+
+// 文本色
+$textColor1: #000000;
+$textColor2: #333333;
+$textColor3: #666666;
+$textColor4: #E50113;
+$textColor5: #969696;
+
+// 分割线
+$dividingLineColor: #EEEEEE;
+
+// 内容区底色
+$bgColor: #EFEFEF;
+
+//基于 rem 进行重置转换
+@function px2vw($px) {
+  @return calc($px / 375 * 20rem)
+}
+
+
+@each $fsSize in 20 18 16 14 {
+  .fs#{$fsSize} {
+    font-size: px2vw(#{$fsSize});
+  }
+}
+
+@for $px from 0 through 100 {
+  .pd#{$px} {
+    padding: px2vw(#{$px});
+  }
+  .pl#{$px} {
+    padding-left: px2vw(#{$px});
+  }
+  .pr#{$px} {
+    padding-right: px2vw(#{$px});
+  }
+  .pt#{$px} {
+    padding-top: px2vw(#{$px});
+  }
+  .pb#{$px} {
+    padding-bottom: px2vw(#{$px});
+  }
+
+  .mg#{$px} {
+    margin: px2vw(#{$px});
+  }
+  .ml#{$px} {
+    margin-left: px2vw(#{$px});
+  }
+  .mr#{$px} {
+    margin-right: px2vw(#{$px});
+  }
+  .mt#{$px} {
+    margin-top: px2vw(#{$px});
+  }
+  .mb#{$px} {
+    margin-bottom: px2vw(#{$px});
+  }
+
+  .w#{$px} {
+    width: px2vw(#{$px});
+  }
+  .h#{$px} {
+    height: px2vw(#{$px});
+  }
+}
+
+@mixin flexCenter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+

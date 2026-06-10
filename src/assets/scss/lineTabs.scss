@@ -1,0 +1,77 @@
+$active :#E50113 ;
+.loadding-text{
+    font-size:px2vw(10);
+    text-align:center;
+    padding:px2vw(5)
+}
+.list-wrap{
+    height:100%;
+    overflow-y:auto
+}
+.flex-column-vant-popup{
+    overflow-y: hidden !important;
+    .menuContentWrap{
+        height: 100%;
+    }
+}
+#myElement .van-tabs__nav--line{
+ padding-top:px2vw(10)
+ }
+.line-tabs.van-tabs {
+    height:100% !important;
+    display: flex;
+    flex-direction: column;
+    .van-tabs__nav--line.van-tabs__nav--shrink, 
+    .van-tabs__nav--line.van-tabs__nav--complete{
+        padding:0 px2vw(15);
+    }
+    .van-tabs__nav--line{
+        padding: 0 px2vw(15);
+    }
+    .van-tab--grow{
+        padding:0 px2vw(17);
+    }
+    .van-tabs__line{
+        width:px2vw(22);
+        height:2px;
+        background:  $active;
+        border-radius: 1px;
+        bottom: 0;
+    }
+ 
+    
+    .van-tab__text{
+        font-size: px2vw(14);
+        font-family: PingFangSC-Regular, PingFang SC;
+        line-height:px2vw(34);
+    }
+    .van-tab{
+        color:#666;
+        padding:0 px2vw(15);
+        font-size: px2vw(14);
+        line-height:px2vw(24);
+    cursor: pointer;
+    }
+    .van-tab--active {
+        color: $active;
+        font-weight: 600;
+    }
+    .van-tabs__wrap{
+        flex-shrink: 0;
+        box-sizing: border-box;
+        padding-bottom:px2vw(10);
+    }
+    .van-tabs__content{
+        flex:1;
+        .van-swipe-item{
+            height:100%;
+           .inner-tabs .van-tabs__content{
+                height: 100%;
+                overflow-y:auto;
+            }
+            .van-tab__panel{
+                height:100%;
+            }
+        }
+    }
+}
