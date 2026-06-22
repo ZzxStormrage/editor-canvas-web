@@ -2,10 +2,13 @@
  * @Author: zzx 452436275@qq.com
  * @Date: 2026-05-12 17:53:58
  * @LastEditors: zzx 452436275@qq.com
- * @LastEditTime: 2026-06-10 11:00:56
+ * @LastEditTime: 2026-06-22 19:17:19
  * @FilePath: /ele-editor-v2/README.md
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 -->
+
+https://www.leaferjs.com/
+
 ┌─────────────────────────────────────────────────────┐
 │                    命令层 (Command)                  │
 │  - 封装所有编辑操作（添加/删除/变换/滤镜等）          │

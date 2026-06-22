@@ -1,5 +1,11 @@
-* @FilePath: /mb-editor/src/App.vue * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置
-进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE -->
+<!--
+ * @Author: zzx 452436275@qq.com
+ * @Date: 2026-06-10 10:46:37
+ * @LastEditors: zzx 452436275@qq.com
+ * @LastEditTime: 2026-06-22 19:12:26
+ * @FilePath: /ele-editor-v2/src/App.vue
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+-->
 <template>
   <div class="container">
     <div ref="canvasRef" class="canvas-view"></div>
@@ -25,7 +31,7 @@ export default {
 
       editor = init({
         view: canvasRef.value,
-        background: '#ffffff',
+        background: '#ccc',
         autoResize: true
       })
     }
@@ -52,10 +58,11 @@ export default {
 
 <style lang="scss" scoped>
 .container {
-  width: 100vw;
-  height: 100vh;
+  width: 80vw;
+  height: 80vh;
   overflow: hidden;
   position: relative;
+  margin: 100px auto;
 }
 
 .canvas-view {

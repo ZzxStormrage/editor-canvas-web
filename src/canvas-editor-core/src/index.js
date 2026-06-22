@@ -1,4 +1,11 @@
 import { Leafer } from 'leafer-ui'
+import {
+  DEFAULT_AREA_TYPE,
+  createArea,
+  normalizeAreaType,
+  normalizeGridOptions,
+  updateArea
+} from './area'
 
 // 默认画布尺寸，外部没有传入 width/height 时使用。
 const DEFAULT_CANVAS_WIDTH = 750
@@ -13,6 +20,8 @@ const DEFAULT_BACKGROUND = '#ffffff'
  * @param {number} [options.width=750] 画布宽度。
  * @param {number} [options.height=1334] 画布高度。
  * @param {string} [options.background='#ffffff'] 画布背景色。
+ * @param {'grid' | 'blank'} [options.areaType='grid'] 画布区域类型，grid 为网格，blank 为空白。
+ * @param {Object} [options.grid] 网格配置。
  * @param {number} [options.pixelRatio] 画布像素比。
  * @param {boolean} [options.autoResize=false] 是否跟随容器尺寸自动缩放。
  * @param {Object} [options.leaferOptions] 透传给 Leafer 的额外配置。
@@ -33,11 +42,16 @@ export function init(options = {}) {
     ...normalizedOptions.leaferOptions
   })
 
+  const area = createArea(size, normalizedOptions)
+  leafer.add(area, 0)
+
   const state = {
     view,
     width: size.width,
     height: size.height,
     background: normalizedOptions.background,
+    areaType: normalizedOptions.areaType,
+    grid: normalizedOptions.grid,
     destroyed: false
   }
 
@@ -54,6 +68,7 @@ export function init(options = {}) {
       state.width = nextSize.width
       state.height = nextSize.height
       leafer.resize(nextSize)
+      updateArea(area, nextSize, state)
 
       return editor
     },
@@ -62,6 +77,23 @@ export function init(options = {}) {
 
       state.background = background
       leafer.fill = background
+      updateArea(area, state, state)
+
+      return editor
+    },
+    setAreaType(areaType) {
+      assertNotDestroyed(state)
+
+      state.areaType = normalizeAreaType(areaType)
+      updateArea(area, state, state)
+
+      return editor
+    },
+    setGrid(grid = {}) {
+      assertNotDestroyed(state)
+
+      state.grid = normalizeGridOptions(grid, state.grid)
+      updateArea(area, state, state)
 
       return editor
     },
@@ -104,6 +136,8 @@ function normalizeInitOptions(options) {
     width: options.width,
     height: options.height,
     background: options.background ?? DEFAULT_BACKGROUND,
+    areaType: normalizeAreaType(options.areaType ?? options.area ?? DEFAULT_AREA_TYPE),
+    grid: normalizeGridOptions(options.grid),
     pixelRatio: options.pixelRatio,
     autoResize: options.autoResize ?? false,
     leaferOptions: options.leaferOptions ?? {}
