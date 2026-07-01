@@ -1,20 +1,12 @@
-import { Group, Path, Rect } from 'leafer-ui'
+import { Group, Path, Rect, Bounds } from 'leafer-ui';
 
-export const DEFAULT_AREA_TYPE = 'grid'
-export const DEFAULT_GRID_OPTIONS = {
-  size: 20,
-  color: '#e7e7e7',
-  majorSize: 100,
-  majorColor: '#d2d2d2'
-}
-
-const areaParts = new WeakMap()
+const areaParts = new WeakMap();
 
 /**
  * 创建画布区域背景。
  *
- * 网格使用 Leafer 矢量 Path 绘制，避免位图 pattern 放大后模糊。
- *
+ * @author zzx
+ * @since 2026-06-30
  * @param {{ width: number, height: number }} size 画布尺寸。
  * @param {Object} options 归一化后的初始化参数。
  * @returns {Group} 区域背景节点组。
@@ -29,32 +21,30 @@ export function createArea(size, options) {
     hittable: false,
     editable: false,
     draggable: false
-  })
-
-  const minorGrid = createGridPathNode(options.grid.color)
-  const majorGrid = createGridPathNode(options.grid.majorColor)
+  });
+  const minorGrid = createGridPathNode(options.grid.color);
+  const majorGrid = createGridPathNode(options.grid.majorColor);
   const area = new Group({
     x: 0,
     y: 0,
     width: size.width,
     height: size.height,
-    zIndex: -1,
     hittable: false,
     hitChildren: false,
     editable: false,
     draggable: false
-  })
+  });
 
   areaParts.set(area, {
     background,
     minorGrid,
     majorGrid
-  })
+  });
 
-  area.add([background, minorGrid, majorGrid])
-  updateArea(area, size, options)
+  area.add([background, minorGrid, majorGrid]);
+  updateArea(area, size, options);
 
-  return area
+  return area;
 }
 
 /**
@@ -63,61 +53,37 @@ export function createArea(size, options) {
  * @param {Group} area 区域背景节点组。
  * @param {{ width: number, height: number }} size 画布尺寸。
  * @param {Object} options 区域配置。
+ * @returns {void}
  */
 export function updateArea(area, size, options) {
-  const { background, minorGrid, majorGrid } = areaParts.get(area)
+  const { background, minorGrid, majorGrid } = areaParts.get(area);
 
-  area.width = size.width
-  area.height = size.height
-  background.width = size.width
-  background.height = size.height
-  background.fill = options.background
+  area.width = size.width;
+  area.height = size.height;
+  background.width = size.width;
+  background.height = size.height;
+  background.fill = options.grid.backgroundColor;
 
-  const isGrid = options.areaType === 'grid'
-  minorGrid.visible = isGrid
-  majorGrid.visible = isGrid
+  const showGrid = options.showGrid ?? options.areaType === 'grid';
+  minorGrid.visible = showGrid;
+  majorGrid.visible = showGrid;
 
-  if (!isGrid) return
+  if (!showGrid) {
+    return;
+  }
 
-  minorGrid.stroke = options.grid.color
-  minorGrid.path = createGridPath(size, options.grid.size, options.grid.majorSize)
-  majorGrid.stroke = options.grid.majorColor
-  majorGrid.path = createGridPath(size, options.grid.majorSize)
+  minorGrid.stroke = options.grid.color;
+  minorGrid.path = createGridPath(size, options.grid.size, options.grid.majorSize);
+  majorGrid.stroke = options.grid.majorColor;
+  majorGrid.path = createGridPath(size, options.grid.majorSize);
 }
 
 /**
- * 归一化区域类型。
+ * 创建网格线节点。
  *
- * @param {string} areaType 区域类型。
- * @returns {'grid' | 'blank'} 归一化后的区域类型。
+ * @param {string} stroke 线条颜色。
+ * @returns {Path} 网格线节点。
  */
-export function normalizeAreaType(areaType) {
-  if (areaType === 'blank' || areaType === 'grid') {
-    return areaType
-  }
-
-  throw new Error('[canvas-editor-core] areaType must be "grid" or "blank".')
-}
-
-/**
- * 归一化网格配置。
- *
- * @param {Object} [grid] 外部传入的网格配置。
- * @param {Object} [baseGrid] 上一次网格配置。
- * @returns {Object} 内部网格配置。
- */
-export function normalizeGridOptions(grid = {}, baseGrid = DEFAULT_GRID_OPTIONS) {
-  const normalizedGrid = {
-    ...baseGrid,
-    ...(grid ?? {})
-  }
-
-  normalizedGrid.size = normalizePositiveNumber(normalizedGrid.size, 'grid.size')
-  normalizedGrid.majorSize = normalizePositiveNumber(normalizedGrid.majorSize, 'grid.majorSize')
-
-  return normalizedGrid
-}
-
 function createGridPathNode(stroke) {
   return new Path({
     path: '',
@@ -126,35 +92,47 @@ function createGridPathNode(stroke) {
     hittable: false,
     editable: false,
     draggable: false
-  })
+  });
 }
 
+/**
+ * 使用 Bounds 创建网格 Path 字符串。
+ *
+ * @param {{ width: number, height: number }} size 画布尺寸。
+ * @param {number} step 网格间距。
+ * @param {number} [skipStep] 跳过的主网格间距。
+ * @returns {string} Path 字符串。
+ */
 function createGridPath(size, step, skipStep) {
-  const paths = []
+  const paths = [];
+  const bounds = new Bounds(0, 0, size.width, size.height);
 
-  for (let x = 0; x <= size.width; x += step) {
-    if (shouldSkipLine(x, skipStep)) continue
-    paths.push(`M ${x} 0 V ${size.height}`)
+  for (let x = bounds.minX; x <= bounds.maxX; x += step) {
+    if (shouldSkipLine(x, skipStep)) {
+      continue;
+    }
+
+    paths.push(`M ${x} ${bounds.minY} V ${bounds.maxY}`);
   }
 
-  for (let y = 0; y <= size.height; y += step) {
-    if (shouldSkipLine(y, skipStep)) continue
-    paths.push(`M 0 ${y} H ${size.width}`)
+  for (let y = bounds.minY; y <= bounds.maxY; y += step) {
+    if (shouldSkipLine(y, skipStep)) {
+      continue;
+    }
+
+    paths.push(`M ${bounds.minX} ${y} H ${bounds.maxX}`);
   }
 
-  return paths.join(' ')
+  return paths.join(' ');
 }
 
+/**
+ * 判断当前网格线是否应该跳过。
+ *
+ * @param {number} position 线条位置。
+ * @param {number} [skipStep] 跳过间距。
+ * @returns {boolean} 是否跳过。
+ */
 function shouldSkipLine(position, skipStep) {
-  return skipStep ? position % skipStep === 0 : false
-}
-
-function normalizePositiveNumber(value, key) {
-  const normalizedValue = Number(value)
-
-  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
-    throw new Error(`[canvas-editor-core] ${key} must be greater than 0.`)
-  }
-
-  return normalizedValue
+  return skipStep ? position % skipStep === 0 : false;
 }

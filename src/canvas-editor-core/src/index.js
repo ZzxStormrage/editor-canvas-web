@@ -1,292 +1,261 @@
-import { Leafer } from 'leafer-ui'
-import {
-  DEFAULT_AREA_TYPE,
-  createArea,
-  normalizeAreaType,
-  normalizeGridOptions,
-  updateArea
-} from './area'
+import { Group, Leafer, Bounds, isString } from 'leafer-ui';
 
-// 默认画布尺寸，外部没有传入 width/height 时使用。
-const DEFAULT_CANVAS_WIDTH = 750
-const DEFAULT_CANVAS_HEIGHT = 1334
-const DEFAULT_BACKGROUND = '#ffffff'
+import { createArea } from './area.js';
+import { EventBus } from './logic/event-bus.js';
+import { PluginManager } from './plugins/plugin-manager.js';
+import { registerDefaultPlugins } from './plugins/index.js';
+import { normalizeZoom } from './utils/zoom.js';
+import { normalizeGridOptions } from './utils/grid.js';
+import { resolveView, resolveSize } from './utils/view.js';
+import { createResizeObserver } from './utils/dom.js';
+import { normalizeInitOptions, normalizeAreaType, normalizeShowGrid } from './utils/options.js';
+import { assertNotDestroyed } from './utils/assert.js';
+import { setupZoomInteraction } from './utils/interaction-zoom.js';
 
 /**
  * 初始化画布编辑器。
  *
+ * @author zzx
+ * @since 2026-06-30
  * @param {Object} options 初始化参数。
- * @param {string | HTMLElement | HTMLCanvasElement} options.view 画布挂载容器，可以是元素、id 或选择器。
+ * @param {string | HTMLElement | HTMLCanvasElement} options.view 画布挂载容器。
  * @param {number} [options.width=750] 画布宽度。
  * @param {number} [options.height=1334] 画布高度。
- * @param {string} [options.background='#ffffff'] 画布背景色。
- * @param {'grid' | 'blank'} [options.areaType='grid'] 画布区域类型，grid 为网格，blank 为空白。
+ * @param {string} [options.background='#f7f8fa'] 画布背景色。
+ * @param {boolean} [options.showGrid=true] 是否显示网格背景。
+ * @param {'grid' | 'blank'} [options.areaType='grid'] 画布区域类型。
  * @param {Object} [options.grid] 网格配置。
+ * @param {Object} [options.zoom] 缩放配置。
+ * @param {Object} [options.image] 图片导入配置。
  * @param {number} [options.pixelRatio] 画布像素比。
  * @param {boolean} [options.autoResize=false] 是否跟随容器尺寸自动缩放。
  * @param {Object} [options.leaferOptions] 透传给 Leafer 的额外配置。
  * @returns {Object} 编辑器实例上下文。
+ * @throws {EditorError} 当初始化参数非法时抛出。
  */
 export function init(options = {}) {
-  const normalizedOptions = normalizeInitOptions(options)
-  const view = resolveView(normalizedOptions.view)
-  const size = resolveSize(view, normalizedOptions)
+  const normalizedOptions = normalizeInitOptions(options);
+  const view = resolveView(normalizedOptions.view);
+  const size = resolveSize(view, normalizedOptions);
 
   const leafer = new Leafer({
     view,
     width: size.width,
     height: size.height,
-    fill: normalizedOptions.background,
+    fill: 'transparent',
     pixelRatio: normalizedOptions.pixelRatio,
     type: 'design',
     ...normalizedOptions.leaferOptions
-  })
-
-  const area = createArea(size, normalizedOptions)
-  leafer.add(area, 0)
-
+  });
+  const stage = new Group({
+    x: 0,
+    y: 0,
+    scale: normalizedOptions.zoom.initial
+  });
+  const contentLayer = new Group({
+    x: 0,
+    y: 0
+  });
+  const area = createArea(size, normalizedOptions);
+  const eventBus = new EventBus();
+  const pluginManager = new PluginManager();
   const state = {
     view,
     width: size.width,
     height: size.height,
+    zoom: normalizedOptions.zoom.initial,
+    zoomOptions: normalizedOptions.zoom,
+    imageOptions: normalizedOptions.image,
     background: normalizedOptions.background,
+    showGrid: normalizedOptions.showGrid,
     areaType: normalizedOptions.areaType,
     grid: normalizedOptions.grid,
     destroyed: false
-  }
+  };
+  const context = {
+    leafer,
+    stage,
+    contentLayer,
+    eventBus,
+    state
+  };
 
-  let resizeObserver = null
+  // area（网格+背景）直接挂到 leafer 上，不随 stage.scale 缩放
+  // contentLayer 挂在 stage 上，参与缩放
+  stage.add(contentLayer);
+  leafer.add(area, 0);
+  leafer.add(stage, 1);
+  registerDefaultPlugins(pluginManager);
+  pluginManager.bootstrap(context);
 
-  // 先返回轻量 editor 对象，后续图层、命令、插件能力都可以继续挂到这里。
+  const imagePlugin = pluginManager.get('image');
+
   const editor = {
     leafer,
+    stage,
+    contentLayer,
+    eventBus,
+    pluginManager,
+    image: imagePlugin,
     state,
+
+    /**
+     * 调整画布尺寸。
+     *
+     * @param {number} width 新宽度。
+     * @param {number} height 新高度。
+     * @returns {Object} 编辑器实例。
+     */
     resize(width, height) {
-      assertNotDestroyed(state)
-      const nextSize = normalizeSize(width, height)
+      assertNotDestroyed(state);
 
-      state.width = nextSize.width
-      state.height = nextSize.height
-      leafer.resize(nextSize)
-      updateArea(area, nextSize, state)
+      const nextSize = new Bounds(0, 0, Number(width), Number(height));
 
-      return editor
+      state.width = nextSize.width;
+      state.height = nextSize.height;
+      leafer.resize(nextSize);
+      eventBus.emit('canvas:resized', { width: nextSize.width, height: nextSize.height });
+
+      return editor;
     },
+
+    /**
+     * 设置画布背景色。
+     *
+     * @param {string} background 背景色。
+     * @returns {Object} 编辑器实例。
+     */
     setBackground(background) {
-      assertNotDestroyed(state)
+      assertNotDestroyed(state);
 
-      state.background = background
-      leafer.fill = background
-      updateArea(area, state, state)
+      state.background = background;
+      state.grid = normalizeGridOptions({ background, backgroundColor: background }, state.grid);
+      eventBus.emit('canvas:background-changed', { background });
 
-      return editor
+      return editor;
     },
+
+    /**
+     * 设置缩放比例。
+     *
+     * @param {number} zoom 缩放值。
+     * @returns {Object} 编辑器实例。
+     */
+    setZoom(zoom) {
+      assertNotDestroyed(state);
+
+      state.zoom = normalizeZoom(zoom, state.zoomOptions);
+      stage.scale = state.zoom;
+      eventBus.emit('viewport:zoom-changed', { zoom: state.zoom });
+
+      return editor;
+    },
+
+    /**
+     * 放大画布。
+     *
+     * @param {number} [step] 步进值，默认使用 zoomOptions.step。
+     * @returns {Object} 编辑器实例。
+     */
+    zoomIn(step = state.zoomOptions.step) {
+      assertNotDestroyed(state);
+      return editor.setZoom(state.zoom + step);
+    },
+
+    /**
+     * 缩小画布。
+     *
+     * @param {number} [step] 步进值，默认使用 zoomOptions.step。
+     * @returns {Object} 编辑器实例。
+     */
+    zoomOut(step = state.zoomOptions.step) {
+      assertNotDestroyed(state);
+      return editor.setZoom(state.zoom - step);
+    },
+
+    /**
+     * 重置缩放。
+     *
+     * @returns {Object} 编辑器实例。
+     */
+    resetZoom() {
+      assertNotDestroyed(state);
+      return editor.setZoom(state.zoomOptions.initial);
+    },
+
+    /**
+     * 设置画布区域类型。
+     *
+     * @param {string} areaType 区域类型 'grid' 或 'blank'。
+     * @returns {Object} 编辑器实例。
+     */
     setAreaType(areaType) {
-      assertNotDestroyed(state)
+      assertNotDestroyed(state);
 
-      state.areaType = normalizeAreaType(areaType)
-      updateArea(area, state, state)
+      state.areaType = normalizeAreaType(areaType);
+      state.showGrid = state.areaType === 'grid';
+      eventBus.emit('canvas:area-type-changed', { areaType: state.areaType });
 
-      return editor
+      return editor;
     },
+
+    /**
+     * 设置网格可见性。
+     *
+     * @param {boolean} showGrid 是否显示网格。
+     * @returns {Object} 编辑器实例。
+     */
+    setShowGrid(showGrid) {
+      assertNotDestroyed(state);
+
+      state.showGrid = normalizeShowGrid(showGrid);
+      state.areaType = state.showGrid ? 'grid' : 'blank';
+      eventBus.emit('canvas:grid-visibility-changed', { showGrid: state.showGrid });
+
+      return editor;
+    },
+
+    /**
+     * 设置网格配置。
+     *
+     * @param {Object} [grid] 网格配置。
+     * @returns {Object} 编辑器实例。
+     */
     setGrid(grid = {}) {
-      assertNotDestroyed(state)
+      assertNotDestroyed(state);
 
-      state.grid = normalizeGridOptions(grid, state.grid)
-      updateArea(area, state, state)
+      state.grid = normalizeGridOptions(grid, state.grid);
+      state.background = state.grid.backgroundColor;
+      eventBus.emit('canvas:grid-changed', { grid: state.grid });
 
-      return editor
+      return editor;
     },
-    destroy() {
-      if (state.destroyed) return
 
-      resizeObserver?.disconnect()
-      resizeObserver = null
-      leafer.destroy()
-      state.destroyed = true
+    /**
+     * 销毁编辑器。
+     *
+     * @returns {void}
+     */
+    destroy() {
+      if (state.destroyed) {
+        return;
+      }
+
+      pluginManager.destroy();
+      eventBus.clear();
+      leafer.destroy();
+      state.destroyed = true;
     }
-  }
+  };
+
+  let resizeObserver = null;
 
   if (normalizedOptions.autoResize) {
-    resizeObserver = createResizeObserver(view, editor)
+    resizeObserver = createResizeObserver(view, editor);
   }
 
-  return editor
-}
+  // 注入 leafer-ui 交互层的缩放逻辑：滚轮 / 双指捏合 / Safari 手势
+  setupZoomInteraction(editor);
 
-export default {
-  init
-}
-
-/**
- * 归一化初始化参数。
- *
- * 支持 view、container、el 三种字段传入挂载容器，方便不同调用方接入。
- *
- * @param {Object} options 外部传入的初始化参数。
- * @returns {Object} 内部统一使用的初始化参数。
- */
-function normalizeInitOptions(options) {
-  if (!options || typeof options !== 'object') {
-    throw new TypeError('[canvas-editor-core] init(options) requires an options object.')
-  }
-
-  return {
-    view: options.view ?? options.container ?? options.el,
-    width: options.width,
-    height: options.height,
-    background: options.background ?? DEFAULT_BACKGROUND,
-    areaType: normalizeAreaType(options.areaType ?? options.area ?? DEFAULT_AREA_TYPE),
-    grid: normalizeGridOptions(options.grid),
-    pixelRatio: options.pixelRatio,
-    autoResize: options.autoResize ?? false,
-    leaferOptions: options.leaferOptions ?? {}
-  }
-}
-
-/**
- * 解析画布挂载容器。
- *
- * 如果传入 DOM 元素则直接返回；如果传入字符串，则优先按 id 查找，再按 CSS 选择器查找。
- *
- * @param {string | HTMLElement | HTMLCanvasElement} view 外部传入的挂载容器。
- * @returns {HTMLElement | HTMLCanvasElement} 真实 DOM 容器。
- */
-function resolveView(view) {
-  if (!view) {
-    throw new Error('[canvas-editor-core] Missing required option: view.')
-  }
-
-  if (typeof view !== 'string') {
-    return view
-  }
-
-  // 优先按 id 查找，找不到再按 CSS 选择器查找。
-  const element = document.getElementById(view) ?? querySelector(view)
-
-  if (!element) {
-    throw new Error(`[canvas-editor-core] Canvas view not found: ${view}`)
-  }
-
-  return element
-}
-
-/**
- * 安全执行 document.querySelector。
- *
- * 某些字符串可能不是合法 CSS 选择器，这里统一捕获异常，避免初始化过程直接崩溃。
- *
- * @param {string} selector CSS 选择器。
- * @returns {Element | null} 匹配到的元素，未匹配或选择器非法时返回 null。
- */
-function querySelector(selector) {
-  try {
-    return document.querySelector(selector)
-  } catch {
-    return null
-  }
-}
-
-/**
- * 解析画布尺寸。
- *
- * 优先使用外部显式传入的 width/height；未传入时读取容器实际尺寸；仍然没有时使用默认尺寸。
- *
- * @param {HTMLElement | HTMLCanvasElement} view 画布挂载容器。
- * @param {Object} options 归一化后的初始化参数。
- * @returns {{ width: number, height: number }} 可用于 Leafer 的画布尺寸。
- */
-function resolveSize(view, options) {
-  // 没有显式传入尺寸时，优先读取容器实际尺寸。
-  const width = options.width ?? getElementSize(view, 'width') ?? DEFAULT_CANVAS_WIDTH
-  const height = options.height ?? getElementSize(view, 'height') ?? DEFAULT_CANVAS_HEIGHT
-
-  return normalizeSize(width, height)
-}
-
-/**
- * 校验并格式化画布尺寸。
- *
- * Leafer 固定宽高模式下 width/height 不能为 0，因此这里提前做参数保护。
- *
- * @param {number | string} width 画布宽度。
- * @param {number | string} height 画布高度。
- * @returns {{ width: number, height: number }} 格式化后的正数尺寸。
- */
-function normalizeSize(width, height) {
-  const normalizedWidth = Number(width)
-  const normalizedHeight = Number(height)
-
-  if (!Number.isFinite(normalizedWidth) || normalizedWidth <= 0) {
-    throw new Error('[canvas-editor-core] Canvas width must be greater than 0.')
-  }
-
-  if (!Number.isFinite(normalizedHeight) || normalizedHeight <= 0) {
-    throw new Error('[canvas-editor-core] Canvas height must be greater than 0.')
-  }
-
-  return {
-    width: normalizedWidth,
-    height: normalizedHeight
-  }
-}
-
-/**
- * 读取 DOM 元素的实际尺寸。
- *
- * 只有元素已经挂载且布局完成时才能读到有效尺寸，读不到时返回 undefined。
- *
- * @param {HTMLElement | HTMLCanvasElement} element DOM 元素。
- * @param {'width' | 'height'} key 需要读取的尺寸字段。
- * @returns {number | undefined} 元素尺寸。
- */
-function getElementSize(element, key) {
-  if (!element || typeof element.getBoundingClientRect !== 'function') {
-    return undefined
-  }
-
-  const rect = element.getBoundingClientRect()
-  const value = key === 'width' ? rect.width : rect.height
-
-  return value > 0 ? value : undefined
-}
-
-/**
- * 创建容器尺寸监听器。
- *
- * autoResize 开启后，容器尺寸变化会同步调用 editor.resize 更新 Leafer 画布。
- *
- * @param {HTMLElement | HTMLCanvasElement} view 画布挂载容器。
- * @param {Object} editor 编辑器实例上下文。
- * @returns {ResizeObserver | null} 尺寸监听器，环境不支持 ResizeObserver 时返回 null。
- */
-function createResizeObserver(view, editor) {
-  if (typeof ResizeObserver === 'undefined') {
-    return null
-  }
-
-  // 容器尺寸变化后，同步刷新 Leafer 画布尺寸。
-  const observer = new ResizeObserver(([entry]) => {
-    const { width, height } = entry.contentRect
-
-    if (width > 0 && height > 0) {
-      editor.resize(width, height)
-    }
-  })
-
-  observer.observe(view)
-  return observer
-}
-
-/**
- * 断言编辑器未被销毁。
- *
- * 已销毁的编辑器不允许继续修改尺寸、背景等状态。
- *
- * @param {Object} state 编辑器状态对象。
- */
-function assertNotDestroyed(state) {
-  if (state.destroyed) {
-    throw new Error('[canvas-editor-core] Editor has been destroyed.')
-  }
+  return editor;
 }
