@@ -7,6 +7,10 @@ const TEXT_ALIGN_VALUES = new Set(['left', 'center', 'right', 'justify', 'justif
 
 const VERTICAL_ALIGN_VALUES = new Set(['top', 'middle', 'bottom'])
 
+const TEXT_DECORATION_VALUES = new Set(['none', 'under', 'delete', 'under-delete'])
+
+const WRITING_MODE_VALUES = new Set(['x', 'y', 'x-reverse', 'y-reverse'])
+
 /**
  * 归一化文本配置。
  *
@@ -21,7 +25,7 @@ export function normalizeTextOptions(text = {}, baseText = {}) {
   const fontSize = normalizeOptionalPositiveNumber(merged.fontSize, 'text.fontSize')
   const width = normalizeOptionalPositiveNumber(merged.width, 'text.width')
   const lineHeight = normalizeOptionalPositiveNumber(merged.lineHeight, 'text.lineHeight')
-  const letterSpacing = normalizeOptionalPositiveNumber(merged.letterSpacing, 'text.letterSpacing')
+  const letterSpacing = normalizeOptionalNonNegativeNumber(merged.letterSpacing, 'text.letterSpacing')
 
   return omitUndefined({
     text: normalizeTextValue(merged.text),
@@ -30,9 +34,11 @@ export function normalizeTextOptions(text = {}, baseText = {}) {
     fontSize,
     fontWeight: merged.fontWeight,
     italic: normalizeOptionalBoolean(merged.italic, 'text.italic'),
+    textDecoration: normalizeTextDecoration(merged.textDecoration),
     fill: normalizeOptionalString(merged.fill, 'text.fill'),
     textAlign: normalizeTextAlign(merged.textAlign),
     verticalAlign: normalizeVerticalAlign(merged.verticalAlign),
+    writingMode: normalizeWritingMode(merged.writingMode),
     lineHeight,
     letterSpacing,
     width
@@ -95,6 +101,20 @@ function normalizeOptionalBoolean(value, key) {
   return value
 }
 
+function normalizeOptionalNonNegativeNumber(value, key) {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+
+  const normalizedValue = Number(value)
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue < 0) {
+    throw new EditorError(`${key} must be greater than or equal to 0.`, 'INVALID_NON_NEGATIVE_NUMBER')
+  }
+
+  return normalizedValue
+}
+
 function normalizeTextAlign(value) {
   if (value === undefined || value === null) {
     return undefined
@@ -114,6 +134,30 @@ function normalizeVerticalAlign(value) {
 
   if (!VERTICAL_ALIGN_VALUES.has(value)) {
     throw new EditorError('text.verticalAlign is invalid.', 'TEXT_VERTICAL_ALIGN_INVALID')
+  }
+
+  return value
+}
+
+function normalizeTextDecoration(value) {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+
+  if (!TEXT_DECORATION_VALUES.has(value)) {
+    throw new EditorError('text.textDecoration is invalid.', 'TEXT_DECORATION_INVALID')
+  }
+
+  return value
+}
+
+function normalizeWritingMode(value) {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+
+  if (!WRITING_MODE_VALUES.has(value)) {
+    throw new EditorError('text.writingMode is invalid.', 'TEXT_WRITING_MODE_INVALID')
   }
 
   return value

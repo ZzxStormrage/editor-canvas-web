@@ -3,6 +3,8 @@ import { EditorEvent } from '@leafer-in/editor'
 
 import { EditorError } from '../../../errors/editor-error.js'
 import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
+import { applyTextEditorStyleLater } from '../../../utils/dom.js'
+import { installTextEditorAdapter } from './text-editor-adapter.js'
 
 /**
  * 文本插件 —— 基于 leafer-ui 原生 Text 节点提供文本添加与样式更新能力。
@@ -52,6 +54,7 @@ export class TextPlugin {
    * @returns {void}
    */
   bootstrap(context) {
+    installTextEditorAdapter()
     this._context = context
     context.innerEditor?.on_(EditorEvent.SELECT, this._handleSelect, this)
   }
@@ -81,6 +84,7 @@ export class TextPlugin {
       this._activeText = text
       this._context.innerEditor?.select(text)
       eventBus.emit('text:added', { text })
+      this._emitSelected(text)
 
       return text
     } catch (error) {
@@ -113,7 +117,9 @@ export class TextPlugin {
     text.forceUpdate?.()
     this._activeText = text
     this._context.innerEditor?.select(text)
+    applyTextEditorStyleLater(this.getStyle(text))
     this._context.eventBus.emit('text:updated', { text, options: normalizedOptions })
+    this._emitSelected(text)
 
     return text
   }
@@ -135,8 +141,48 @@ export class TextPlugin {
 
     this._activeText = text
     this._context.innerEditor?.openInnerEditor(text, 'TextEditor', true)
+    applyTextEditorStyleLater(this.getStyle(text))
 
     return text
+  }
+
+  /**
+   * 获取文本节点当前样式快照。
+   *
+   * @param {LeaferText} [target] 指定文本节点，默认使用当前或最近选中文本。
+   * @returns {Object | null} 当前文本样式。
+   */
+  getStyle(target) {
+    this._assertReady()
+
+    const text = target ?? this.getSelected()
+
+    if (!text) {
+      return null
+    }
+
+    const data = text.__ ?? {}
+
+    const options = TextPlugin.normalizeOptions({
+      text: text.text ?? data.text,
+      fontFamily: this._stripFontFamilyQuotes(text.fontFamily ?? data.fontFamily),
+      fontSize: text.fontSize ?? data.fontSize,
+      fontWeight: text.fontWeight ?? data.fontWeight,
+      italic: Boolean(text.italic ?? data.italic),
+      fill: typeof text.fill === 'string' ? text.fill : data.fill,
+      textAlign: text.textAlign ?? data.textAlign,
+      textDecoration: text.textDecoration ?? data.textDecoration,
+      letterSpacing: text.letterSpacing ?? data.letterSpacing ?? data.__letterSpacing,
+      lineHeight: text.lineHeight ?? data.lineHeight ?? data.__lineHeight,
+      writingMode: text.writingMode ?? data.writingMode,
+      width: text.width ?? data.width,
+      verticalAlign: text.verticalAlign ?? data.verticalAlign
+    })
+
+    return {
+      ...options,
+      fontFamily: this._stripFontFamilyQuotes(options.fontFamily)
+    }
   }
 
   /**
@@ -236,7 +282,19 @@ export class TextPlugin {
 
     if (text) {
       this._activeText = text
+      this._emitSelected(text)
     }
+  }
+
+  _emitSelected(text) {
+    this._context?.eventBus.emit('text:selected', {
+      text,
+      options: this.getStyle(text)
+    })
+  }
+
+  _stripFontFamilyQuotes(fontFamily) {
+    return typeof fontFamily === 'string' ? fontFamily.replace(/^['"]|['"]$/g, '') : fontFamily
   }
 
   _isUsableText(text) {

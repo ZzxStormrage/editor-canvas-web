@@ -27,9 +27,13 @@ export const DEFAULT_CANVAS_CONFIG = {
     fontFamily: 'PingFang SC',
     fontSize: 36,
     fontWeight: 'normal',
+    italic: false,
     fill: '#1f2937',
     textAlign: 'center',
+    textDecoration: 'none',
+    letterSpacing: 0,
     verticalAlign: 'top',
+    writingMode: 'x',
     lineHeight: 44,
     width: 360
   },

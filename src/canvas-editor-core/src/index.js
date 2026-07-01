@@ -26,78 +26,7 @@
  * @author zzx
  * @since 2026-06-30
  */
-import { TextEditor as LeaferTextEditor } from '@leafer-in/text-editor'
-
 import { EditorBuilder } from './core/EditorBuilder.js'
-
-const stopTextEditorEvent = (event) => {
-  event.stopPropagation()
-}
-
-const enableTextEditorInput = (editDom) => {
-  if (!editDom) {
-    return
-  }
-
-  const { style } = editDom
-  style.zIndex = '2147483647'
-  style.pointerEvents = 'auto'
-  style.cursor = 'text'
-  style.userSelect = 'text'
-}
-
-const patchTextEditorLifecycle = () => {
-  if (LeaferTextEditor.prototype.__safeLifecyclePatched) {
-    return
-  }
-
-  const onLoad = LeaferTextEditor.prototype.onLoad
-  const onFocus = LeaferTextEditor.prototype.onFocus
-  const onUpdate = LeaferTextEditor.prototype.onUpdate
-
-  LeaferTextEditor.prototype.onLoad = function safeOnLoad(...args) {
-    const result = onLoad.apply(this, args)
-
-    enableTextEditorInput(this.editDom)
-    this.__editorInputEvents = ['pointerdown', 'mousedown', 'click', 'dblclick', 'touchstart']
-    this.__editorInputEvents.forEach((type) => {
-      this.editDom?.addEventListener(type, stopTextEditorEvent)
-    })
-
-    return result
-  }
-
-  LeaferTextEditor.prototype.onFocus = function safeOnFocus(...args) {
-    if (!this.editDom) {
-      return
-    }
-
-    return onFocus.apply(this, args)
-  }
-
-  LeaferTextEditor.prototype.onUpdate = function safeOnUpdate(...args) {
-    const result = onUpdate.apply(this, args)
-
-    enableTextEditorInput(this.editDom)
-
-    return result
-  }
-
-  const onUnload = LeaferTextEditor.prototype.onUnload
-
-  LeaferTextEditor.prototype.onUnload = function safeOnUnload(...args) {
-    this.__editorInputEvents?.forEach((type) => {
-      this.editDom?.removeEventListener(type, stopTextEditorEvent)
-    })
-    this.__editorInputEvents = undefined
-
-    return onUnload.apply(this, args)
-  }
-
-  LeaferTextEditor.prototype.__safeLifecyclePatched = true
-}
-
-patchTextEditorLifecycle()
 
 // ────── 子模块显式导出（按需 import） ──────
 export { Editor } from './core/Editor.js'

@@ -27,6 +27,32 @@
         <option value="center">居中</option>
         <option value="right">右对齐</option>
       </select>
+      <input
+        v-model.number="letterSpacing"
+        class="number-input"
+        type="number"
+        min="0"
+        max="120"
+        step="1"
+        title="字间距"
+      />
+      <input v-model.number="lineHeight" class="number-input" type="number" min="8" max="300" step="1" title="行间距" />
+      <label class="toolbar-check">
+        <input v-model="italic" type="checkbox" />
+        <span>斜体</span>
+      </label>
+      <label class="toolbar-check">
+        <input v-model="underline" type="checkbox" />
+        <span>下划线</span>
+      </label>
+      <label class="toolbar-check">
+        <input v-model="lineThrough" type="checkbox" />
+        <span>删除线</span>
+      </label>
+      <select v-model="writingMode" class="toolbar-select mode-select">
+        <option value="x">横版</option>
+        <option value="y">竖版</option>
+      </select>
       <button type="button" class="toolbar-button" @click="addText">添加文本</button>
       <button type="button" class="toolbar-button icon-button" @click="zoomOut">-</button>
       <span class="zoom-value">{{ zoomPercent }}%</span>
@@ -40,7 +66,7 @@
 </template>
 
 <script>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { init } from './canvas-editor-core/src/index'
 
 export default {
@@ -54,6 +80,12 @@ export default {
     const fontWeight = ref('400')
     const textColor = ref('#1f2937')
     const textAlign = ref('center')
+    const letterSpacing = ref(0)
+    const lineHeight = ref(44)
+    const italic = ref(false)
+    const underline = ref(false)
+    const lineThrough = ref(false)
+    const writingMode = ref('x')
     const fontOptions = [
       'PingFang SC',
       'Microsoft YaHei',
@@ -64,6 +96,8 @@ export default {
       'Courier New'
     ]
     let editor = null
+    let unsubscribeTextSelected = null
+    let isSyncingTextControls = false
 
     /**
      * 初始化 Leafer 画布。
@@ -79,6 +113,9 @@ export default {
         view: canvasRef.value,
         autoResize: true
       })
+      unsubscribeTextSelected = editor.eventBus.on('text:selected', ({ options }) => {
+        applyTextOptionsToUI(options)
+      })
       zoom.value = editor.state.zoom
     }
 
@@ -88,6 +125,8 @@ export default {
      * 组件卸载时释放 Leafer 实例和 ResizeObserver，避免重复挂载造成内存占用。
      */
     const destroyCanvas = () => {
+      unsubscribeTextSelected?.()
+      unsubscribeTextSelected = null
       editor?.destroy()
       editor = null
     }
@@ -111,36 +150,59 @@ export default {
       fontFamily: fontFamily.value,
       fontSize: fontSize.value,
       fontWeight: Number(fontWeight.value),
+      italic: italic.value,
       fill: textColor.value,
       textAlign: textAlign.value,
-      lineHeight: Math.round(fontSize.value * 1.22)
+      textDecoration: getTextDecoration(),
+      letterSpacing: letterSpacing.value,
+      lineHeight: lineHeight.value,
+      writingMode: writingMode.value
     })
 
-    const syncEditingDomStyle = () => {
-      const editDom = document.querySelector('.leafer-text-editor')
+    const getTextDecoration = () => {
+      if (underline.value && lineThrough.value) {
+        return 'under-delete'
+      }
 
-      if (!(editDom instanceof HTMLElement)) {
+      if (underline.value) {
+        return 'under'
+      }
+
+      return lineThrough.value ? 'delete' : 'none'
+    }
+
+    const applyTextOptionsToUI = async (options) => {
+      if (!options) {
         return
       }
 
-      const { style } = editDom
-      style.fontFamily = fontFamily.value.includes(' ') ? `"${fontFamily.value}"` : fontFamily.value
-      style.fontSize = `${fontSize.value}px`
-      style.fontWeight = fontWeight.value
-      style.color = textColor.value
-      style.textAlign = textAlign.value
-      style.display = 'flex'
-      style.flexDirection = 'column'
-      style.justifyContent = 'flex-start'
-      style.lineHeight = `${Math.round(fontSize.value * 1.22)}px`
-      style.whiteSpace = 'normal'
-      style.wordBreak = 'normal'
+      isSyncingTextControls = true
+      textValue.value = options.text ?? ''
+      fontFamily.value = options.fontFamily ?? fontFamily.value
+      fontSize.value = options.fontSize ?? fontSize.value
+      fontWeight.value = normalizeFontWeightForUI(options.fontWeight ?? fontWeight.value)
+      textColor.value = typeof options.fill === 'string' ? options.fill : textColor.value
+      textAlign.value = options.textAlign ?? textAlign.value
+      letterSpacing.value = options.letterSpacing ?? 0
+      lineHeight.value = options.lineHeight ?? Math.round((options.fontSize ?? fontSize.value) * 1.22)
+      italic.value = Boolean(options.italic)
+      underline.value = options.textDecoration === 'under' || options.textDecoration === 'under-delete'
+      lineThrough.value = options.textDecoration === 'delete' || options.textDecoration === 'under-delete'
+      writingMode.value = options.writingMode ?? 'x'
+
+      await nextTick()
+      isSyncingTextControls = false
     }
 
-    const syncEditingDomStyleLater = () => {
-      requestAnimationFrame(syncEditingDomStyle)
-      requestAnimationFrame(() => requestAnimationFrame(syncEditingDomStyle))
-      setTimeout(syncEditingDomStyle, 80)
+    const normalizeFontWeightForUI = (value) => {
+      const weightMap = {
+        normal: '400',
+        regular: '400',
+        medium: '500',
+        bold: '700'
+      }
+
+      return weightMap[value] ?? String(value ?? '400')
     }
 
     const addText = async () => {
@@ -156,6 +218,10 @@ export default {
         return
       }
 
+      if (isSyncingTextControls) {
+        return
+      }
+
       if (!editor.text.getSelected()) {
         return
       }
@@ -164,12 +230,10 @@ export default {
         text: textValue.value,
         ...getTextOptions()
       })
-      syncEditingDomStyleLater()
     }
 
     const editSelectedText = () => {
       editor?.text.edit()
-      syncEditingDomStyleLater()
     }
 
     const syncZoom = () => {
@@ -198,7 +262,23 @@ export default {
     onMounted(initCanvas)
     onBeforeUnmount(destroyCanvas)
 
-    watch([textValue, fontFamily, fontSize, fontWeight, textColor, textAlign], updateSelectedText)
+    watch(
+      [
+        textValue,
+        fontFamily,
+        fontSize,
+        fontWeight,
+        textColor,
+        textAlign,
+        letterSpacing,
+        lineHeight,
+        italic,
+        underline,
+        lineThrough,
+        writingMode
+      ],
+      updateSelectedText
+    )
 
     return {
       canvasRef,
@@ -209,6 +289,12 @@ export default {
       fontWeight,
       textColor,
       textAlign,
+      letterSpacing,
+      lineHeight,
+      italic,
+      underline,
+      lineThrough,
+      writingMode,
       fontOptions,
       zoomPercent: computed(() => Math.round(zoom.value * 100)),
       openImagePicker,
@@ -278,7 +364,8 @@ export default {
 }
 
 .weight-select,
-.align-select {
+.align-select,
+.mode-select {
   min-width: 82px;
 }
 
@@ -291,6 +378,25 @@ export default {
   width: 40px;
   padding: 3px;
   cursor: pointer;
+}
+
+.toolbar-check {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 1px solid #cfd7e2;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toolbar-check input {
+  margin: 0;
 }
 
 .image-input {
