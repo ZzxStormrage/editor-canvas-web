@@ -1,11 +1,12 @@
-import { isString } from 'leafer-ui';
+import { isString } from 'leafer-ui'
 
-import { DEFAULT_CANVAS_CONFIG } from '../config/index.js';
-import { EditorError } from '../errors/editor-error.js';
-import { normalizeGridOptions } from './grid.js';
-import { normalizeZoomOptions } from './zoom.js';
-import { normalizeImageOptions } from './image.js';
-import { normalizeEditorOptions } from './editor.js';
+import { DEFAULT_CANVAS_CONFIG } from '../config/index.js'
+import { EditorError } from '../errors/editor-error.js'
+import { normalizeGridOptions } from './grid.js'
+import { normalizeZoomOptions } from './zoom.js'
+import { normalizeImageOptions } from './image.js'
+import { normalizeTextOptions } from './text.js'
+import { normalizeEditorOptions } from './editor.js'
 
 /**
  * 归一化初始化参数。
@@ -18,10 +19,10 @@ import { normalizeEditorOptions } from './editor.js';
  */
 export function normalizeInitOptions(options) {
   if (!options || typeof options !== 'object') {
-    throw new EditorError('init(options) requires an options object.', 'INIT_OPTIONS_REQUIRED');
+    throw new EditorError('init(options) requires an options object.', 'INIT_OPTIONS_REQUIRED')
   }
 
-  const areaType = resolveAreaType(options);
+  const areaType = resolveAreaType(options)
 
   return {
     view: options.view ?? options.container ?? options.el,
@@ -38,6 +39,7 @@ export function normalizeInitOptions(options) {
     }),
     zoom: normalizeZoomOptions(options.zoom),
     image: normalizeImageOptions(options.image, DEFAULT_CANVAS_CONFIG.image),
+    text: normalizeTextOptions(options.text, DEFAULT_CANVAS_CONFIG.text),
     editor: normalizeEditorOptions(options.editor, DEFAULT_CANVAS_CONFIG.editor),
     pixelRatio: options.pixelRatio,
     autoResize: options.autoResize ?? DEFAULT_CANVAS_CONFIG.autoResize,
@@ -45,7 +47,7 @@ export function normalizeInitOptions(options) {
       ...DEFAULT_CANVAS_CONFIG.leaferOptions,
       ...(options.leaferOptions ?? {})
     }
-  };
+  }
 }
 
 /**
@@ -57,10 +59,10 @@ export function normalizeInitOptions(options) {
  */
 export function normalizeAreaType(areaType) {
   if (areaType === 'blank' || areaType === 'grid') {
-    return areaType;
+    return areaType
   }
 
-  throw new EditorError('areaType must be "grid" or "blank".', 'AREA_TYPE_INVALID');
+  throw new EditorError('areaType must be "grid" or "blank".', 'AREA_TYPE_INVALID')
 }
 
 /**
@@ -72,10 +74,10 @@ export function normalizeAreaType(areaType) {
  */
 export function normalizeShowGrid(showGrid) {
   if (typeof showGrid === 'boolean') {
-    return showGrid;
+    return showGrid
   }
 
-  throw new EditorError('showGrid must be a boolean.', 'SHOW_GRID_INVALID');
+  throw new EditorError('showGrid must be a boolean.', 'SHOW_GRID_INVALID')
 }
 
 /**
@@ -86,14 +88,12 @@ export function normalizeShowGrid(showGrid) {
  */
 function resolveAreaType(options) {
   if (options.showGrid !== undefined) {
-    return normalizeShowGrid(options.showGrid) ? 'grid' : 'blank';
+    return normalizeShowGrid(options.showGrid) ? 'grid' : 'blank'
   }
 
   if (options.areaType !== undefined || options.area !== undefined) {
-    return normalizeAreaType(options.areaType ?? options.area);
+    return normalizeAreaType(options.areaType ?? options.area)
   }
 
-  return normalizeShowGrid(DEFAULT_CANVAS_CONFIG.showGrid)
-    ? 'grid'
-    : normalizeAreaType(DEFAULT_CANVAS_CONFIG.areaType);
+  return normalizeShowGrid(DEFAULT_CANVAS_CONFIG.showGrid) ? 'grid' : normalizeAreaType(DEFAULT_CANVAS_CONFIG.areaType)
 }

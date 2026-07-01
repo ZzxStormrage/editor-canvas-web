@@ -1,10 +1,20 @@
-import { Group, Image as LeaferImage, Rect, PointerEvent } from 'leafer-ui'
+import { Group, Image as LeaferImage, Rect, Text, PointerEvent } from 'leafer-ui'
 import { EditorEvent } from '@leafer-in/editor'
 
-import copyIcon from '../assets/icons/copy.svg'
-import deleteIcon from '../assets/icons/delete-themes.svg'
-import lockIcon from '../assets/icons/lock.svg'
-import unlockIcon from '../assets/icons/unlock.svg'
+import copyIconSvg from '../assets/icons/copy.svg?raw'
+import deleteIconSvg from '../assets/icons/delete-themes.svg?raw'
+import layerIconSvg from '../assets/icons/layers.svg?raw'
+import lockIconSvg from '../assets/icons/lock.svg?raw'
+import unlockIconSvg from '../assets/icons/unlock.svg?raw'
+
+const bringFrontIconSvg =
+  '<svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 6V36" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/><path d="M14 16L24 6L34 16" stroke="#4A5565" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 40H38" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/></svg>'
+const forwardIconSvg =
+  '<svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 10V38" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/><path d="M14 20L24 10L34 20" stroke="#4A5565" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+const backwardIconSvg =
+  '<svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 10V38" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/><path d="M14 28L24 38L34 28" stroke="#4A5565" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+const sendBackIconSvg =
+  '<svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 12V42" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/><path d="M14 32L24 42L34 32" stroke="#4A5565" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 8H38" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/></svg>'
 
 /**
  * 编辑器操作按钮管理器。
@@ -22,21 +32,67 @@ import unlockIcon from '../assets/icons/unlock.svg'
  * @since 2026-07-01
  */
 
-/** @type {Record<string, { icon: string, bg: string }>} */
+const ICON_COLOR = '#111827'
+const DISABLED_ICON_COLOR = '#a8b0bd'
+
+/** @type {Record<string, { icon: string, disabledIcon: string }>} */
 const BTN_STYLE = {
-  lock: { icon: lockIcon, bg: '#ffffff' },
-  unlock: { icon: unlockIcon, bg: '#eff6ff' },
-  copy: { icon: copyIcon, bg: '#ffffff' },
-  delete: { icon: deleteIcon, bg: '#fef2f2' }
+  lock: { icon: createIconUrl(lockIconSvg), disabledIcon: createIconUrl(lockIconSvg, DISABLED_ICON_COLOR) },
+  unlock: { icon: createIconUrl(unlockIconSvg), disabledIcon: createIconUrl(unlockIconSvg, DISABLED_ICON_COLOR) },
+  layer: { icon: createIconUrl(layerIconSvg), disabledIcon: createIconUrl(layerIconSvg, DISABLED_ICON_COLOR) },
+  copy: { icon: createIconUrl(copyIconSvg), disabledIcon: createIconUrl(copyIconSvg, DISABLED_ICON_COLOR) },
+  delete: { icon: createIconUrl(deleteIconSvg), disabledIcon: createIconUrl(deleteIconSvg, DISABLED_ICON_COLOR) }
 }
 
-/** 禁用态样式 */
-const DISABLED_STYLE = { bg: '#f5f6f8', stroke: '#e1e5eb', opacity: 0.6 }
+const LAYER_ACTIONS = [
+  {
+    key: 'front',
+    label: '移到最前',
+    shortcut: '⌥⌘]',
+    icon: createIconUrl(bringFrontIconSvg),
+    disabledIcon: createIconUrl(bringFrontIconSvg, DISABLED_ICON_COLOR)
+  },
+  {
+    key: 'forward',
+    label: '前移',
+    shortcut: '⌘]',
+    icon: createIconUrl(forwardIconSvg),
+    disabledIcon: createIconUrl(forwardIconSvg, DISABLED_ICON_COLOR)
+  },
+  {
+    key: 'backward',
+    label: '后移',
+    shortcut: '⌘[',
+    icon: createIconUrl(backwardIconSvg),
+    disabledIcon: createIconUrl(backwardIconSvg, DISABLED_ICON_COLOR)
+  },
+  {
+    key: 'back',
+    label: '移到最后',
+    shortcut: '⌥⌘[',
+    icon: createIconUrl(sendBackIconSvg),
+    disabledIcon: createIconUrl(sendBackIconSvg, DISABLED_ICON_COLOR)
+  }
+]
 
-const BTN_SIZE = 28
-const ICON_SIZE = 24
-const BTN_GAP = 6
-const BTN_RADIUS = 6
+/** 禁用态样式 */
+const DISABLED_STYLE = { bg: '#f7f8fa' }
+
+const BAR_HEIGHT = 36
+const BAR_PADDING_X = 8
+const BTN_SIZE = 30
+const ICON_SIZE = 20
+const BTN_RADIUS = 8
+const MENU_WIDTH = 132
+const MENU_ITEM_HEIGHT = 34
+const MENU_GAP = 8
+
+function createIconUrl(svg, color = ICON_COLOR) {
+  const crispSvg = svg
+    .replace(/<svg\s+width="24"\s+height="24"/, '<svg width="96" height="96"')
+    .replace(/#4A5565/gi, color)
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(crispSvg)}`
+}
 
 export class EditorActionButtons {
   /** @type {import('@leafer-in/editor').Editor} */
@@ -44,6 +100,12 @@ export class EditorActionButtons {
 
   /** @type {import('leafer-ui').Group | null} */
   #btnGroup
+
+  /** @type {import('leafer-ui').Group | null} */
+  #layerMenu
+
+  /** @type {import('leafer-ui').Rect | null} */
+  #cursorRect
 
   /** @type {boolean} */
   #disposed = false
@@ -60,6 +122,8 @@ export class EditorActionButtons {
   constructor(innerEditor) {
     this.#innerEditor = innerEditor
     this.#btnGroup = null
+    this.#layerMenu = null
+    this.#cursorRect = null
 
     this.#innerEditor.on_(EditorEvent.SELECT, this.#onSelect, this)
     this.#innerEditor.on_(EditorEvent.BEFORE_SELECT, this.#onBeforeSelect, this)
@@ -116,25 +180,45 @@ export class EditorActionButtons {
     const allLocked = selected.every((item) => item.locked)
 
     // 按钮定义：[key, callback, disabled?]
+    let layerMenuX = 0
     const btnDefs = [
       [allLocked ? 'unlock' : 'lock', () => this.#toggleLock(selected, allLocked), false],
       ['copy', () => this.#copySelected(selected), allLocked],
-      ['delete', () => this.#deleteSelected(selected), allLocked]
+      ['delete', () => this.#deleteSelected(selected), allLocked],
+      ['layer', () => this.#toggleLayerMenu(editBox, selected, layerMenuX), allLocked]
     ]
 
+    const totalWidth = btnDefs.length * BTN_SIZE
+    const barWidth = totalWidth + BAR_PADDING_X * 2
     const btnGroup = new Group({ x: 0, y: 0 })
-    const totalWidth = btnDefs.length * BTN_SIZE + (btnDefs.length - 1) * BTN_GAP
+    const barBg = new Rect({
+      x: -barWidth / 2,
+      y: 0,
+      width: barWidth,
+      height: BAR_HEIGHT,
+      cornerRadius: BAR_HEIGHT / 2,
+      fill: '#ffffff',
+      stroke: '#e5e7eb',
+      strokeWidth: 1,
+      shadow: { x: 0, y: 4, blur: 12, spread: 0, color: 'rgba(15, 23, 42, 0.14)' }
+    })
     let offsetX = -totalWidth / 2 // 居中（父容器 around: 'center'）
+
+    btnGroup.add(barBg)
 
     for (const [key, onClick, disabled] of btnDefs) {
       const style = BTN_STYLE[key] || BTN_STYLE.lock
       const btn = disabled ? this.#createDisabledButton(key, offsetX) : this.#createButton(style, offsetX, onClick)
       btnGroup.add(btn)
-      offsetX += BTN_SIZE + BTN_GAP
+      if (key === 'layer') {
+        layerMenuX = offsetX + BTN_SIZE
+      }
+      offsetX += BTN_SIZE
     }
 
     this.#btnGroup = btnGroup
     editBox.buttons.add(btnGroup)
+    this.#syncMoveCursor(editBox)
 
     if (allLocked) {
       this.#showLockedEditBox(editBox)
@@ -143,10 +227,145 @@ export class EditorActionButtons {
 
   /**
    * @param {import('@leafer-in/interface').IEditBox} editBox
+   * @param {import('leafer-ui').UI[]} selected
+   * @param {number} menuX
+   */
+  #toggleLayerMenu(editBox, selected, menuX) {
+    if (this.#layerMenu) {
+      this.#removeLayerMenu()
+      return
+    }
+
+    const layerState = this.#getLayerState(selected)
+    const menu = new Group({
+      x: editBox.buttons.x + menuX + MENU_GAP,
+      y: editBox.buttons.y - MENU_ITEM_HEIGHT / 2
+    })
+    const menuBg = new Rect({
+      width: MENU_WIDTH,
+      height: LAYER_ACTIONS.length * MENU_ITEM_HEIGHT,
+      cornerRadius: 8,
+      fill: '#ffffff',
+      stroke: '#e5e7eb',
+      strokeWidth: 1,
+      shadow: { x: 0, y: 6, blur: 16, spread: 0, color: 'rgba(15, 23, 42, 0.14)' }
+    })
+
+    menu.add(menuBg)
+
+    LAYER_ACTIONS.forEach((action, index) => {
+      const canUse = layerState[action.key]
+      const item = canUse
+        ? this.#createLayerMenuItem(action, index, () => this.#runLayerAction(action.key, selected))
+        : this.#createDisabledLayerMenuItem(action, index)
+      menu.add(item)
+    })
+
+    this.#layerMenu = menu
+    editBox.view.add(menu)
+  }
+
+  /**
+   * @param {{ key: string, label: string, shortcut: string, icon: string }} action
+   * @param {number} index
+   * @param {() => void} onClick
+   * @returns {Group}
+   */
+  #createLayerMenuItem(action, index, onClick) {
+    const item = new Group({ x: 0, y: index * MENU_ITEM_HEIGHT, cursor: 'pointer' })
+    const bg = new Rect({
+      width: MENU_WIDTH,
+      height: MENU_ITEM_HEIGHT,
+      cornerRadius: 6,
+      fill: 'rgba(255, 255, 255, 0)'
+    })
+    const icon = this.#createMenuIcon(action.icon)
+    const label = this.#createMenuText(action.label, 34, ICON_COLOR)
+    const shortcut = this.#createShortcutText(action.shortcut, ICON_COLOR)
+
+    item.addMany(bg, icon, label, shortcut)
+    item.on(PointerEvent.ENTER, () => {
+      bg.fill = '#f3f4f6'
+    })
+    item.on(PointerEvent.LEAVE, () => {
+      bg.fill = 'rgba(255, 255, 255, 0)'
+    })
+    item.on(PointerEvent.TAP, (e) => {
+      e.stop()
+      onClick?.()
+    })
+
+    return item
+  }
+
+  /**
+   * @param {{ key: string, label: string, shortcut: string, icon: string }} action
+   * @param {number} index
+   * @returns {Group}
+   */
+  #createDisabledLayerMenuItem(action, index) {
+    const item = new Group({ x: 0, y: index * MENU_ITEM_HEIGHT })
+    const icon = this.#createMenuIcon(action.disabledIcon)
+    const label = this.#createMenuText(action.label, 34, DISABLED_ICON_COLOR)
+    const shortcut = this.#createShortcutText(action.shortcut, DISABLED_ICON_COLOR)
+
+    item.addMany(icon, label, shortcut)
+    return item
+  }
+
+  /**
+   * @param {string} url
+   * @returns {LeaferImage}
+   */
+  #createMenuIcon(url) {
+    return new LeaferImage({ url, x: 10, y: 7, width: 20, height: 20 })
+  }
+
+  /**
+   * @param {string} text
+   * @param {number} x
+   * @param {string} color
+   * @returns {Text}
+   */
+  #createMenuText(text, x, color) {
+    return new Text({
+      text,
+      x,
+      y: 0,
+      width: 58,
+      height: MENU_ITEM_HEIGHT,
+      fontSize: 13,
+      fill: color,
+      verticalAlign: 'middle'
+    })
+  }
+
+  /**
+   * @param {string} text
+   * @param {string} color
+   * @returns {Text}
+   */
+  #createShortcutText(text, color) {
+    return new Text({
+      text,
+      x: 91,
+      y: 7,
+      width: 32,
+      height: 20,
+      fontSize: 11,
+      fill: color,
+      textAlign: 'center',
+      verticalAlign: 'middle'
+    })
+  }
+
+  /**
+   * @param {import('@leafer-in/interface').IEditBox} editBox
    */
   #showLockedEditBox(editBox) {
     editBox.visible = true
     editBox.rect.visible = true
+    this.#syncMoveCursor(editBox)
     editBox.circle.visible = false
     editBox.resizePoints?.forEach((point) => {
       point.visible = false
@@ -162,22 +381,19 @@ export class EditorActionButtons {
   }
 
   /**
-   * @param {{ icon: string, bg: string }} style
+   * @param {{ icon: string, disabledIcon: string }} style
    * @param {number} offsetX
    * @param {() => void} onClick
    * @returns {Group}
    */
   #createButton(style, offsetX, onClick) {
-    const btn = new Group({ x: offsetX, y: 0, cursor: 'pointer' })
+    const btn = new Group({ x: offsetX, y: 3, cursor: 'pointer' })
 
-    // 背景
     const bg = new Rect({
       width: BTN_SIZE,
       height: BTN_SIZE,
       cornerRadius: BTN_RADIUS,
-      fill: style.bg,
-      stroke: '#d1d5db',
-      strokeWidth: 1
+      fill: 'rgba(255, 255, 255, 0)'
     })
 
     const icon = this.#createIcon(style.icon)
@@ -189,7 +405,7 @@ export class EditorActionButtons {
       bg.fill = '#f3f4f6'
     })
     btn.on(PointerEvent.LEAVE, () => {
-      bg.fill = style.bg
+      bg.fill = 'rgba(255, 255, 255, 0)'
     })
     btn.on(PointerEvent.TAP, (e) => {
       e.stop()
@@ -207,18 +423,16 @@ export class EditorActionButtons {
    */
   #createDisabledButton(key, offsetX) {
     const style = BTN_STYLE[key] || BTN_STYLE.copy
-    const btn = new Group({ x: offsetX, y: 0 })
+    const btn = new Group({ x: offsetX, y: 3 })
 
     const bg = new Rect({
       width: BTN_SIZE,
       height: BTN_SIZE,
       cornerRadius: BTN_RADIUS,
-      fill: DISABLED_STYLE.bg,
-      stroke: DISABLED_STYLE.stroke,
-      strokeWidth: 1
+      fill: DISABLED_STYLE.bg
     })
 
-    const icon = this.#createIcon(style.icon, DISABLED_STYLE.opacity)
+    const icon = this.#createIcon(style.disabledIcon)
 
     btn.addMany(bg, icon)
     // 不绑定任何点击事件 — 完全禁用
@@ -228,26 +442,81 @@ export class EditorActionButtons {
 
   /**
    * @param {string} url
-   * @param {number} [opacity]
    * @returns {LeaferImage}
    */
-  #createIcon(url, opacity = 1) {
+  #createIcon(url) {
     const offset = (BTN_SIZE - ICON_SIZE) / 2
     return new LeaferImage({
       url,
       x: offset,
       y: offset,
       width: ICON_SIZE,
-      height: ICON_SIZE,
-      opacity
+      height: ICON_SIZE
     })
   }
 
   #removeButtons() {
+    this.#removeLayerMenu()
     if (this.#btnGroup) {
       this.#btnGroup.remove()
       this.#btnGroup.destroy()
       this.#btnGroup = null
+    }
+  }
+
+  #removeLayerMenu() {
+    if (this.#layerMenu) {
+      this.#layerMenu.remove()
+      this.#layerMenu.destroy()
+      this.#layerMenu = null
+    }
+  }
+
+  /**
+   * @param {import('@leafer-in/interface').IEditBox} editBox
+   */
+  #syncMoveCursor(editBox) {
+    if (editBox?.rect) {
+      this.#bindMoveCursorEvents(editBox.rect)
+      editBox.rect.cursor = 'default'
+    }
+  }
+
+  /**
+   * @param {import('leafer-ui').Rect} rect
+   */
+  #bindMoveCursorEvents(rect) {
+    if (this.#cursorRect === rect) {
+      return
+    }
+
+    this.#unbindMoveCursorEvents()
+    this.#cursorRect = rect
+    rect.on_(PointerEvent.DOWN, this.#onMoveCursorDown, this)
+    rect.on_(PointerEvent.UP, this.#onMoveCursorEnd, this)
+    rect.on_(PointerEvent.LEAVE, this.#onMoveCursorEnd, this)
+  }
+
+  #unbindMoveCursorEvents() {
+    if (!this.#cursorRect) {
+      return
+    }
+
+    this.#cursorRect.off_(PointerEvent.DOWN, this.#onMoveCursorDown, this)
+    this.#cursorRect.off_(PointerEvent.UP, this.#onMoveCursorEnd, this)
+    this.#cursorRect.off_(PointerEvent.LEAVE, this.#onMoveCursorEnd, this)
+    this.#cursorRect = null
+  }
+
+  #onMoveCursorDown() {
+    if (this.#cursorRect) {
+      this.#cursorRect.cursor = 'move'
+    }
+  }
+
+  #onMoveCursorEnd() {
+    if (this.#cursorRect) {
+      this.#cursorRect.cursor = 'default'
     }
   }
 
@@ -311,6 +580,145 @@ export class EditorActionButtons {
     }
   }
 
+  /**
+   * @param {'front' | 'forward' | 'backward' | 'back'} action
+   * @param {import('leafer-ui').UI[]} selected
+   */
+  #runLayerAction(action, selected) {
+    const groups = this.#groupSelectedByParent(selected)
+
+    for (const { parent, items } of groups) {
+      if (action === 'front') {
+        this.#moveItemsToFront(parent, items)
+      } else if (action === 'forward') {
+        this.#moveItemsForward(parent, items)
+      } else if (action === 'backward') {
+        this.#moveItemsBackward(parent, items)
+      } else if (action === 'back') {
+        this.#moveItemsToBack(parent, items)
+      }
+    }
+
+    this.#removeLayerMenu()
+    this.#innerEditor.updateEditBox?.()
+  }
+
+  /**
+   * @param {import('leafer-ui').UI[]} selected
+   */
+  #getLayerState(selected) {
+    const groups = this.#groupSelectedByParent(selected)
+    const initialState = { front: false, forward: false, backward: false, back: false }
+
+    return groups.reduce((state, { parent, items }) => {
+      const indexes = this.#getSortedIndexes(parent, items)
+      const firstIndex = indexes[0]
+      const lastIndex = indexes[indexes.length - 1]
+      const childCount = parent.children.length
+
+      return {
+        front: state.front || lastIndex < childCount - 1,
+        forward: state.forward || lastIndex < childCount - 1,
+        backward: state.backward || firstIndex > 0,
+        back: state.back || firstIndex > 0
+      }
+    }, initialState)
+  }
+
+  /**
+   * @param {import('leafer-ui').UI[]} selected
+   */
+  #groupSelectedByParent(selected) {
+    const parentMap = new Map()
+
+    for (const item of selected) {
+      const parent = item.parent
+      if (!parent?.children?.length) {
+        continue
+      }
+      if (!parentMap.has(parent)) {
+        parentMap.set(parent, [])
+      }
+      parentMap.get(parent).push(item)
+    }
+
+    return [...parentMap.entries()].map(([parent, items]) => ({ parent, items }))
+  }
+
+  /**
+   * @param {import('leafer-ui').Group} parent
+   * @param {import('leafer-ui').UI[]} items
+   * @returns {number[]}
+   */
+  #getSortedIndexes(parent, items) {
+    return items
+      .map((item) => parent.children.indexOf(item))
+      .filter((index) => index >= 0)
+      .sort((a, b) => a - b)
+  }
+
+  /**
+   * @param {import('leafer-ui').Group} parent
+   * @param {import('leafer-ui').UI[]} items
+   */
+  #moveItemsToFront(parent, items) {
+    this.#sortItemsByIndex(parent, items).forEach((item) => {
+      parent.add(item)
+    })
+  }
+
+  /**
+   * @param {import('leafer-ui').Group} parent
+   * @param {import('leafer-ui').UI[]} items
+   */
+  #moveItemsToBack(parent, items) {
+    this.#sortItemsByIndex(parent, items)
+      .reverse()
+      .forEach((item) => {
+        parent.add(item, 0)
+      })
+  }
+
+  /**
+   * @param {import('leafer-ui').Group} parent
+   * @param {import('leafer-ui').UI[]} items
+   */
+  #moveItemsForward(parent, items) {
+    const selectedSet = new Set(items)
+    this.#sortItemsByIndex(parent, items)
+      .reverse()
+      .forEach((item) => {
+        const index = parent.children.indexOf(item)
+        const next = parent.children[index + 1]
+        if (next && !selectedSet.has(next)) {
+          parent.addAfter(item, next)
+        }
+      })
+  }
+
+  /**
+   * @param {import('leafer-ui').Group} parent
+   * @param {import('leafer-ui').UI[]} items
+   */
+  #moveItemsBackward(parent, items) {
+    const selectedSet = new Set(items)
+    this.#sortItemsByIndex(parent, items).forEach((item) => {
+      const index = parent.children.indexOf(item)
+      const prev = parent.children[index - 1]
+      if (prev && !selectedSet.has(prev)) {
+        parent.addBefore(item, prev)
+      }
+    })
+  }
+
+  /**
+   * @param {import('leafer-ui').Group} parent
+   * @param {import('leafer-ui').UI[]} items
+   */
+  #sortItemsByIndex(parent, items) {
+    return [...items].sort((a, b) => parent.children.indexOf(a) - parent.children.indexOf(b))
+  }
+
   // ────────── 生命周期 ──────────
 
   destroy() {
@@ -318,6 +726,7 @@ export class EditorActionButtons {
     this.#disposed = true
 
     this.#removeButtons()
+    this.#unbindMoveCursorEvents()
 
     if (this.#innerEditor) {
       this.#innerEditor.off_(EditorEvent.SELECT, this.#onSelect, this)

@@ -1,3 +1,11 @@
+/*
+ * @Author: zzx 452436275@qq.com
+ * @Date: 2026-06-30 15:38:59
+ * @LastEditors: zzx 452436275@qq.com
+ * @LastEditTime: 2026-07-01 17:02:45
+ * @FilePath: /ele-editor-v2/src/canvas-editor-core/src/index.js
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 /**
  * canvas-editor-core 入口
  *
@@ -18,20 +26,23 @@
  * @author zzx
  * @since 2026-06-30
  */
-import { EditorBuilder } from './core/EditorBuilder.js';
+import '@leafer-in/text-editor'
+
+import { EditorBuilder } from './core/EditorBuilder.js'
 
 // ────── 子模块显式导出（按需 import） ──────
-export { Editor }           from './core/Editor.js';
-export { EditorBuilder }    from './core/EditorBuilder.js';
-export { EditorState }      from './core/EditorState.js';
-export { ViewportManager }  from './viewport/ViewportManager.js';
-export { CommandManager }   from './commands/CommandManager.js';
-export { Command }          from './commands/Command.js';
-export { ZoomCommand }      from './commands/canvas/ZoomCommand.js';
-export { PluginManager }    from './plugins/plugin-manager.js';
-export { EventBus }         from './logic/event-bus.js';
-export { EditorError }      from './errors/editor-error.js';
-export { DEFAULT_CANVAS_CONFIG } from './config/index.js';
+export { Editor } from './core/Editor.js'
+export { EditorBuilder } from './core/EditorBuilder.js'
+export { EditorState } from './core/EditorState.js'
+export { ViewportManager } from './viewport/ViewportManager.js'
+export { CommandManager } from './commands/CommandManager.js'
+export { Command } from './commands/Command.js'
+export { ZoomCommand } from './commands/canvas/ZoomCommand.js'
+export { PluginManager } from './plugins/plugin-manager.js'
+export { EventBus } from './logic/event-bus.js'
+export { EditorError } from './errors/editor-error.js'
+export { DEFAULT_CANVAS_CONFIG } from './config/index.js'
+export { TextPlugin } from './plugins/feature-plugins/text/text-plugin.js'
 
 // ────── 工厂函数（保持向后兼容的 init 接口） ──────
 
@@ -46,11 +57,11 @@ export { DEFAULT_CANVAS_CONFIG } from './config/index.js';
  * @throws {EditorError}
  */
 export function createEditor(options = {}) {
-  return new EditorBuilder(options).build();
+  return new EditorBuilder(options).build()
 }
 
 /**
  * @deprecated — 使用 createEditor()
  * 保持向后兼容的 init 函数。
  */
-export const init = createEditor;
+export const init = createEditor

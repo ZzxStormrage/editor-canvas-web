@@ -22,6 +22,17 @@ export const DEFAULT_CANVAS_CONFIG = {
     maxHeightRatio: 0.8,
     lockRatio: true
   },
+  text: {
+    text: '双击编辑文字',
+    fontFamily: 'PingFang SC',
+    fontSize: 36,
+    fontWeight: 'normal',
+    fill: '#1f2937',
+    textAlign: 'left',
+    verticalAlign: 'top',
+    lineHeight: 44,
+    width: 360
+  },
   grid: {
     size: 24,
     color: '#eef1f5',
@@ -40,6 +51,7 @@ export const DEFAULT_CANVAS_CONFIG = {
     pointSize: 10,
     pointRadius: 16,
     rotateGap: 45,
+    moveCursor: 'default',
     buttonsDirection: 'bottom',
     buttonsMargin: 12,
     hideOnSmall: true,
@@ -59,4 +71,4 @@ export const DEFAULT_CANVAS_CONFIG = {
     arrowFastStep: 10
   },
   leaferOptions: {}
-};
+}

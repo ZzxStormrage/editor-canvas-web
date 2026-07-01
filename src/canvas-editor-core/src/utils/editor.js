@@ -22,6 +22,7 @@ export function normalizeEditorOptions(userEditor = {}, defaults = {}) {
     pointSize: userEditor.pointSize ?? defaults.pointSize,
     pointRadius: userEditor.pointRadius ?? defaults.pointRadius,
     rotateGap: userEditor.rotateGap ?? defaults.rotateGap,
+    moveCursor: userEditor.moveCursor ?? defaults.moveCursor,
     buttonsDirection: userEditor.buttonsDirection ?? defaults.buttonsDirection,
     buttonsMargin: userEditor.buttonsMargin ?? defaults.buttonsMargin,
     hideOnSmall: userEditor.hideOnSmall ?? defaults.hideOnSmall,
@@ -39,6 +40,6 @@ export function normalizeEditorOptions(userEditor = {}, defaults = {}) {
     rotateable: userEditor.rotateable ?? defaults.rotateable,
     skewable: userEditor.skewable ?? defaults.skewable,
     arrowStep: userEditor.arrowStep ?? defaults.arrowStep,
-    arrowFastStep: userEditor.arrowFastStep ?? defaults.arrowFastStep,
-  };
+    arrowFastStep: userEditor.arrowFastStep ?? defaults.arrowFastStep
+  }
 }

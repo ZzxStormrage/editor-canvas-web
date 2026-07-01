@@ -1,4 +1,5 @@
-import { ImagePlugin } from './feature-plugins/image/image-plugin.js';
+import { ImagePlugin } from './feature-plugins/image/image-plugin.js'
+import { TextPlugin } from './feature-plugins/text/text-plugin.js'
 
 /**
  * 注册默认插件。
@@ -9,5 +10,6 @@ import { ImagePlugin } from './feature-plugins/image/image-plugin.js';
  * @returns {void}
  */
 export function registerDefaultPlugins(pluginManager) {
-  pluginManager.register(new ImagePlugin());
+  pluginManager.register(new ImagePlugin())
+  pluginManager.register(new TextPlugin())
 }
