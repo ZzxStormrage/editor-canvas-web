@@ -1,13 +1,11 @@
-import { Image as LeaferImage, Resource, MathHelper, isString } from 'leafer-ui';
+import { Image as LeaferImage, Platform, Resource, isString } from 'leafer-ui';
 
 import { EditorError } from '../../../errors/editor-error.js';
-import {
-  normalizeOptionalPositiveNumber,
-  normalizeRatio
-} from '../../../utils/number.js';
+import { normalizeOptionalPositiveNumber } from '../../../utils/number.js';
+import { normalizeImageOptions } from '../../../utils/image.js';
 
 /**
- * 图片插件。
+ * 图片插件 —— 全部基于 leafer-ui 原生 API。
  *
  * @author zzx
  * @since 2026-06-30
@@ -58,6 +56,10 @@ export class ImagePlugin {
   /**
    * 添加图片到内容图层。
    *
+   * 图片 URL / File / Blob 归一化为 URL 后，
+   * 使用 {@link Resource.loadImage} 获取原始尺寸。
+   * 最终用 leafer-ui 原生 {@link LeaferImage} 渲染。
+   *
    * @param {string | File | Blob} source 图片 URL、File 或 Blob。
    * @param {Object} [options] 图片放置配置。
    * @returns {Promise<LeaferImage>} 图片节点。
@@ -69,16 +71,21 @@ export class ImagePlugin {
     try {
       const { contentLayer, eventBus, state } = this._context;
       const imageSource = await this._normalizeSource(source);
-      const imageSize = await this._loadImageSize(imageSource);
+      const imageSize = await this._loadImageSize(imageSource.url);
       const imageConfig = this._normalizePlacement(imageSize, options, state);
       const image = new LeaferImage({
-        url: imageSource,
+        url: imageSource.url,
         draggable: true,
         editable: true,
+        lockRatio: true,
         ...imageConfig
       });
 
       contentLayer.add(image);
+      // 延迟到下一帧 select，确保 contentLayer.add() 后 Leafer
+      // 内部渲染管线稳定，避免 editTool 尚未加载时触发 update()
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      this._context.innerEditor?.select(image);
       eventBus.emit('image:added', { image });
 
       return image;
@@ -108,21 +115,7 @@ export class ImagePlugin {
    * @returns {Object} 归一化后的配置。
    */
   static normalizeOptions(image = {}, baseImage = {}) {
-    const normalizedImage = {
-      ...baseImage,
-      ...(image ?? {})
-    };
-
-    normalizedImage.maxWidthRatio = normalizeRatio(
-      normalizedImage.maxWidthRatio,
-      'image.maxWidthRatio'
-    );
-    normalizedImage.maxHeightRatio = normalizeRatio(
-      normalizedImage.maxHeightRatio,
-      'image.maxHeightRatio'
-    );
-
-    return normalizedImage;
+    return normalizeImageOptions(image, baseImage);
   }
 
   /**
@@ -132,7 +125,7 @@ export class ImagePlugin {
    * @param {{ width: number, height: number }} imageSize 图片原始尺寸。
    * @param {Object} options 外部放置配置。
    * @param {Object} state 编辑器状态。
-   * @returns {{ x: number, y: number, width: number, height: number }} 图片节点配置。
+   * @returns {{ x: number, y: number, width: number, height: number, lockRatio: boolean }} 图片节点配置。
    */
   _normalizePlacement(imageSize, options, state) {
     const mergedOptions = ImagePlugin.normalizeOptions({
@@ -153,28 +146,35 @@ export class ImagePlugin {
       x: mergedOptions.x ?? (state.width - width) / 2,
       y: mergedOptions.y ?? (state.height - height) / 2,
       width,
-      height
+      height,
+      lockRatio: mergedOptions.lockRatio ?? true
     };
   }
 
   /**
    * 归一化图片来源。
    *
+   * - SVG 字符串 → Platform.toURL(svg, 'svg')
+   * - URL 字符串 → 直接作为 URL
+   * - SVG File / Blob → 读取文本后 Platform.toURL(svg, 'svg')
+   * - File / Blob → 生成 blob URL（供 leafer-ui Image 加载）
+   *
    * @private
    * @param {string | File | Blob} source 图片来源。
-   * @returns {Promise<string>} 可用于 Leafer Image 的 URL。
+   * @returns {Promise<{ url: string, format: 'svg' | 'image' }>} 可用于 leafer-ui Image.url 的资源。
    * @throws {EditorError} 当来源类型不支持时抛出。
    */
   async _normalizeSource(source) {
     if (isString(source)) {
-      return source;
+      return this._normalizeStringSource(source);
     }
 
-    const isFile = typeof File !== 'undefined' && source instanceof File;
-    const isBlob = typeof Blob !== 'undefined' && source instanceof Blob;
+    if (typeof File !== 'undefined' && source instanceof File) {
+      return this._normalizeBlobSource(source);
+    }
 
-    if (isFile || isBlob) {
-      return this._readFileAsDataURL(source);
+    if (typeof Blob !== 'undefined' && source instanceof Blob) {
+      return this._normalizeBlobSource(source);
     }
 
     throw new EditorError(
@@ -184,27 +184,89 @@ export class ImagePlugin {
   }
 
   /**
-   * 读取文件为 DataURL。
+   * 归一化字符串图片来源。
    *
    * @private
-   * @param {File | Blob} file 文件对象。
-   * @returns {Promise<string>} DataURL。
+   * @param {string} source SVG 字符串或图片 URL。
+   * @returns {{ url: string, format: 'svg' | 'image' }} 图片资源。
    */
-  _readFileAsDataURL(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
+  _normalizeStringSource(source) {
+    if (this._isSvgText(source)) {
+      return {
+        url: Platform.toURL(source, 'svg'),
+        format: 'svg'
+      };
+    }
 
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
+    return {
+      url: source,
+      format: this._isSvgUrl(source) ? 'svg' : 'image'
+    };
   }
 
   /**
-   * 使用 LeaferJS Resource 加载图片并获取尺寸。
+   * 归一化 File / Blob 图片来源。
+   *
+   * SVG 使用 Leafer 官方 Platform.toURL(svg, 'svg') 方式加载。
    *
    * @private
-   * @param {string} source 图片 URL 或 DataURL。
+   * @param {File | Blob} source 图片文件。
+   * @returns {Promise<{ url: string, format: 'svg' | 'image' }>} 图片资源。
+   */
+  async _normalizeBlobSource(source) {
+    if (this._isSvgBlob(source)) {
+      const svg = await source.text();
+
+      return {
+        url: Platform.toURL(svg, 'svg'),
+        format: 'svg'
+      };
+    }
+
+    return {
+      url: URL.createObjectURL(source),
+      format: 'image'
+    };
+  }
+
+  /**
+   * 判断字符串是否为 SVG 文本。
+   *
+   * @private
+   * @param {string} source 输入字符串。
+   * @returns {boolean}
+   */
+  _isSvgText(source) {
+    return /^\s*<svg[\s>]/i.test(source);
+  }
+
+  /**
+   * 判断 URL 是否指向 SVG。
+   *
+   * @private
+   * @param {string} source 输入 URL。
+   * @returns {boolean}
+   */
+  _isSvgUrl(source) {
+    return /\.svg(?:[?#].*)?$/i.test(source);
+  }
+
+  /**
+   * 判断 File / Blob 是否为 SVG。
+   *
+   * @private
+   * @param {File | Blob} source 图片文件。
+   * @returns {boolean}
+   */
+  _isSvgBlob(source) {
+    return source.type === 'image/svg+xml' || this._isSvgUrl(source.name ?? '');
+  }
+
+  /**
+   * 使用 leafer-ui Resource 加载图片并获取原始尺寸。
+   *
+   * @private
+   * @param {string} source 图片 URL / DataURL / blob URL。
    * @returns {Promise<{ width: number, height: number }>} 图片尺寸。
    */
   async _loadImageSize(source) {
@@ -224,7 +286,7 @@ export class ImagePlugin {
    * @throws {EditorError} 当插件不可用时抛出。
    */
   _assertReady() {
-    if (!this._context?.contentLayer) {
+    if (typeof this._context?.contentLayer?.add !== 'function') {
       throw new EditorError('ImagePlugin requires contentLayer.', 'IMAGE_PLUGIN_NOT_READY');
     }
 

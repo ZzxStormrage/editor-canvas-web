@@ -19,7 +19,8 @@ export const DEFAULT_CANVAS_CONFIG = {
   },
   image: {
     maxWidthRatio: 0.8,
-    maxHeightRatio: 0.8
+    maxHeightRatio: 0.8,
+    lockRatio: true
   },
   grid: {
     size: 24,
@@ -30,6 +31,32 @@ export const DEFAULT_CANVAS_CONFIG = {
     background:
       'linear-gradient(#eef1f5 1px, transparent 1px), linear-gradient(90deg, #eef1f5 1px, transparent 1px), #f7f8fa',
     backgroundSize: '24px 24px'
+  },
+  editor: {
+    keyEvent: true,
+    stroke: '#4A90D9',
+    strokeWidth: 1,
+    pointFill: '#FFFFFF',
+    pointSize: 10,
+    pointRadius: 16,
+    rotateGap: 45,
+    buttonsDirection: 'bottom',
+    buttonsMargin: 12,
+    hideOnSmall: true,
+    selector: true,
+    editBox: true,
+    hover: true,
+    select: 'press',
+    openInner: 'double',
+    multipleSelect: true,
+    boxSelect: true,
+    moveable: true,
+    resizeable: true,
+    flipable: true,
+    rotateable: true,
+    skewable: true,
+    arrowStep: 1,
+    arrowFastStep: 10
   },
   leaferOptions: {}
 };

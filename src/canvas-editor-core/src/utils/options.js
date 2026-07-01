@@ -2,9 +2,10 @@ import { isString } from 'leafer-ui';
 
 import { DEFAULT_CANVAS_CONFIG } from '../config/index.js';
 import { EditorError } from '../errors/editor-error.js';
-import { ImagePlugin } from '../plugins/feature-plugins/image/image-plugin.js';
 import { normalizeGridOptions } from './grid.js';
 import { normalizeZoomOptions } from './zoom.js';
+import { normalizeImageOptions } from './image.js';
+import { normalizeEditorOptions } from './editor.js';
 
 /**
  * 归一化初始化参数。
@@ -36,7 +37,8 @@ export function normalizeInitOptions(options) {
       backgroundSize: options.grid?.backgroundSize
     }),
     zoom: normalizeZoomOptions(options.zoom),
-    image: ImagePlugin.normalizeOptions(options.image, DEFAULT_CANVAS_CONFIG.image),
+    image: normalizeImageOptions(options.image, DEFAULT_CANVAS_CONFIG.image),
+    editor: normalizeEditorOptions(options.editor, DEFAULT_CANVAS_CONFIG.editor),
     pixelRatio: options.pixelRatio,
     autoResize: options.autoResize ?? DEFAULT_CANVAS_CONFIG.autoResize,
     leaferOptions: {

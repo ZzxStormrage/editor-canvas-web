@@ -1,354 +1,552 @@
-Canvas 编辑器开发规范与架构设计 Skill
-本 Skill 为开发一个功能完整的 Canvas 浏览器插件提供严格的架构设计和代码规范，采用纯 JavaScript（ES6+）编写，不依赖 TypeScript，但通过 JSDoc 保证类型安全。所有规则旨在提高代码的可维护性、可测试性和协作效率。
+# canvas-editor-core 架构设计与开发规范
 
-一、架构设计总览
-1.1 分层架构（Layered Architecture）
-系统严格分为四层，每层职责明确，层间通过清晰的接口通信，上层依赖下层，下层不依赖上层。
+本项目基于 [LeaferJS](https://www.leaferjs.com/) 渲染引擎，采用纯 JavaScript (ES6+) 编写，融合 6 种经典设计模式，确保代码高可读、低耦合、易扩展。本文档作为 AI 助手的代码生成唯一规范来源。
 
-使用 https://www.leaferjs.com/ 中的 API作为渲染引擎。
+---
 
-┌─────────────────────────────────────────────────────────────┐
-│                    UI 交互层 (UI Layer)                     │
-│    工具栏、面板、快捷键、右键菜单、状态栏                    │
-├─────────────────────────────────────────────────────────────┤
-│                  功能插件层 (Plugin Layer)                  │
-│    选择、绘图、形状、文字、图层、评论等独立插件              │
-├─────────────────────────────────────────────────────────────┤
-│                   业务逻辑层 (Logic Layer)                  │
-│    状态管理 (Store)、命令系统 (Command)、事件总线 (EventBus)│
-├─────────────────────────────────────────────────────────────┤
-│                   渲染引擎层 (Render Layer)                 │
-│    Canvas渲染器、场景图、脏区管理、变换矩阵                  │
-└─────────────────────────────────────────────────────────────┘
-1.2 核心设计模式
-模式	应用场景	理由
-插件模式 (Plugin)	所有功能模块（工具、面板、行为）	实现功能热插拔，降低耦合，便于单元测试
-命令模式 (Command)	所有修改画布的操作（移动、删除、样式变更）	统一实现撤销/重做，支持操作历史记录
-观察者模式 (Observer)	状态变更通知、插件间通信	解耦发布者和订阅者，支持多对多事件传递
-工厂模式 (Factory)	创建图形元素（矩形、圆形、路径等）	封装对象创建逻辑，便于扩展新图形类型
-策略模式 (Strategy)	不同工具的绘制行为（画笔、矩形、文字等）	运行时切换算法，避免大量的条件分支
-状态机 (State Machine)	绘图工具的交互状态（空闲→绘制→预览→提交）	管理复杂交互流程，保证状态转换可预测
-单例模式 (Singleton)	全局应用实例、事件总线、历史管理器	确保核心服务全局唯一，避免重复初始化
-1.3 依赖方向
-UI 层依赖 Plugin 层和 Logic 层。
+## 一、架构总览
 
-Plugin 层依赖 Logic 层和 Render 层。
+### 1.1 分层架构
 
-Logic 层依赖 Render 层（用于触发重绘）。
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    入口层 (Entry Layer)                          │
+│   index.js — 工厂函数 createEditor() + 显式导出所有子模块        │
+├──────────────────────────────────────────────────────────────────┤
+│                    核心层 (Core Layer)                           │
+│   Editor.js          → 外观模式：统一高层 API                     │
+│   EditorBuilder.js   → 建造者模式：链式构建编辑器                 │
+│   EditorState.js     → 代理模式：Proxy 拦截 + 自动校验 + 事件     │
+├──────────────────────────────────────────────────────────────────┤
+│                    视口层 (Viewport Layer)                       │
+│   ViewportManager.js         → 策略模式：缩放引擎                │
+│   strategies/WheelZoomStrategy.js   → 滚轮缩放                   │
+│   strategies/PinchZoomStrategy.js   → 捏合缩放                   │
+├──────────────────────────────────────────────────────────────────┤
+│                    命令层 (Command Layer)                        │
+│   Command.js           → 命令基类：execute/undo/redo/merge       │
+│   CommandManager.js    → 命令模式：undo/redo 历史栈              │
+│   canvas/ZoomCommand.js → 具体命令                               │
+├──────────────────────────────────────────────────────────────────┤
+│                    逻辑层 (Logic Layer)                          │
+│   event-bus.js         → 观察者模式：namespace:event 格式        │
+├──────────────────────────────────────────────────────────────────┤
+│                    插件层 (Plugin Layer)                         │
+│   plugin-manager.js    → 模板方法模式：依赖排序 + 生命周期        │
+│   feature-plugins/image/image-plugin.js → 图片插件               │
+├──────────────────────────────────────────────────────────────────┤
+│                    工具层 (Utility Layer) + 配置 + 错误           │
+│   utils/  config/  errors/  area.js                              │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-所有层禁止直接操作 DOM 或 Canvas 原生 API，必须通过 Render 层提供的接口。
+### 1.2 依赖方向（严格单向）
 
-二、项目目录结构规范
-所有源代码放在 src/ 目录下，采用以下结构：
+```
+入口层 → 核心层 → 视口层 / 命令层 / 逻辑层 → 插件层 → 工具层
+                                               ↘ 配置层
+```
 
-text
-src/
-├── core/                          # 渲染引擎层
-│   ├── renderer.js                # 主渲染器 (CanvasRenderer)
-│   ├── dirty-manager.js           # 脏区管理 (DirtyRegionManager)
-│   ├── scene-graph.js             # 场景图 (SceneGraph)
-│   ├── transform.js               # 矩阵变换工具
-│   └── node-types/                # 图形节点类
-│       ├── node.js                # 节点基类
-│       ├── rect.js
-│       ├── circle.js
-│       ├── path.js
-│       └── text.js
+- **上层可依赖下层，下层禁止引用上层。**
+- **同层模块之间尽量不互相引用**，通过 EventBus 通信。
+- **工具层是纯函数，无任何上层依赖。**
+- **插件层只依赖逻辑层和工具层**，不依赖核心层。
+
+### 1.3 核心设计模式及落点
+
+| 模式 | 对应类/文件 | 职责 |
+|------|------------|------|
+| **外观模式** | `core/Editor.js` | 为复杂子系统提供统一 API，自身不实现逻辑 |
+| **建造者模式** | `core/EditorBuilder.js` | 4 步链式构建：Leafer → Scene → Services → Editor |
+| **代理模式** | `core/EditorState.js` | Proxy 拦截 `set`，自动校验 + 钳位 + 发布事件 |
+| **策略模式** | `viewport/ViewportManager.js` + `strategies/` | 缩放算法可插拔，无锚点/有锚点统一入口 |
+| **命令模式** | `commands/Command.js` + `commands/CommandManager.js` | 所有写操作可撤销，50 步历史栈 |
+| **观察者模式** | `logic/event-bus.js` | 解耦模块通信，`namespace:event` 命名格式 |
+| **模板方法模式** | `plugins/plugin-manager.js` | 插件统一生命周期：bootstrap → destroy |
+
+---
+
+## 二、目录结构规范
+
+```
+canvas-editor-core/src/
+├── index.js                         # 入口：createEditor() + 显式导出
 │
-├── logic/                         # 业务逻辑层
-│   ├── store/                     # 状态管理
-│   │   ├── app-store.js           # 全局状态
-│   │   ├── selection-store.js     # 选区状态
-│   │   └── layer-store.js         # 图层状态
-│   ├── command/                   # 命令系统
-│   │   ├── command.js             # 命令基类
-│   │   ├── history.js             # 命令历史 (撤销/重做)
-│   │   └── commands/              # 具体命令实现
-│   │       ├── move-command.js
-│   │       ├── delete-command.js
-│   │       └── ...
-│   ├── state-machine/             # 状态机
-│   │   ├── machine.js             # 状态机核心
-│   │   └── drawing-states/        # 绘图状态定义
-│   └── event-bus.js               # 全局事件总线
+├── core/                            # 核心层
+│   ├── Editor.js                    # 外观类
+│   ├── EditorBuilder.js             # 建造者
+│   └── EditorState.js               # 代理状态
 │
-├── plugins/                       # 功能插件层
-│   ├── core-plugins/              # 核心插件（必须）
-│   │   ├── selection/             # 选择插件
-│   │   ├── transform/             # 变换（移动/缩放/旋转）
-│   │   └── viewport/              # 视口（平移/缩放）
-│   ├── tool-plugins/              # 工具插件
-│   │   ├── pen/                   # 画笔
-│   │   ├── shape/                 # 形状（矩形/圆形等）
-│   │   └── text/                  # 文字
-│   └── feature-plugins/           # 功能插件
-│       ├── layer/                 # 图层管理
-│       ├── align/                 # 对齐分布
-│       └── group/                 # 建组
+├── viewport/                        # 视口层
+│   ├── ViewportManager.js           # 缩放管理器
+│   └── strategies/                  # 缩放策略
+│       ├── WheelZoomStrategy.js     # 滚轮策略
+│       └── PinchZoomStrategy.js     # 捏合策略
 │
-├── ui/                            # UI 交互层
-│   ├── components/                # UI 组件（纯函数或类）
-│   │   ├── toolbar.js
-│   │   ├── panel.js
-│   │   └── context-menu.js
-│   ├── shortcuts.js               # 快捷键映射
-│   └── i18n.js                    # 国际化支持（可选）
+├── commands/                        # 命令层
+│   ├── Command.js                   # 命令基类
+│   ├── CommandManager.js            # 历史管理
+│   └── canvas/                      # 画布类命令
+│       └── ZoomCommand.js
 │
-├── utils/                         # 通用工具函数
-│   ├── math.js                    # 数学工具
-│   ├── color.js                   # 颜色处理
-│   └── dom.js                     # DOM 操作封装
+├── logic/                           # 逻辑层
+│   └── event-bus.js                 # 事件总线
 │
-├── types/                         # JSDoc 类型定义（.js文件）
-│   └── interfaces.js              # 接口定义（纯文档）
+├── plugins/                         # 插件层
+│   ├── index.js                     # 插件注册入口
+│   ├── plugin-manager.js            # 插件管理器
+│   └── feature-plugins/             # 功能插件
+│       └── image/
+│           └── image-plugin.js
 │
-└── index.js                       # 应用入口（初始化所有层）
-三、严格代码规范 (JavaScript)
-3.1 命名规范
-类型	规则	示例
-文件名	kebab-case.js	dirty-manager.js
-类名	PascalCase	CanvasRenderer, DirtyRegionManager
-接口（JSDoc 定义）	PascalCase，无前缀	Renderable, Command
-函数/方法	camelCase	getDirtyRegions(), handlePointerDown
-变量（非私有）	camelCase	maxHistorySize, currentTool
-常量（硬编码）	UPPER_SNAKE_CASE	MAX_HISTORY_SIZE, DEFAULT_FONT_SIZE
-私有属性/方法	使用 # 前缀 (ES2022) 或 _ 前缀（需配合 @private JSDoc）	#ctx, _dirtyRegions
-事件处理函数	on + 事件名 或 handle + 事件名	onPointerDown, handleKeyUp
-布尔变量/函数	is / has / should 前缀	isDirty, hasSelection, shouldRender
-3.2 代码风格 (基于 ESLint + Prettier)
-缩进：2 个空格。
+├── utils/                           # 工具层（纯函数，无上层依赖）
+│   ├── options.js                   # 参数归一化
+│   ├── image.js                     # 图片配置归一化
+│   ├── number.js                    # 数值校验
+│   ├── grid.js                      # 网格配置归一化
+│   ├── zoom.js                      # 缩放配置归一化
+│   ├── view.js                      # 视口 DOM 解析
+│   ├── dom.js                       # DOM 操作封装
+│   └── assert.js                    # 断言工具
+│
+├── config/
+│   └── index.js                     # DEFAULT_CANVAS_CONFIG
+│
+├── errors/
+│   └── editor-error.js              # EditorError
+│
+└── area.js                          # 画布背景 + 网格绘制
+```
 
-分号：必须使用分号结束语句。
+### 2.1 目录命名规则
 
-引号：统一使用单引号 (')；模板字符串使用反引号。
+- 目录名：`kebab-case`（如 `feature-plugins`、`canvas-editor-core`）
+- 文件名：`kebab-case.js`（如 `event-bus.js`、`plugin-manager.js`）
+- 策略文件放在子目录 `strategies/` 中
+- 具体命令放在 `commands/canvas/` 等下位目录
 
-括号：if、for、while 等必须使用大括号，即使单行。
+---
 
-换行：操作符换行时，操作符放在行末；函数参数过多时，每个参数单独一行。
+## 三、编码规范
 
-最大行长度：100 字符。
+### 3.1 命名规范
 
-3.3 类型安全 (使用 JSDoc)
-由于不使用 TypeScript，必须为所有公开 API 编写完整的 JSDoc 注释，包括类型、参数和返回值。使用 @typedef 定义复杂类型。
+| 类型 | 规则 | 示例 |
+|------|------|------|
+| 文件名 | `kebab-case.js` | `event-bus.js`、`image-plugin.js` |
+| 类名 | PascalCase | `EditorState`、`ViewportManager` |
+| 函数/方法 | camelCase | `setZoom()`、`handlePointerDown()` |
+| 变量 | camelCase | `contentLayer`、`newZoom` |
+| 常量 | UPPER_SNAKE_CASE | `DEFAULT_CANVAS_CONFIG` |
+| 私有字段 | ES2022 `#` 前缀 | `#state`、`#bus`、`#leafer` |
+| 事件处理 | `on + 事件名` 或 `handle + 事件名` | `onPointerDown`、`handleWheel` |
+| 布尔变量 | `is / has / should / can` 前缀 | `canUndo`、`showGrid`、`isDirty` |
+| 私有方法（非 `#` 场景） | `_` 前缀 + `@private` JSDoc | `_assertReady()`、`_getSortedPlugins()` |
 
-javascript
-/**
- * 矩形包围盒
- * @typedef {Object} Bounds
- * @property {number} x - 左上角 X
- * @property {number} y - 左上角 Y
- * @property {number} width - 宽度
- * @property {number} height - 高度
- */
+### 3.2 代码风格
 
-/**
- * 渲染器接口
- * @interface Renderable
- * @method {function(CanvasRenderingContext2D): void} render - 渲染方法
- * @method {function(): Bounds} getBounds - 获取包围盒
- */
+- **缩进**：2 个空格
+- **分号**：必须使用分号结束语句
+- **引号**：统一单引号 `'`；模板字符串用反引号 `` ` ``
+- **大括号**：`if/for/while` 必须使用大括号，即使单行
+- **最大行长**：100 字符
+- **箭头函数**：简单回调使用箭头函数；需要 `this` 或复杂逻辑使用命名方法
 
-/**
- * 计算两个包围盒的相交区域
- * @param {Bounds} a - 第一个包围盒
- * @param {Bounds} b - 第二个包围盒
- * @returns {Bounds|null} 相交区域，无交集则返回 null
- */
-export function intersectBounds(a, b) {
-  // 实现...
-}
-3.4 模块导入导出
-使用 ES 模块 (import / export)。
-
-禁止使用 export default（除非是单文件入口聚合），推荐命名导出以便追踪来源。
-
-导入顺序：外部依赖 → 内部模块 (按层级 core → logic → plugins → ui)。
-
-每个文件只导出一个主要类或函数，但可以有多个辅助导出。
-
-javascript
+```js
 // ✅ 正确
-import { CanvasRenderer } from '../core/renderer.js';
-import { EventBus } from '../logic/event-bus.js';
-import { ShapePlugin } from './shape-plugin.js';
+if (this.canUndo) {
+  this.#stack[this.#pointer].undo();
+  this.#pointer--;
+}
 
-export { ShapePlugin };
-3.5 错误处理
-所有可能失败的操作（如文件读取、网络请求、Canvas 操作）必须使用 try/catch。
+// ❌ 错误
+if (this.canUndo) this.#stack[this.#pointer--].undo();
+```
 
-自定义错误类：继承 Error，添加 code 属性用于区分错误类型。
+### 3.3 模块导入导出
 
-全局未捕获异常：在入口处注册 window.onerror 和 unhandledrejection 进行统一日志记录。
+- **禁止 `export default`**（入口 `index.js` 除外），统一使用命名导出
+- **导入顺序**：外部依赖 → 内部模块（按依赖层级）
+- **每个文件只导出一个主类**，辅助函数可额外导出
 
-禁止空 catch 块，至少记录警告日志。
+```js
+// ✅ 正确
+import { Leafer, Group } from 'leafer-ui';
+import { DEFAULT_CANVAS_CONFIG } from '../config/index.js';
+import { EditorState } from './EditorState.js';
+import { normalizeInitOptions } from '../utils/options.js';
 
-javascript
-class EditorError extends Error {
-  constructor(message, code) {
-    super(message);
-    this.code = code;
-    this.name = 'EditorError';
+export { EditorBuilder };
+
+// ❌ 错误
+import { normalizeInitOptions } from './utils/options';  // 缺少 .js 后缀
+export default class EditorBuilder {}                     // 禁止 default export
+```
+
+### 3.4 私有字段规范
+
+类内部统一使用 ES2022 **私有字段** `#` 语法：
+
+```js
+export class Editor {
+  /** @type {Proxy} — 代理状态 */
+  #state;
+  /** @type {EventBus} */
+  #bus;
+  /** @type {ViewportManager} */
+  #viewport;
+
+  // 公开只读访问器
+  get state() { return this.#state; }
+}
+```
+
+非类的工具模块中使用 `_` 前缀标记内部函数，通过局部作用域限制可见性。
+
+### 3.5 JSDoc 注释规范
+
+所有**公开导出**的类、方法、函数必须写完整 JSDoc。私有方法写简要说明。
+
+```js
+/**
+ * 视口缩放管理器 —— **策略模式**
+ *
+ * 将缩放交互逻辑集中管理，不再直接 patch leafer 内部对象。
+ *
+ * @author zzx
+ * @since 2026-07-01
+ */
+export class ViewportManager {
+  /**
+   * 执行缩放 —— 所有策略最终调用的统一入口。
+   *
+   * @param {Object} params
+   * @param {number} params.scale — 缩放因子
+   * @param {number} [params.anchorX] — 缩放锚点 X
+   * @param {number} [params.anchorY] — 缩放锚点 Y
+   */
+  zoom({ scale, anchorX, anchorY }) { ... }
+}
+```
+
+### 3.6 错误处理
+
+- 所有编辑器错误使用 `EditorError`，必须传入 `code`：
+  ```js
+  throw new EditorError('缺少插件 ID', 'PLUGIN_ID_REQUIRED');
+  ```
+- 错误码使用 `UPPER_SNAKE_CASE`，语义化命名
+- `try/catch` 中捕获外部错误后重新包装为 `EditorError`
+- **禁止空 `catch` 块**，至少 `console.warn`
+- EventBus 中监听器异常不向上传播，内部 catch 并日志
+
+### 3.7 异步处理
+
+- 统一使用 `async/await`，避免裸 `Promise.then()`
+- 插件中的异步初始化返回 `Promise`，由调用方处理
+- 循环中的异步操作使用 `for...of` 或 `Promise.all`
+
+---
+
+## 四、核心模块编写规范
+
+### 4.1 Editor（外观模式）
+
+`Editor` 自身不实现业务逻辑，将所有调用委托给子系统：
+
+```js
+export class Editor {
+  #leafer;
+  #stage;
+  #contentLayer;
+  #state;      // Proxy
+  #bus;        // EventBus
+  #pluginManager;
+  #viewport;   // ViewportManager
+  #commands;   // CommandManager
+
+  // 所有公开方法返回 this 以支持链式调用
+  setZoom(z) {
+    this.#viewport.setZoom(z);
+    return this;
   }
 }
+```
 
-try {
-  // 危险操作
-} catch (err) {
-  console.error(`[EditorError] ${err.code}: ${err.message}`);
-  // 上报或降级
+**规则**：
+- Editor 构造函数接受 8 个参数（leafer, stage, contentLayer, state, bus, pluginManager, viewport, commandManager）
+- 每个公开方法返回 `this` 支持链式调用
+- 读属性通过 getter 暴露子系统引用
+- 写操作委托给对应子系统
+
+### 4.2 EditorBuilder（建造者模式）
+
+```js
+export class EditorBuilder {
+  constructor(rawOptions) {
+    this.#options = normalizeInitOptions(rawOptions);
+    this.#view = resolveView(this.#options.view);
+    this.#size = resolveSize(this.#view, this.#options);
+  }
+
+  buildLeafer()    { /* 创建 Leafer */ return this; }
+  buildScene()     { /* 搭建 stage/contentLayer/area */ return this; }
+  buildServices()  { /* 事件总线、插件、命令、视口 */ return this; }
+  buildEditor()    { /* 组装 Editor */ return editor; }
+
+  build() { return this.buildLeafer().buildScene().buildServices().buildEditor(); }
 }
-3.6 异步处理
-优先使用 async/await 而非裸 Promise。
+```
 
-循环中的异步操作必须使用 for...of 或 Promise.all 控制并发。
+**规则**：
+- constructor 只做参数归一化
+- 每个 `build*()` 方法返回 `this`
+- `build()` 是语法糖，一键构建
+- 不在构建步骤之间做复杂逻辑判断
 
-3.7 内存管理与性能
-事件监听：每个绑定 addEventListener 的地方，必须记录以便后续移除。插件销毁时必须移除所有自身绑定的事件。
+### 4.3 EditorState（代理模式）
 
-Canvas 渲染：必须使用脏区管理，避免全量重绘。每次绘制前调用 ctx.save()，绘制后调用 ctx.restore()。
+```js
+export class EditorState {
+  #bus;
+  #raw;        // 内部原始数据
+  proxy;       // 对外暴露的 Proxy
 
-缓存：频繁计算的结果（如包围盒、变换矩阵）应缓存，并在数据变化时失效。
-
-动画：requestAnimationFrame 循环必须在页面不可见时暂停（使用 Page Visibility API）。
-
-3.8 注释规范
-文件头：每个源文件顶部注明作者、创建日期和简要描述。
-
-类/函数注释：使用 JSDoc 格式，包含 @param、@returns、@throws 和 @example（可选）。
-
-行内注释：解释复杂逻辑的“为什么”，而不是重复代码。
-
-TODO/FIXME：必须标注 // TODO(username): 描述 并在后续版本清理。
-
-javascript
-/**
- * 脏区管理器 - 用于收集和合并需要重绘的矩形区域
- * @author 张三
- * @since 2026-01-01
- */
-export class DirtyRegionManager {
-  /**
-   * 添加一个脏区
-   * @param {Bounds} region - 需要重绘的区域
-   * @throws {EditorError} 当区域无效时抛出
-   */
-  addDirtyRegion(region) {
-    // TODO(zhangsan): 实现区域合并优化
-    if (!region || region.width <= 0 || region.height <= 0) {
-      throw new EditorError('Invalid dirty region', 'INVALID_REGION');
-    }
-    // 合并逻辑...
+  constructor(initial, bus) {
+    this.#bus = bus;
+    this.#raw = { ...initial, destroyed: false };
+    this.proxy = new Proxy(this.#raw, {
+      set(target, key, value) {
+        const clamped = self.#clamp(key, value, target);
+        target[key] = clamped;
+        self.#emit(key, clamped, old, target);
+        return true;
+      }
+    });
   }
 }
-四、插件开发规范
-4.1 插件接口定义
-每个插件必须实现以下生命周期方法（JSDoc 定义）：
+```
 
-javascript
-/**
- * @interface Plugin
- */
-class Plugin {
-  /** @type {string} 唯一标识 */
-  get id() {}
-  /** @type {string} 显示名称 */
-  get name() {}
-  /** @type {string[]} 依赖的插件 ID 列表 */
-  get dependencies() { return []; }
+**规则**：
+- 外部通过 `state.proxy` 访问代理对象
+- `#clamp()` 对 `zoom` 做钳位、对 `zoomOptions/areaType/showGrid` 做校验
+- `#emit()` 自动发布 `viewport:zoom-changed`、`canvas:resized` 等事件
+- `showGrid` 和 `areaType` 联动修改
+- `#clamp` 只修改非法值；合法值应原样返回（default 分支）
 
-  /**
-   * 初始化，在应用启动时调用一次
-   * @param {Object} context - 全局上下文（包含渲染器、事件总线、命令历史等）
-   * @returns {void | Promise<void>}
-   */
-  bootstrap(context) {}
+**特别注意**：
+必须理解并严格按照这里的逻辑编码，当用户问及缩放的联动关系、状态校验、事件发布等问题时，以 EditorState.js 中的 Proxy 逻辑为唯一答案。
 
-  /**
-   * 激活插件（如切换工具或打开面板）
-   * @returns {void}
-   */
-  mount() {}
+### 4.4 ViewportManager（策略模式）
 
-  /**
-   * 更新插件状态（在全局状态变化时调用）
-   * @param {Object} state - 变更后的状态片段
-   * @returns {void}
-   */
-  update(state) {}
+```js
+export class ViewportManager {
+  #leafer;
+  #stage;
+  #state;
+  #bus;
+  #strategies = {
+    wheel: new WheelZoomStrategy(),
+    pinch: new PinchZoomStrategy(),
+  };
 
-  /**
-   * 渲染插件内容到画布（由渲染引擎调用）
-   * @param {CanvasRenderingContext2D} ctx - 2D 上下文
-   * @returns {void}
-   */
-  render(ctx) {}
-
-  /**
-   * 停用插件
-   * @returns {void}
-   */
-  unmount() {}
-
-  /**
-   * 销毁插件，清理所有资源
-   * @returns {void}
-   */
-  destroy() {}
+  zoom({ scale, anchorX, anchorY, source }) { /* 统一缩放引擎 */ }
+  setZoom(z)    { /* 无锚点缩放 */ }
+  zoomIn(step)  { /* 放大 */ }
+  zoomOut(step) { /* 缩小 */ }
+  resetZoom()   { /* 重置 */ }
+  setupInteraction() { /* 安装策略 */ }
 }
-4.2 插件注册与加载
-所有插件在 src/plugins/index.js 中统一注册。
+```
 
-支持动态加载（代码分割），但核心插件必须在启动时加载。
+**规则**：
+- `zoom()` 是唯一缩放入口，所有策略汇聚于此
+- `setZoom/zoomIn/zoomOut/resetZoom` 不传锚点，直接设 scale
+- `setupInteraction()` 在 `EditorBuilder.buildEditor()` 中调用，安装到 `leafer.interaction`
+- 缩放完成后通过 `#state.zoom = newZoom` 触发 Proxy 事件
+- 锚点缩放公式：`stage.x = anchorX - (anchorX - sx) * ratio`
 
-插件之间的依赖关系必须显式声明，插件管理器按依赖顺序初始化。
+**策略实现规范**：
+- 每个策略一个文件，放在 `strategies/` 下
+- 暴露 `handle(data, config)` 方法，返回 `{ scale, anchorX, anchorY }` 或 `null`
+- 极小变化（abs(scale - 1) < 0.001）返回 `null` 忽略
+- 策略不直接操作 stage 或 state，只做纯计算
 
-4.3 插件通信
-插件不应直接调用其他插件的方法，而应通过事件总线发送和接收事件。
+### 4.5 命令系统（命令模式）
 
-事件命名采用 namespace:event 格式（如 selection:changed）。
+```js
+// 基类
+export class Command {
+  reversible = true;
+  execute() { throw new Error('Command.execute() must be overridden.'); }
+  undo()    { /* 子类覆盖 */ }
+  redo()    { return this.execute(); }
+  merge(_cmd) { return false; }
+}
 
-五、状态管理规范
-5.1 不可变状态
-所有状态对象使用 Object.freeze() 冻结，防止直接修改。
+// 管理器
+export class CommandManager {
+  #stack = [];        // 历史栈
+  #pointer = -1;      // 当前指针
+  #maxSize = 50;
 
-状态变更必须通过 Store 提供的 dispatch(action) 方法触发，且 action 对象必须包含 type 和 payload。
+  execute(command) { /* 执行并压栈，支持合并 */ }
+  undo()  { /* 回退 */ }
+  redo()  { /* 前进 */ }
+  get canUndo() { ... }
+  get canRedo() { ... }
+}
+```
 
-5.2 状态更新流程
-用户操作 → 命令执行 → 修改 Store 中的状态（生成新状态对象）。
+**规则**：
+- 具体命令放在 `commands/canvas/` 等下位目录
+- 命令必须实现 `execute()` 和 `undo()`
+- `execute()` 前记录 `#previousZoom`（或其他旧值），`undo()` 时恢复
+- 命令通过 `command.merge()` 支持合并（如连续缩放合并为一条）
+- 执行后通过 `history:changed` 事件通知 UI 更新按钮状态
 
-Store 发布 state:changed 事件。
+### 4.6 EventBus（观察者模式）
 
-所有订阅者（插件、UI）收到通知并更新自身。
+```js
+export class EventBus {
+  #listeners = new Map();   // Map<string, Set<Function>>
 
-5.3 撤销/重做
-每个命令对象必须实现 execute() 和 undo() 方法，命令历史存储已执行的命令。
+  on(eventName, listener)  { /* 返回取消订阅函数 */ }
+  off(eventName, listener) { /* 移除监听 */ }
+  emit(eventName, payload) { /* 发布 */ }
+  clear()                  { /* 清空所有监听 */ }
+}
+```
 
-命令执行后自动推入历史栈，撤销时从栈中弹出并调用 undo()。
+**规则**：
+- 事件名采用 `namespace:event` 格式：
+  - `viewport:zoom-changed` — 缩放变化
+  - `canvas:background-changed` — 背景变更
+  - `canvas:resized` — 尺寸变更
+  - `history:changed` — 撤销/重做状态变更
+  - `image:added` — 图片添加完成
+  - `viewport:transform-end` — 变换结束
+  - `viewport:zoom-source` — 缩放来源
+- `on()` 返回取消订阅函数，方便在 `destroy()` 中清理
+- `emit()` 内部 try/catch 保护，单个监听器异常不影响其他
 
-六、测试规范
-单元测试：使用 Jest 或 Mocha，覆盖核心逻辑（命令、状态机、工具函数）。
+### 4.7 插件系统（模板方法模式）
 
-集成测试：测试插件与渲染引擎的交互，模拟用户事件。
+```js
+export class PluginManager {
+  #plugins = new Map();
 
-测试文件放在 test/ 目录下，命名 *.test.js。
+  register(plugin)    { /* 校验 id，不允许重复注册 */ }
+  bootstrap(context)  { /* 按依赖顺序初始化 */ }
+  get(id)             { /* 查询插件 */ }
+  destroy()           { /* 逆序销毁 */ }
 
-测试覆盖率要求：核心模块 ≥ 80%。
+  #getSortedPlugins() { /* 拓扑排序 */ }
+}
+```
 
-七、开发工作流
-新功能开发：先在 plugins/ 下创建新插件目录，实现 Plugin 接口。
+**插件必须实现**：
+- `get id()` — 唯一标识（字符串）
+- `get name()` — 显示名称
+- `get dependencies()` — 依赖插件 ID 列表（数组）
+- `bootstrap(context)` — 初始化，接收 `{ leafer, stage, contentLayer, eventBus, state }`
+- `destroy()` — 清理资源
 
-添加命令：如需撤销/重做，在 command/commands/ 下新增命令类。
+**插件通信规则**：
+- 插件之间不直接调用，通过 EventBus 收发事件
+- 插件通过 `context.contentLayer` 添加元素到画布
+- 插件通过 `context.state` 读取编辑器状态（只读）
 
-更新状态：在 store/ 中添加新的状态字段和对应的 action。
+---
 
-UI 关联：在 ui/ 中添加工具栏按钮或菜单项，绑定快捷键。
+## 五、工具函数编写规范
 
-编写测试：确保新功能有对应的单元测试。
+### 5.1 归一化函数模式
 
-八、版本与发布规范
-使用语义化版本 MAJOR.MINOR.PATCH。
+所有外部输入必须通过归一化函数处理，合并默认值：
 
-每次发布前更新 CHANGELOG.md，记录新增、变更和修复。
+```js
+/**
+ * 归一化图片配置。
+ * @param {Object} [image={}] — 外部传入
+ * @param {Object} [baseImage={}] — 默认值
+ * @returns {Object}
+ */
+export function normalizeImageOptions(image = {}, baseImage = {}) {
+  return {
+    ...baseImage,
+    ...(image ?? {})
+  };
+}
+```
 
-本 Skill 已包含所有必要的架构决策和代码规范，AI 助手在生成代码时需严格遵守以上规则，以确保项目长期可维护。
+### 5.2 工具文件规则
 
+- 所有工具函数必须是纯函数（无副作用、无 `this`）
+- 放在 `utils/` 目录下，按功能拆文件（`number.js`、`image.js`、`view.js` 等）
+- 禁止工具函数引用上层模块（如 `plugins/`、`core/`）
+- 使用 JSDoc 标注参数和返回值类型
+
+---
+
+## 六、场景树布局规则
+
+LeaferJS 的场景树布局必须严格遵循：
+
+```
+Leafer (leafer)
+├── area (Group)      ← 直接挂在 leafer，不参与缩放
+│   ├── background    ← 背景色矩形
+│   ├── minorGrid     ← 细网格线 Path
+│   └── majorGrid     ← 粗网格线 Path
+└── stage (Group)     ← 参与缩放（通过 stage.scale）
+    └── contentLayer  ← 所有用户内容
+```
+
+**关键规则**：
+- `area` 不挂在 `stage` 下，网格线在缩放时保持固定视觉宽度
+- `contentLayer` 挂在 `stage` 下，内容跟随缩放
+- 插件通过 `context.contentLayer` 添加元素，不需要知道 stage 存在
+- 缩放时只改 `stage.scale`，网格线通过 `updateArea()` 独立更新
+
+---
+
+## 七、开发工作流
+
+### 7.1 新增插件
+
+1. 在 `plugins/feature-plugins/` 下创建插件目录
+2. 插件类实现 `id/name/dependencies/bootstrap/destroy`
+3. 在 `plugins/index.js` 中注册
+4. 通过 `EventBus` 与其他模块通信
+5. 通过 `context.contentLayer` 添加渲染元素
+
+### 7.2 新增命令
+
+1. 在 `commands/canvas/` 下创建命令类
+2. 继承 `Command`，实现 `execute()` 和 `undo()`
+3. 通过 `editor.execute(new XxxCommand(...))` 使用
+4. 如需合并相邻操作，重写 `merge()` 方法
+
+### 7.3 新增缩放策略
+
+1. 在 `viewport/strategies/` 下创建策略类
+2. 实现 `handle(data, config)` 返回 `{ scale, anchorX, anchorY } | null`
+3. 在 `ViewportManager` 构造函数中注册
+
+### 7.4 修改默认配置
+
+编辑 `config/index.js` 中的 `DEFAULT_CANVAS_CONFIG`，然后确保 `utils/options.js` 中的归一化函数正确合并默认值。
+
+---
+
+## 八、禁止事项
+
+1. **禁止跨层引用** — `utils/` 不能引用 `plugins/` 或 `core/`
+2. **禁止直接修改 state** — 必须通过 `state.proxy` 赋值
+3. **禁止空 catch 块** — 至少 `console.warn`
+4. **禁止插件间直接调用** — 必须通过 EventBus
+5. **禁止 `export default`** — 除非入口文件聚合导出
+6. **禁止绕过归一化函数直接使用外部参数** — 所有 `options` 必须经过 normalize
+7. **禁止在 `index.js` 中写业务逻辑** — 入口只负责导出和工厂函数
+8. **禁止操作原生 DOM** — 必须通过 `utils/dom.js` 封装
