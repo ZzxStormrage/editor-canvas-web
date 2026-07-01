@@ -28,7 +28,7 @@ export const DEFAULT_CANVAS_CONFIG = {
     fontSize: 36,
     fontWeight: 'normal',
     fill: '#1f2937',
-    textAlign: 'left',
+    textAlign: 'center',
     verticalAlign: 'top',
     lineHeight: 44,
     width: 360
@@ -59,7 +59,7 @@ export const DEFAULT_CANVAS_CONFIG = {
     editBox: true,
     hover: true,
     select: 'press',
-    openInner: 'double',
+    openInner: false,
     multipleSelect: true,
     boxSelect: true,
     moveable: true,

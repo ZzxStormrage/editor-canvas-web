@@ -34,7 +34,7 @@
       <button type="button" class="toolbar-button" @click="resetZoom">重置</button>
     </div>
     <div class="container">
-      <div ref="canvasRef" class="canvas-view" @dblclick.capture="editSelectedText"></div>
+      <div ref="canvasRef" class="canvas-view" @dblclick.capture.stop="editSelectedText"></div>
     </div>
   </div>
 </template>
@@ -53,7 +53,7 @@ export default {
     const fontSize = ref(36)
     const fontWeight = ref('400')
     const textColor = ref('#1f2937')
-    const textAlign = ref('left')
+    const textAlign = ref('center')
     const fontOptions = [
       'PingFang SC',
       'Microsoft YaHei',
