@@ -54,6 +54,8 @@
         <option value="y">竖版</option>
       </select>
       <button type="button" class="toolbar-button" @click="addText">添加文本</button>
+      <input v-model="watermarkValue" class="text-input watermark-input" type="text" placeholder="输入水印文字" />
+      <button type="button" class="toolbar-button" @click="addWatermark">添加水印</button>
       <button type="button" class="toolbar-button icon-button" @click="zoomOut">-</button>
       <span class="zoom-value">{{ zoomPercent }}%</span>
       <button type="button" class="toolbar-button icon-button" @click="zoomIn">+</button>
@@ -75,6 +77,7 @@ export default {
     const imageInputRef = ref(null)
     const zoom = ref(1)
     const textValue = ref('双击编辑文字')
+    const watermarkValue = ref('')
     const fontFamily = ref('PingFang SC')
     const fontSize = ref(36)
     const fontWeight = ref('400')
@@ -98,6 +101,7 @@ export default {
     let editor = null
     let unsubscribeTextSelected = null
     let isSyncingTextControls = false
+    let isAddingWatermark = false
 
     /**
      * 初始化 Leafer 画布。
@@ -114,6 +118,10 @@ export default {
         autoResize: true
       })
       unsubscribeTextSelected = editor.eventBus.on('text:selected', ({ options }) => {
+        if (isAddingWatermark) {
+          return
+        }
+
         applyTextOptionsToUI(options)
       })
       zoom.value = editor.state.zoom
@@ -213,6 +221,58 @@ export default {
       await editor.text.add(textValue.value || '双击编辑文字', getTextOptions())
     }
 
+    const addWatermark = async () => {
+      if (!editor) {
+        return
+      }
+
+      const content = watermarkValue.value?.trim() || '水印'
+      const canvasWidth = editor.state.width
+      const canvasHeight = editor.state.height
+      const watermarkFontSize = 28
+      const watermarkWidth = Math.max(180, Math.min(360, content.length * watermarkFontSize * 1.4))
+      const columnGap = watermarkWidth + 110
+      const rowGap = 150
+      const startX = -watermarkWidth
+      const startY = -rowGap
+      const tasks = []
+
+      isAddingWatermark = true
+
+      try {
+        for (let y = startY, rowIndex = 0; y < canvasHeight + rowGap; y += rowGap, rowIndex += 1) {
+          const offsetX = rowIndex % 2 === 0 ? 0 : columnGap / 2
+
+          for (let x = startX - offsetX; x < canvasWidth + columnGap; x += columnGap) {
+            tasks.push(
+              editor.text.add(content, {
+                x,
+                y,
+                width: watermarkWidth,
+                rotation: -28,
+                fontFamily: fontFamily.value,
+                fontSize: watermarkFontSize,
+                fontWeight: 700,
+                fill: 'rgba(255, 255, 255, 0.36)',
+                textAlign: 'center',
+                lineHeight: Math.round(watermarkFontSize * 1.25),
+                letterSpacing: 2,
+                textDecoration: 'none',
+                writingMode: 'x',
+                draggable: false,
+                editable: false
+              })
+            )
+          }
+        }
+
+        await Promise.all(tasks)
+        editor.deselect()
+      } finally {
+        isAddingWatermark = false
+      }
+    }
+
     const updateSelectedText = () => {
       if (!editor) {
         return
@@ -284,6 +344,7 @@ export default {
       canvasRef,
       imageInputRef,
       textValue,
+      watermarkValue,
       fontFamily,
       fontSize,
       fontWeight,
@@ -300,6 +361,7 @@ export default {
       openImagePicker,
       handleImageChange,
       addText,
+      addWatermark,
       editSelectedText,
       zoomIn,
       zoomOut,
@@ -356,6 +418,10 @@ export default {
 .text-input {
   width: 180px;
   padding: 0 10px;
+}
+
+.watermark-input {
+  width: 150px;
 }
 
 .toolbar-select {

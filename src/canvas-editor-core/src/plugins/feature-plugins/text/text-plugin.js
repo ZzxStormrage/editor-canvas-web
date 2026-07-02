@@ -236,14 +236,24 @@ export class TextPlugin {
       ...inputOptions
     })
     const width = normalizedOptions.width ?? Math.min(state.width * 0.7, 420)
+    const placementOptions = this._normalizePlacementOptions(inputOptions)
 
     return {
       text: normalizedOptions.text ?? '',
       x: inputOptions.x ?? (state.width - width) / 2,
       y: inputOptions.y ?? state.height / 2 - (normalizedOptions.fontSize ?? 32) / 2,
       ...normalizedOptions,
-      width
+      width,
+      ...placementOptions
     }
+  }
+
+  _normalizePlacementOptions(options) {
+    return Object.fromEntries(
+      ['rotation', 'opacity', 'draggable', 'editable', 'locked']
+        .filter((key) => options[key] !== undefined)
+        .map((key) => [key, options[key]])
+    )
   }
 
   _resolveUpdateTarget(target, options) {
