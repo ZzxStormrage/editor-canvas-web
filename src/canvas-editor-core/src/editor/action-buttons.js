@@ -7,14 +7,10 @@ import layerIconSvg from '../assets/icons/layers.svg?raw'
 import lockIconSvg from '../assets/icons/lock.svg?raw'
 import unlockIconSvg from '../assets/icons/unlock.svg?raw'
 
-const bringFrontIconSvg =
-  '<svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 6V36" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/><path d="M14 16L24 6L34 16" stroke="#4A5565" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 40H38" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/></svg>'
-const forwardIconSvg =
-  '<svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 10V38" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/><path d="M14 20L24 10L34 20" stroke="#4A5565" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-const backwardIconSvg =
-  '<svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 10V38" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/><path d="M14 28L24 38L34 28" stroke="#4A5565" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-const sendBackIconSvg =
-  '<svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 12V42" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/><path d="M14 32L24 42L34 32" stroke="#4A5565" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 8H38" stroke="#4A5565" stroke-width="4" stroke-linecap="round"/></svg>'
+import bringFrontIconSvg from '../assets/icons/bring-front.svg?raw'
+import forwardIconSvg from '../assets/icons/forward.svg?raw'
+import backwardIconSvg from '../assets/icons/backward.svg?raw'
+import sendBackIconSvg from '../assets/icons/send-back.svg?raw'
 
 /**
  * 编辑器操作按钮管理器。
@@ -131,8 +127,23 @@ export class EditorActionButtons {
 
   // ────────── 事件处理 ──────────
 
-  #onBeforeSelect() {
+  #onBeforeSelect(e) {
     if (this.#isTogglingLock) return
+
+    // 如果即将选中的列表与当前选中相同，说明是对已选中元素的重复点击，
+    // 不应该移除当前的按钮（否则不会收到后续 SELECT 事件来重建按钮）。
+    try {
+      const nextList = e?.list ?? []
+      const currList = this.#innerEditor?.list ?? []
+      if (Array.isArray(nextList) && nextList.length === currList.length) {
+        const currSet = new Set(currList)
+        const same = nextList.every((it) => currSet.has(it))
+        if (same) return
+      }
+    } catch (err) {
+      // 忽略比较错误，回退到默认行为
+    }
+
     this.#removeButtons()
   }
 
@@ -173,11 +184,20 @@ export class EditorActionButtons {
     // 成功拿到 editBox，清零重试计数
     this.#lockRetryCount = 0
 
+    // 计算选中元素的共享属性快照，并共享到 innerEditor，供其它模块使用
+    const shared = this.#computeSharedAttributes(selected)
+    try {
+      // 将共享属性附加到 innerEditor（非侵入式属性），方便外部读取
+      this.#innerEditor.selectionAttributes = shared
+    } catch (err) {
+      // 忽略附加错误
+    }
+
     // 移除旧的
     this.#removeButtons()
 
-    // 判断是否全部锁定
-    const allLocked = selected.every((item) => item.locked)
+    // 判断锁定态：使用共享属性决定（true = 全部锁定，false = 全部未锁定，undefined = 混合）
+    const allLocked = shared.locked === true
 
     // 按钮定义：[key, callback, disabled?]
     let layerMenuX = 0
@@ -223,6 +243,32 @@ export class EditorActionButtons {
     if (allLocked) {
       this.#showLockedEditBox(editBox)
     }
+  }
+
+  /**
+   * 计算选中元素的共享属性：若所有元素某属性值相同则返回该值，若存在差异则返回 undefined。
+   * @param {import('leafer-ui').UI[]} selected
+   * @returns {Object}
+   */
+  #computeSharedAttributes(selected) {
+    if (!Array.isArray(selected) || selected.length === 0) return {}
+
+    const keys = ['locked', 'draggable', 'editable', 'rotation', 'opacity']
+    const shared = {}
+
+    for (const key of keys) {
+      let value = selected[0][key]
+      let same = true
+      for (let i = 1; i < selected.length; i++) {
+        if (selected[i][key] !== value) {
+          same = false
+          break
+        }
+      }
+      shared[key] = same ? value : undefined
+    }
+
+    return shared
   }
 
   /**
@@ -495,6 +541,7 @@ export class EditorActionButtons {
     rect.on_(PointerEvent.DOWN, this.#onMoveCursorDown, this)
     rect.on_(PointerEvent.UP, this.#onMoveCursorEnd, this)
     rect.on_(PointerEvent.LEAVE, this.#onMoveCursorEnd, this)
+    rect.on_(PointerEvent.TAP, this.#onEditBoxTap, this)
   }
 
   #unbindMoveCursorEvents() {
@@ -505,7 +552,24 @@ export class EditorActionButtons {
     this.#cursorRect.off_(PointerEvent.DOWN, this.#onMoveCursorDown, this)
     this.#cursorRect.off_(PointerEvent.UP, this.#onMoveCursorEnd, this)
     this.#cursorRect.off_(PointerEvent.LEAVE, this.#onMoveCursorEnd, this)
+    this.#cursorRect.off_(PointerEvent.TAP, this.#onEditBoxTap, this)
     this.#cursorRect = null
+  }
+
+  #onEditBoxTap(e) {
+    try {
+      e.stop()
+    } catch (err) {}
+
+    const list = this.#innerEditor?.list ?? []
+    if (!list || list.length === 0) return
+
+    const shared = this.#computeSharedAttributes(list)
+    if (shared.locked === true) {
+      requestAnimationFrame(() => {
+        if (!this.#disposed) this.#buildButtons(list)
+      })
+    }
   }
 
   #onMoveCursorDown() {

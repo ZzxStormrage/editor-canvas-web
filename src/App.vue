@@ -286,6 +286,16 @@ export default {
         return
       }
 
+      // 如果文本输入框被清空，删除当前选中的文本元素（仅删除该元素）
+      if ((textValue.value ?? '').trim() === '') {
+        const t = editor.text.getSelected()
+        if (t) {
+          t.remove()
+          editor.deselect()
+        }
+        return
+      }
+
       editor.text.update({
         text: textValue.value,
         ...getTextOptions()
