@@ -169,6 +169,7 @@ export class EditorBuilder {
       pointFill: this.#options.editor.pointFill,
       pointSize: this.#options.editor.pointSize,
       pointRadius: this.#options.editor.pointRadius,
+      middlePoint: this.#options.editor.middlePoint,
       rotateGap: this.#options.editor.rotateGap,
       moveCursor: this.#options.editor.moveCursor,
       buttonsDirection: this.#options.editor.buttonsDirection,

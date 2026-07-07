@@ -21,6 +21,7 @@ export function normalizeEditorOptions(userEditor = {}, defaults = {}) {
     pointFill: userEditor.pointFill ?? defaults.pointFill,
     pointSize: userEditor.pointSize ?? defaults.pointSize,
     pointRadius: userEditor.pointRadius ?? defaults.pointRadius,
+    middlePoint: userEditor.middlePoint ?? defaults.middlePoint,
     rotateGap: userEditor.rotateGap ?? defaults.rotateGap,
     moveCursor: userEditor.moveCursor ?? defaults.moveCursor,
     buttonsDirection: userEditor.buttonsDirection ?? defaults.buttonsDirection,

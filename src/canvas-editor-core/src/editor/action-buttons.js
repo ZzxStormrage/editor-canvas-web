@@ -82,6 +82,14 @@ const BTN_RADIUS = 8
 const MENU_WIDTH = 132
 const MENU_ITEM_HEIGHT = 34
 const MENU_GAP = 8
+const MIDDLE_HANDLE_STYLE = {
+  stroke: '#e5e7eb',
+  shadow: { x: 0, y: 2, blur: 8, spread: 0, color: 'rgba(15, 23, 42, 0.2)' }
+}
+const MIDDLE_HANDLE_HOVER_STYLE = {
+  stroke: '#4A90D9',
+  shadow: { x: 0, y: 3, blur: 10, spread: 0, color: 'rgba(37, 99, 235, 0.24)' }
+}
 
 function createIconUrl(svg, color = ICON_COLOR) {
   const crispSvg = svg
@@ -103,6 +111,9 @@ export class EditorActionButtons {
   /** @type {import('leafer-ui').Rect | null} */
   #cursorRect
 
+  /** @type {import('leafer-ui').UI[]} */
+  #middleHandles
+
   /** @type {boolean} */
   #disposed = false
 
@@ -120,6 +131,7 @@ export class EditorActionButtons {
     this.#btnGroup = null
     this.#layerMenu = null
     this.#cursorRect = null
+    this.#middleHandles = []
 
     this.#innerEditor.on_(EditorEvent.SELECT, this.#onSelect, this)
     this.#innerEditor.on_(EditorEvent.BEFORE_SELECT, this.#onBeforeSelect, this)
@@ -239,6 +251,7 @@ export class EditorActionButtons {
     this.#btnGroup = btnGroup
     editBox.buttons.add(btnGroup)
     this.#syncMoveCursor(editBox)
+    this.#syncMiddleHandleHover(editBox)
 
     if (allLocked) {
       this.#showLockedEditBox(editBox)
@@ -502,6 +515,7 @@ export class EditorActionButtons {
   }
 
   #removeButtons() {
+    this.#unbindMiddleHandleHover()
     this.#removeLayerMenu()
     if (this.#btnGroup) {
       this.#btnGroup.remove()
@@ -524,7 +538,7 @@ export class EditorActionButtons {
   #syncMoveCursor(editBox) {
     if (editBox?.rect) {
       this.#bindMoveCursorEvents(editBox.rect)
-      editBox.rect.cursor = 'default'
+      editBox.rect.cursor = this.#getMoveCursor(editBox)
     }
   }
 
@@ -556,6 +570,24 @@ export class EditorActionButtons {
     this.#cursorRect = null
   }
 
+  #syncMiddleHandleHover(editBox) {
+    this.#unbindMiddleHandleHover()
+    this.#middleHandles = (editBox?.resizePoints ?? []).filter((_, index) => index % 2 === 1)
+
+    this.#middleHandles.forEach((point) => {
+      point.on_(PointerEvent.ENTER, this.#onMiddleHandleEnter, this)
+      point.on_(PointerEvent.LEAVE, this.#onMiddleHandleLeave, this)
+    })
+  }
+
+  #unbindMiddleHandleHover() {
+    this.#middleHandles.forEach((point) => {
+      point.off_(PointerEvent.ENTER, this.#onMiddleHandleEnter, this)
+      point.off_(PointerEvent.LEAVE, this.#onMiddleHandleLeave, this)
+    })
+    this.#middleHandles = []
+  }
+
   #onEditBoxTap(e) {
     try {
       e.stop()
@@ -574,14 +606,26 @@ export class EditorActionButtons {
 
   #onMoveCursorDown() {
     if (this.#cursorRect) {
-      this.#cursorRect.cursor = 'move'
+      this.#cursorRect.cursor = this.#getMoveCursor(this.#innerEditor?.editBox)
     }
   }
 
   #onMoveCursorEnd() {
     if (this.#cursorRect) {
-      this.#cursorRect.cursor = 'default'
+      this.#cursorRect.cursor = this.#getMoveCursor(this.#innerEditor?.editBox)
     }
+  }
+
+  #onMiddleHandleEnter(e) {
+    e.current?.set?.(MIDDLE_HANDLE_HOVER_STYLE)
+  }
+
+  #onMiddleHandleLeave(e) {
+    e.current?.set?.(MIDDLE_HANDLE_STYLE)
+  }
+
+  #getMoveCursor(editBox) {
+    return editBox?.mergedConfig?.moveCursor ?? editBox?.mergeConfig?.moveCursor ?? 'move'
   }
 
   // ────────── 操作逻辑 ──────────
@@ -791,6 +835,7 @@ export class EditorActionButtons {
 
     this.#removeButtons()
     this.#unbindMoveCursorEvents()
+    this.#unbindMiddleHandleHover()
 
     if (this.#innerEditor) {
       this.#innerEditor.off_(EditorEvent.SELECT, this.#onSelect, this)

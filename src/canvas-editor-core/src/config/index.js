@@ -54,8 +54,17 @@ export const DEFAULT_CANVAS_CONFIG = {
     pointFill: '#FFFFFF',
     pointSize: 10,
     pointRadius: 16,
+    middlePoint: {
+      width: 14,
+      height: 6,
+      cornerRadius: 3,
+      fill: '#FFFFFF',
+      stroke: '#e5e7eb',
+      strokeWidth: 1,
+      shadow: { x: 0, y: 2, blur: 8, spread: 0, color: 'rgba(15, 23, 42, 0.2)' }
+    },
     rotateGap: 45,
-    moveCursor: 'default',
+    moveCursor: 'move',
     buttonsDirection: 'bottom',
     buttonsMargin: 12,
     hideOnSmall: true,

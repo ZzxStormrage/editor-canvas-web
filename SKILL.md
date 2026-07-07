@@ -1,6 +1,11 @@
+---
+name: canvas-editor-core
+description: Coding standards and architecture guide for the LeaferJS-based canvas-editor-core package. Use when Codex needs to read, modify, generate, refactor, or review canvas-editor-core JavaScript code, including editor core APIs, viewport zoom, command/history behavior, EventBus communication, plugins, utilities, configuration, and LeaferJS scene layout.
+---
+
 # canvas-editor-core 架构设计与开发规范
 
-本项目基于 [LeaferJS](https://www.leaferjs.com/) 渲染引擎，采用纯 JavaScript (ES6+) 编写，融合 6 种经典设计模式，确保代码高可读、低耦合、易扩展。本文档作为 AI 助手的代码生成唯一规范来源。
+本项目基于 [LeaferJS](https://www.leaferjs.com/) 渲染引擎，采用纯 JavaScript (ES6+) 编写。使用本 Skill 时，必须优先遵守本文的架构、命名、模块边界和代码风格。
 
 ---
 
@@ -68,55 +73,18 @@
 
 ## 二、目录结构规范
 
-```
-canvas-editor-core/src/
-├── index.js                         # 入口：createEditor() + 显式导出
-│
-├── core/                            # 核心层
-│   ├── Editor.js                    # 外观类
-│   ├── EditorBuilder.js             # 建造者
-│   └── EditorState.js               # 代理状态
-│
-├── viewport/                        # 视口层
-│   ├── ViewportManager.js           # 缩放管理器
-│   └── strategies/                  # 缩放策略
-│       ├── WheelZoomStrategy.js     # 滚轮策略
-│       └── PinchZoomStrategy.js     # 捏合策略
-│
-├── commands/                        # 命令层
-│   ├── Command.js                   # 命令基类
-│   ├── CommandManager.js            # 历史管理
-│   └── canvas/                      # 画布类命令
-│       └── ZoomCommand.js
-│
-├── logic/                           # 逻辑层
-│   └── event-bus.js                 # 事件总线
-│
-├── plugins/                         # 插件层
-│   ├── index.js                     # 插件注册入口
-│   ├── plugin-manager.js            # 插件管理器
-│   └── feature-plugins/             # 功能插件
-│       └── image/
-│           └── image-plugin.js
-│
-├── utils/                           # 工具层（纯函数，无上层依赖）
-│   ├── options.js                   # 参数归一化
-│   ├── image.js                     # 图片配置归一化
-│   ├── number.js                    # 数值校验
-│   ├── grid.js                      # 网格配置归一化
-│   ├── zoom.js                      # 缩放配置归一化
-│   ├── view.js                      # 视口 DOM 解析
-│   ├── dom.js                       # DOM 操作封装
-│   └── assert.js                    # 断言工具
-│
-├── config/
-│   └── index.js                     # DEFAULT_CANVAS_CONFIG
-│
-├── errors/
-│   └── editor-error.js              # EditorError
-│
-└── area.js                          # 画布背景 + 网格绘制
-```
+关键目录与文件：
+
+- `index.js`：入口，提供 `createEditor()` 并显式导出子模块
+- `core/`：`Editor.js`、`EditorBuilder.js`、`EditorState.js`
+- `viewport/`：`ViewportManager.js` 与 `strategies/` 缩放策略
+- `commands/`：`Command.js`、`CommandManager.js` 与 `commands/canvas/` 具体命令
+- `logic/event-bus.js`：统一事件总线
+- `plugins/`：`plugin-manager.js`、`index.js` 与 `feature-plugins/`
+- `utils/`：纯函数工具，如 `options.js`、`image.js`、`number.js`、`grid.js`、`zoom.js`、`view.js`、`dom.js`、`assert.js`
+- `config/index.js`：`DEFAULT_CANVAS_CONFIG`
+- `errors/editor-error.js`：`EditorError`
+- `area.js`：画布背景与网格绘制
 
 ### 2.1 目录命名规则
 
@@ -152,82 +120,20 @@ canvas-editor-core/src/
 - **最大行长**：100 字符
 - **箭头函数**：简单回调使用箭头函数；需要 `this` 或复杂逻辑使用命名方法
 
-```js
-// ✅ 正确
-if (this.canUndo) {
-  this.#stack[this.#pointer].undo();
-  this.#pointer--;
-}
-
-// ❌ 错误
-if (this.canUndo) this.#stack[this.#pointer--].undo();
-```
-
 ### 3.3 模块导入导出
 
 - **禁止 `export default`**（入口 `index.js` 除外），统一使用命名导出
 - **导入顺序**：外部依赖 → 内部模块（按依赖层级）
 - **每个文件只导出一个主类**，辅助函数可额外导出
-
-```js
-// ✅ 正确
-import { Leafer, Group } from 'leafer-ui';
-import { DEFAULT_CANVAS_CONFIG } from '../config/index.js';
-import { EditorState } from './EditorState.js';
-import { normalizeInitOptions } from '../utils/options.js';
-
-export { EditorBuilder };
-
-// ❌ 错误
-import { normalizeInitOptions } from './utils/options';  // 缺少 .js 后缀
-export default class EditorBuilder {}                     // 禁止 default export
-```
+- 内部相对导入必须带 `.js` 后缀
 
 ### 3.4 私有字段规范
 
-类内部统一使用 ES2022 **私有字段** `#` 语法：
-
-```js
-export class Editor {
-  /** @type {Proxy} — 代理状态 */
-  #state;
-  /** @type {EventBus} */
-  #bus;
-  /** @type {ViewportManager} */
-  #viewport;
-
-  // 公开只读访问器
-  get state() { return this.#state; }
-}
-```
-
-非类的工具模块中使用 `_` 前缀标记内部函数，通过局部作用域限制可见性。
+类内部统一使用 ES2022 **私有字段** `#` 语法；公开只读访问通过 getter 暴露。非类工具模块中使用 `_` 前缀标记内部函数，通过局部作用域限制可见性。
 
 ### 3.5 JSDoc 注释规范
 
-所有**公开导出**的类、方法、函数必须写完整 JSDoc。私有方法写简要说明。
-
-```js
-/**
- * 视口缩放管理器 —— **策略模式**
- *
- * 将缩放交互逻辑集中管理，不再直接 patch leafer 内部对象。
- *
- * @author zzx
- * @since 2026-07-01
- */
-export class ViewportManager {
-  /**
-   * 执行缩放 —— 所有策略最终调用的统一入口。
-   *
-   * @param {Object} params
-   * @param {number} params.scale — 缩放因子
-   * @param {number} [params.anchorX] — 缩放锚点 X
-   * @param {number} [params.anchorY] — 缩放锚点 Y
-   */
-  zoom({ scale, anchorX, anchorY }) { ... }
-}
-```
+所有**公开导出**的类、方法、函数必须写完整 JSDoc，包含职责、参数和返回值。私有方法写简要说明。
 
 ### 3.6 错误处理
 

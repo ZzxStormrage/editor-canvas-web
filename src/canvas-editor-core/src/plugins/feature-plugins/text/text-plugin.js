@@ -1,10 +1,12 @@
 import { Text as LeaferText } from 'leafer-ui'
-import { EditorEvent } from '@leafer-in/editor'
+import { EditorEvent, InnerEditorEvent } from '@leafer-in/editor'
 
 import { EditorError } from '../../../errors/editor-error.js'
 import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
 import { applyTextEditorStyleLater } from '../../../utils/dom.js'
 import { installTextEditorAdapter } from './text-editor-adapter.js'
+
+const RAW_TEXT_KEY = '__canvasEditorRawText'
 
 /**
  * 文本插件 —— 基于 leafer-ui 原生 Text 节点提供文本添加与样式更新能力。
@@ -57,6 +59,7 @@ export class TextPlugin {
     installTextEditorAdapter()
     this._context = context
     context.innerEditor?.on_(EditorEvent.SELECT, this._handleSelect, this)
+    context.innerEditor?.on_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
   }
 
   /**
@@ -72,15 +75,22 @@ export class TextPlugin {
 
     try {
       const { contentLayer, eventBus, state } = this._context
-      const textOptions = this._normalizeAddOptions(content, options, state)
+      const inputOptions = this._getAddInputOptions(content, options)
+      const textOptions = this._normalizeAddOptions(inputOptions, state)
+      const { renderOptions, rawText } = this._getRenderableTextOptions(textOptions)
+      const shouldCenterX = inputOptions.x === undefined && inputOptions.width === undefined
       const text = new LeaferText({
         draggable: true,
         editable: true,
-        ...textOptions
+        ...renderOptions
       })
 
+      this._setRawText(text, rawText)
       contentLayer.add(text)
       await new Promise((resolve) => requestAnimationFrame(resolve))
+      if (shouldCenterX) {
+        this._centerTextByContentWidth(text, state)
+      }
       this._activeText = text
       this._context.innerEditor?.select(text)
       eventBus.emit('text:added', { text })
@@ -113,7 +123,10 @@ export class TextPlugin {
     const updateOptions = options === undefined ? target : options
     const normalizedOptions = TextPlugin.normalizeOptions(updateOptions ?? {})
 
-    Object.assign(text, normalizedOptions)
+    const { renderOptions, rawText } = this._getRenderableTextOptions(normalizedOptions, text)
+
+    Object.assign(text, renderOptions)
+    this._setRawText(text, rawText)
     text.forceUpdate?.()
     this._activeText = text
     this._context.innerEditor?.select(text)
@@ -140,6 +153,7 @@ export class TextPlugin {
     }
 
     this._activeText = text
+    this._restoreRawTextForEditing(text)
     this._context.innerEditor?.openInnerEditor(text, 'TextEditor', true)
     applyTextEditorStyleLater(this.getStyle(text))
 
@@ -164,7 +178,7 @@ export class TextPlugin {
     const data = text.__ ?? {}
 
     const options = TextPlugin.normalizeOptions({
-      text: text.text ?? data.text,
+      text: this._getRawText(text),
       fontFamily: this._stripFontFamilyQuotes(text.fontFamily ?? data.fontFamily),
       fontSize: text.fontSize ?? data.fontSize,
       fontWeight: text.fontWeight ?? data.fontWeight,
@@ -212,6 +226,7 @@ export class TextPlugin {
    */
   destroy() {
     this._context?.innerEditor?.off_(EditorEvent.SELECT, this._handleSelect, this)
+    this._context?.innerEditor?.off_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
     this._context = null
     this._activeText = null
   }
@@ -227,25 +242,39 @@ export class TextPlugin {
     return normalizeTextOptions(text, baseText)
   }
 
-  _normalizeAddOptions(content, options, state) {
-    const inputOptions = this._isOptionsObject(content)
+  _getAddInputOptions(content, options) {
+    return this._isOptionsObject(content)
       ? { ...content, ...(options ?? {}) }
       : { ...(options ?? {}), text: content }
-    const normalizedOptions = TextPlugin.normalizeOptions({
+  }
+
+  _normalizeAddOptions(inputOptions, state) {
+    const addOptions = {
       ...state.textOptions,
       ...inputOptions
+    }
+
+    if (inputOptions.width === undefined) {
+      delete addOptions.width
+    }
+
+    const normalizedOptions = TextPlugin.normalizeOptions({
+      ...addOptions
     })
-    const width = normalizedOptions.width ?? Math.min(state.width * 0.7, 420)
     const placementOptions = this._normalizePlacementOptions(inputOptions)
+    const explicitWidth = normalizedOptions.width
 
     return {
       text: normalizedOptions.text ?? '',
-      x: inputOptions.x ?? (state.width - width) / 2,
+      x: inputOptions.x ?? this._getDefaultTextX(state, explicitWidth),
       y: inputOptions.y ?? state.height / 2 - (normalizedOptions.fontSize ?? 32) / 2,
       ...normalizedOptions,
-      width,
       ...placementOptions
     }
+  }
+
+  _getDefaultTextX(state, explicitWidth) {
+    return explicitWidth === undefined ? state.width / 2 : (state.width - explicitWidth) / 2
   }
 
   _normalizePlacementOptions(options) {
@@ -254,6 +283,96 @@ export class TextPlugin {
         .filter((key) => options[key] !== undefined)
         .map((key) => [key, options[key]])
     )
+  }
+
+  _centerTextByContentWidth(text, state) {
+    const width = this._getTextContentWidth(text)
+
+    if (width > 0) {
+      text.x = (state.width - width) / 2
+      text.forceUpdate?.()
+    }
+  }
+
+  _getTextContentWidth(text) {
+    return (
+      text?.boxBounds?.width ??
+      text?.renderBounds?.width ??
+      text?.__?.__textBoxBounds?.width ??
+      text?.width ??
+      0
+    )
+  }
+
+  _getRenderableTextOptions(options, target) {
+    const renderOptions = { ...options }
+    const hasText = Object.prototype.hasOwnProperty.call(renderOptions, 'text')
+    const hasWritingMode = Object.prototype.hasOwnProperty.call(renderOptions, 'writingMode')
+    const writingMode = renderOptions.writingMode ?? target?.writingMode ?? target?.__?.writingMode ?? 'x'
+    const rawText = hasText ? String(renderOptions.text ?? '') : this._getRawText(target)
+
+    if (hasText || hasWritingMode || this._isVerticalWritingMode(writingMode)) {
+      renderOptions.text = this._isVerticalWritingMode(writingMode) ? this._toVerticalText(rawText) : rawText
+    }
+
+    return { renderOptions, rawText }
+  }
+
+  _restoreRawTextForEditing(text) {
+    const rawText = this._getRawText(text)
+
+    if (text.text !== rawText) {
+      text.text = rawText
+      text.forceUpdate?.()
+    }
+  }
+
+  _applyWritingModeText(text) {
+    const rawText = this._getRawText(text)
+    const writingMode = text?.writingMode ?? text?.__?.writingMode ?? 'x'
+    const renderText = this._isVerticalWritingMode(writingMode) ? this._toVerticalText(rawText) : rawText
+
+    if (text.text !== renderText) {
+      text.text = renderText
+      text.forceUpdate?.()
+    }
+  }
+
+  _getRawText(text) {
+    if (!text) {
+      return ''
+    }
+
+    if (typeof text[RAW_TEXT_KEY] === 'string') {
+      return text[RAW_TEXT_KEY]
+    }
+
+    const value = text.text ?? text.__?.text ?? ''
+    const writingMode = text.writingMode ?? text.__?.writingMode ?? 'x'
+
+    return this._isVerticalWritingMode(writingMode) ? this._fromVerticalText(value) : String(value ?? '')
+  }
+
+  _setRawText(text, value) {
+    if (text) {
+      text[RAW_TEXT_KEY] = String(value ?? '')
+    }
+  }
+
+  _isVerticalWritingMode(writingMode) {
+    return writingMode === 'y' || writingMode === 'y-reverse'
+  }
+
+  _toVerticalText(value) {
+    return String(value ?? '')
+      .replace(/\r\n?/g, '\n')
+      .split('\n')
+      .map((line) => Array.from(line).join('\n'))
+      .join('\n')
+  }
+
+  _fromVerticalText(value) {
+    return String(value ?? '').replace(/[\r\n]/g, '')
   }
 
   _resolveUpdateTarget(target, options) {
@@ -296,6 +415,23 @@ export class TextPlugin {
     }
   }
 
+  _handleInnerClose(event) {
+    const text = event?.editTarget
+
+    if (!isTextElement(text)) {
+      return
+    }
+
+    this._setRawText(text, text.text ?? text.__?.text ?? '')
+
+    if (this._isEmptyText(text)) {
+      this._removeEmptyText(text)
+      return
+    }
+
+    this._applyWritingModeText(text)
+  }
+
   _emitSelected(text) {
     this._context?.eventBus.emit('text:selected', {
       text,
@@ -309,6 +445,32 @@ export class TextPlugin {
 
   _isUsableText(text) {
     return isTextElement(text) && !text.destroyed && text.parent
+  }
+
+  _isEmptyText(text) {
+    const value = this._getRawText(text)
+
+    return this._normalizeTextContent(value).length === 0
+  }
+
+  _normalizeTextContent(value) {
+    return String(value ?? '').replace(/[\s\u200b\ufeff]/g, '')
+  }
+
+  _removeEmptyText(text) {
+    if (!this._isUsableText(text)) {
+      return
+    }
+
+    if (this._context?.innerEditor?.hasItem?.(text)) {
+      this._context.innerEditor.cancel()
+    }
+
+    text.remove()
+
+    if (this._activeText === text) {
+      this._activeText = null
+    }
   }
 
   _isOptionsObject(value) {
