@@ -78,7 +78,7 @@ export class TextPlugin {
       const inputOptions = this._getAddInputOptions(content, options)
       const textOptions = this._normalizeAddOptions(inputOptions, state)
       const { renderOptions, rawText } = this._getRenderableTextOptions(textOptions)
-      const shouldCenterX = inputOptions.x === undefined && inputOptions.width === undefined
+      this._applyMeasuredAddWidth(renderOptions, rawText, inputOptions, state)
       const text = new LeaferText({
         draggable: true,
         editable: true,
@@ -86,11 +86,9 @@ export class TextPlugin {
       })
 
       this._setRawText(text, rawText)
+      text.forceUpdate?.()
+      text.updateLayout?.()
       contentLayer.add(text)
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-      if (shouldCenterX) {
-        this._centerTextByContentWidth(text, state)
-      }
       this._activeText = text
       this._context.innerEditor?.select(text)
       eventBus.emit('text:added', { text })
@@ -302,6 +300,97 @@ export class TextPlugin {
       text?.width ??
       0
     )
+  }
+
+  /**
+   * 新增文本时预先写入真实文本宽度，避免先渲染到画布中心再二次居中造成闪烁。
+   *
+   * @param {Object} renderOptions 即将传给 LeaferText 的渲染配置。
+   * @param {string} rawText 未转换书写方向前的原始文本。
+   * @param {Object} inputOptions 用户传入的新增配置。
+   * @param {Object} state 编辑器状态。
+   * @returns {void}
+   */
+  _applyMeasuredAddWidth(renderOptions, rawText, inputOptions, state) {
+    if (inputOptions.width !== undefined) {
+      return
+    }
+
+    const width = this._measureTextWidth(rawText, renderOptions)
+    if (width <= 0) {
+      return
+    }
+
+    renderOptions.width = width
+
+    if (inputOptions.x === undefined) {
+      renderOptions.x = (state.width - width) / 2
+    }
+  }
+
+  /**
+   * 使用浏览器 canvas 提前测量文本宽度。
+   *
+   * @param {string} rawText 原始文本内容。
+   * @param {Object} options 文本样式配置。
+   * @returns {number} 测量后的文本宽度。
+   */
+  _measureTextWidth(rawText, options) {
+    const canvas = this._getMeasureCanvas()
+    const context = canvas?.getContext?.('2d')
+
+    if (!context) {
+      return 0
+    }
+
+    const fontSize = options.fontSize ?? 12
+    const fontFamily = options.fontFamily ?? 'caption'
+    const fontWeight = options.fontWeight && options.fontWeight !== 'normal' ? `${options.fontWeight} ` : ''
+    const italic = options.italic ? 'italic ' : ''
+    const letterSpacing = options.letterSpacing ?? 0
+    const lines = String(rawText ?? '').replace(/\r\n?/g, '\n').split('\n')
+    const writingMode = options.writingMode ?? 'x'
+
+    context.font = `${italic}${fontWeight}${fontSize}px ${fontFamily}`
+
+    if (this._isVerticalWritingMode(writingMode)) {
+      return Math.ceil(fontSize + Math.max(0, letterSpacing))
+    }
+
+    const widths = lines.map((line) => {
+      return context.measureText(line).width + this._getLetterSpacingWidth(line, letterSpacing)
+    })
+
+    return Math.ceil(Math.max(...widths))
+  }
+
+  /**
+   * 获取文本测量用 canvas。
+   *
+   * @returns {HTMLCanvasElement | OffscreenCanvas | null} 测量 canvas。
+   */
+  _getMeasureCanvas() {
+    if (typeof document !== 'undefined' && document.createElement) {
+      return document.createElement('canvas')
+    }
+
+    if (typeof OffscreenCanvas !== 'undefined') {
+      return new OffscreenCanvas(1, 1)
+    }
+
+    return null
+  }
+
+  /**
+   * 根据字符数量计算字间距额外宽度。
+   *
+   * @param {string} line 单行文本。
+   * @param {number} letterSpacing 字间距。
+   * @returns {number} 字间距额外宽度。
+   */
+  _getLetterSpacingWidth(line, letterSpacing) {
+    const charCount = Array.from(String(line ?? '')).length
+    return Math.max(0, charCount - 1) * Number(letterSpacing || 0)
   }
 
   _getRenderableTextOptions(options, target) {

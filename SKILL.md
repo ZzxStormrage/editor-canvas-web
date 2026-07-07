@@ -96,6 +96,11 @@ description: Coding standards and architecture guide for the LeaferJS-based canv
 ---
 
 ## 三、编码规范
+每个新函数必须生成 @param 和 @returns。
+
+如果生成的函数代码行数 > 15 行，请自动审视逻辑流。若存在超过 3 个逻辑断层，请将执行过程拆解为 // 1. ... // 2. ... 的形式。
+
+禁止生成无意义的重复注释（例如：const a = 1; // 将 a 赋值为 1）。
 
 ### 3.1 命名规范
 

@@ -15,17 +15,26 @@
  * @returns {Object} 归一化后的编辑器配置。
  */
 export function normalizeEditorOptions(userEditor = {}, defaults = {}) {
+  const theme = normalizeThemeOptions(userEditor.theme, defaults.theme)
+
   return {
-    stroke: userEditor.stroke ?? defaults.stroke,
+    theme,
+    stroke: userEditor.stroke ?? theme.primaryColor ?? defaults.stroke,
     strokeWidth: userEditor.strokeWidth ?? defaults.strokeWidth,
-    pointFill: userEditor.pointFill ?? defaults.pointFill,
+    pointFill: userEditor.pointFill ?? theme.surfaceColor ?? defaults.pointFill,
     pointSize: userEditor.pointSize ?? defaults.pointSize,
     pointRadius: userEditor.pointRadius ?? defaults.pointRadius,
-    middlePoint: userEditor.middlePoint ?? defaults.middlePoint,
+    middlePoint: userEditor.middlePoint ?? createMiddlePointOptions(defaults.middlePoint, theme),
     rotateGap: userEditor.rotateGap ?? defaults.rotateGap,
+    rotateSnap: userEditor.rotateSnap ?? defaults.rotateSnap,
+    moveSnap: userEditor.moveSnap ?? defaults.moveSnap,
+    circle: userEditor.circle ?? createCircleOptions(defaults.circle, theme),
+    circleDirection: userEditor.circleDirection ?? defaults.circleDirection,
+    circleMargin: userEditor.circleMargin ?? defaults.circleMargin,
     moveCursor: userEditor.moveCursor ?? defaults.moveCursor,
     buttonsDirection: userEditor.buttonsDirection ?? defaults.buttonsDirection,
     buttonsMargin: userEditor.buttonsMargin ?? defaults.buttonsMargin,
+    hideRotatePoints: userEditor.hideRotatePoints ?? defaults.hideRotatePoints,
     hideOnSmall: userEditor.hideOnSmall ?? defaults.hideOnSmall,
     keyEvent: userEditor.keyEvent ?? defaults.keyEvent,
     selector: userEditor.selector ?? defaults.selector,
@@ -41,6 +50,45 @@ export function normalizeEditorOptions(userEditor = {}, defaults = {}) {
     rotateable: userEditor.rotateable ?? defaults.rotateable,
     skewable: userEditor.skewable ?? defaults.skewable,
     arrowStep: userEditor.arrowStep ?? defaults.arrowStep,
-    arrowFastStep: userEditor.arrowFastStep ?? defaults.arrowFastStep
+    arrowFastStep: userEditor.arrowFastStep ?? defaults.arrowFastStep,
+    beforeMove: userEditor.beforeMove,
+    beforeRotate: userEditor.beforeRotate
   }
+}
+
+function normalizeThemeOptions(userTheme = {}, defaults = {}) {
+  return mergePlainObject(defaults, userTheme ?? {})
+}
+
+function createMiddlePointOptions(defaults = {}, theme = {}) {
+  return {
+    ...defaults,
+    fill: theme.surfaceColor ?? defaults.fill,
+    stroke: theme.borderColor ?? defaults.stroke,
+    shadow: theme.middleHandleShadow ?? defaults.shadow
+  }
+}
+
+function createCircleOptions(defaults = {}, theme = {}) {
+  return {
+    ...defaults,
+    fill: theme.surfaceColor ?? defaults.fill,
+    stroke: theme.borderColor ?? defaults.stroke
+  }
+}
+
+function mergePlainObject(base = {}, patch = {}) {
+  const merged = { ...base }
+
+  Object.entries(patch).forEach(([key, value]) => {
+    const baseValue = base[key]
+    const shouldDeepMerge = isPlainObject(baseValue) && isPlainObject(value)
+    merged[key] = shouldDeepMerge ? mergePlainObject(baseValue, value) : value
+  })
+
+  return merged
+}
+
+function isPlainObject(value) {
+  return Object.prototype.toString.call(value) === '[object Object]'
 }

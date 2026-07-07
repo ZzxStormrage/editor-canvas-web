@@ -11,11 +11,12 @@ import { createArea, updateArea } from '../area.js'
 import { Editor } from './Editor.js'
 import { ViewportManager } from '../viewport/ViewportManager.js'
 import { CommandManager } from '../commands/CommandManager.js'
-import { EditorActionButtons } from '../editor/action-buttons.js'
+import { EditorActionButtons } from '../plugins/action-buttons.js'
 
 import { normalizeInitOptions } from '../utils/options.js'
 import { resolveView, resolveSize } from '../utils/view.js'
 import { createResizeObserver } from '../utils/dom.js'
+import { createEditorSnapHooks } from '../utils/editor-snap.js'
 
 /**
  * 编辑器构建器 —— **建造者模式**
@@ -162,6 +163,13 @@ export class EditorBuilder {
 
     // 创建官方 Editor 实例（@leafer-in/editor），
     // 挂载到独立 skyLeafer 层 —— 屏幕坐标空间。
+    const snapHooks = createEditorSnapHooks({
+      getInnerEditor: () => this.#innerEditor,
+      contentLayer: this.#contentLayer,
+      state: this.#state.proxy,
+      editorOptions: this.#options.editor
+    })
+
     this.#innerEditor = new LeaferEditor({
       keyEvent: this.#options.editor.keyEvent,
       stroke: this.#options.editor.stroke,
@@ -171,9 +179,13 @@ export class EditorBuilder {
       pointRadius: this.#options.editor.pointRadius,
       middlePoint: this.#options.editor.middlePoint,
       rotateGap: this.#options.editor.rotateGap,
+      circle: this.#options.editor.circle,
+      circleDirection: this.#options.editor.circleDirection,
+      circleMargin: this.#options.editor.circleMargin,
       moveCursor: this.#options.editor.moveCursor,
       buttonsDirection: this.#options.editor.buttonsDirection,
       buttonsMargin: this.#options.editor.buttonsMargin,
+      hideRotatePoints: this.#options.editor.hideRotatePoints,
       hideOnSmall: this.#options.editor.hideOnSmall,
       selector: this.#options.editor.selector,
       editBox: this.#options.editor.editBox,
@@ -188,7 +200,9 @@ export class EditorBuilder {
       rotateable: this.#options.editor.rotateable,
       skewable: this.#options.editor.skewable,
       arrowStep: this.#options.editor.arrowStep,
-      arrowFastStep: this.#options.editor.arrowFastStep
+      arrowFastStep: this.#options.editor.arrowFastStep,
+      beforeMove: snapHooks.beforeMove,
+      beforeRotate: snapHooks.beforeRotate
     })
     this.#skyLeafer.add(this.#innerEditor)
 
@@ -197,7 +211,7 @@ export class EditorBuilder {
     this.#commandManager = new CommandManager(this.#state.proxy, this.#eventBus)
 
     // 操作按钮（锁定、复制、删除）
-    this.#actionButtons = new EditorActionButtons(this.#innerEditor)
+    this.#actionButtons = new EditorActionButtons(this.#innerEditor, this.#options.editor.theme)
 
     this.#bindAreaState()
 

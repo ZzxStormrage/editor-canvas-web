@@ -38,7 +38,7 @@ export class Editor {
   #commands
   /** @type {import('@leafer-in/editor').Editor} */
   #innerEditor
-  /** @type {import('../editor/action-buttons.js').EditorActionButtons} */
+  /** @type {import('../plugins/action-buttons.js').EditorActionButtons} */
   #actionButtons
 
   // ──────── 只读属性 — 供外部查询 ────────
