@@ -217,6 +217,7 @@ export class TextPlugin {
     const text = selected.find(isTextElement) ?? null
 
     if (text) {
+      this._ensureTextEditConfig(text)
       this._activeText = text
       return text
     }
@@ -288,25 +289,6 @@ export class TextPlugin {
       ['rotation', 'opacity', 'draggable', 'editable', 'locked']
         .filter((key) => options[key] !== undefined)
         .map((key) => [key, options[key]])
-    )
-  }
-
-  _centerTextByContentWidth(text, state) {
-    const width = this._getTextContentWidth(text)
-
-    if (width > 0) {
-      text.x = (state.width - width) / 2
-      text.forceUpdate?.()
-    }
-  }
-
-  _getTextContentWidth(text) {
-    return (
-      text?.boxBounds?.width ??
-      text?.renderBounds?.width ??
-      text?.__?.__textBoxBounds?.width ??
-      text?.width ??
-      0
     )
   }
 

@@ -420,7 +420,12 @@ export class EditorActionButtons {
   #isHoverableElementAtPoint(element, point) {
     const bounds = element?.worldBoxBounds
 
-    if (!element?.editable || this.#innerEditor?.hasItem?.(element) || !bounds) {
+    if (
+      !element?.editable ||
+      element.visible === false ||
+      this.#innerEditor?.hasItem?.(element) ||
+      !bounds
+    ) {
       return false
     }
 
@@ -608,7 +613,7 @@ export class EditorActionButtons {
         if (same) return
       }
     } catch (err) {
-      // 忽略比较错误，回退到默认行为
+      console.warn('[canvas-editor-core] Failed to compare editor selection before select.', err)
     }
 
     this.#removeButtons()
@@ -658,7 +663,7 @@ export class EditorActionButtons {
       // 将共享属性附加到 innerEditor（非侵入式属性），方便外部读取
       this.#innerEditor.selectionAttributes = shared
     } catch (err) {
-      // 忽略附加错误
+      console.warn('[canvas-editor-core] Failed to attach selection attributes.', err)
     }
 
     // 移除旧的
@@ -1411,7 +1416,9 @@ export class EditorActionButtons {
   #onEditBoxTap(e) {
     try {
       e.stop()
-    } catch (err) {}
+    } catch (err) {
+      console.warn('[canvas-editor-core] Failed to stop edit box tap event.', err)
+    }
 
     const list = this.#innerEditor?.list ?? []
     if (!list || list.length === 0) return
