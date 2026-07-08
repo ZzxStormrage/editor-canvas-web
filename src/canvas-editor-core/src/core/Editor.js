@@ -267,8 +267,6 @@ export class Editor {
     if (this.#state.destroyed) return
 
     this.#actionButtons?.destroy()
-    this.#innerEditor?.destroy()
-    this.#skyLeafer?.destroy()
     this.#viewport.destroy()
     this.#pluginManager.destroy()
     this.#bus.clear()

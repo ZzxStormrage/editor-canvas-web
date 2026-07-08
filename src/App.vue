@@ -62,7 +62,7 @@
       <button type="button" class="toolbar-button" @click="resetZoom">重置</button>
     </div>
     <div class="container">
-      <div ref="canvasRef" class="canvas-view" @dblclick.capture.stop="editSelectedText"></div>
+      <div ref="canvasRef" class="canvas-view" @dblclick="handleCanvasDoubleClick"></div>
     </div>
   </div>
 </template>
@@ -187,12 +187,14 @@ export default {
       isSyncingTextControls = true
       textValue.value = options.text ?? ''
       fontFamily.value = options.fontFamily ?? fontFamily.value
-      fontSize.value = options.fontSize ?? fontSize.value
+      fontSize.value = normalizePixelForUI(options.fontSize ?? fontSize.value)
       fontWeight.value = normalizeFontWeightForUI(options.fontWeight ?? fontWeight.value)
       textColor.value = typeof options.fill === 'string' ? options.fill : textColor.value
       textAlign.value = options.textAlign ?? textAlign.value
-      letterSpacing.value = options.letterSpacing ?? 0
-      lineHeight.value = options.lineHeight ?? Math.round((options.fontSize ?? fontSize.value) * 1.22)
+      letterSpacing.value = normalizePixelForUI(options.letterSpacing ?? 0, 0)
+      lineHeight.value = normalizePixelForUI(
+        options.lineHeight ?? Math.round((options.fontSize ?? fontSize.value) * 1.22)
+      )
       italic.value = Boolean(options.italic)
       underline.value = options.textDecoration === 'under' || options.textDecoration === 'under-delete'
       lineThrough.value = options.textDecoration === 'delete' || options.textDecoration === 'under-delete'
@@ -211,6 +213,23 @@ export default {
       }
 
       return weightMap[value] ?? String(value ?? '400')
+    }
+
+    /**
+     * 将工具栏像素值归整为整数。
+     *
+     * @param {number} value 像素值。
+     * @param {number} min 最小值。
+     * @returns {number} 整数像素值。
+     */
+    const normalizePixelForUI = (value, min = 1) => {
+      const number = Number(value)
+
+      if (!Number.isFinite(number)) {
+        return min
+      }
+
+      return Math.max(min, Math.round(number))
     }
 
     const addText = async () => {
@@ -302,8 +321,125 @@ export default {
       })
     }
 
-    const editSelectedText = () => {
-      editor?.text.edit()
+    /**
+     * 处理 Mac 妙控板轻触双击的文本编辑兜底。
+     *
+     * Leafer 官方 TextEditor 仍然由 openInner: 'double' 接管；这里仅补齐部分触控板
+     * 轻触双击不会触发 Leafer PointerEvent.DOUBLE_TAP 的浏览器输入差异。
+     *
+     * @param {MouseEvent} event DOM 双击事件。
+     * @returns {void}
+     */
+    const handleCanvasDoubleClick = (event) => {
+      if (!editor) {
+        return
+      }
+
+      if (editor.editor?.innerEditing) {
+        return
+      }
+
+      const text = getTextElementByDomPoint(event)
+
+      if (!text) {
+        return
+      }
+
+      editor.text.edit(text)
+    }
+
+    /**
+     * 根据 DOM 双击坐标查找命中的文本节点。
+     *
+     * @param {MouseEvent} event DOM 双击事件。
+     * @returns {Object | null} 命中的文本节点。
+     */
+    const getTextElementByDomPoint = (event) => {
+      const worldPoint = getWorldPointFromDomEvent(event)
+
+      if (!worldPoint) {
+        return null
+      }
+
+      return findTopTextElementAtPoint(worldPoint)
+    }
+
+    /**
+     * 把浏览器 DOM 坐标转换为 Leafer 世界坐标。
+     *
+     * @param {MouseEvent} event DOM 双击事件。
+     * @returns {{ x: number, y: number } | null} Leafer 世界坐标。
+     */
+    const getWorldPointFromDomEvent = (event) => {
+      const clientPoint = {
+        clientX: event.clientX,
+        clientY: event.clientY
+      }
+      const tree = editor?.leafer?.tree
+      const worldPoint = tree?.getWorldPointByClient?.(clientPoint, true)
+
+      if (worldPoint) {
+        return worldPoint
+      }
+
+      // 官方 getWorldPointByClient 在旧版 Leafer 包缺失时才使用交互层兜底。
+      return tree?.interaction?.getLocal?.(clientPoint, true) ?? null
+    }
+
+    /**
+     * 查找指定世界坐标下最上层的文本元素。
+     *
+     * @param {{ x: number, y: number }} worldPoint Leafer 世界坐标。
+     * @returns {Object | null} 文本节点。
+     */
+    const findTopTextElementAtPoint = (worldPoint) => {
+      const children = editor?.contentLayer?.children ?? []
+
+      for (let i = children.length - 1; i >= 0; i -= 1) {
+        const child = children[i]
+
+        if (isEditableTextElement(child) && isPointInElementBounds(child, worldPoint)) {
+          return child
+        }
+      }
+
+      return null
+    }
+
+    /**
+     * 判断节点是否为可编辑文本元素。
+     *
+     * @param {Object} element Leafer 节点。
+     * @returns {boolean} 是否为可编辑文本。
+     */
+    const isEditableTextElement = (element) => {
+      return (element?.tag === 'Text' || element?.constructor?.name === 'Text') && element.editable !== false
+    }
+
+    /**
+     * 判断世界坐标是否落在元素外框内。
+     *
+     * 文本编辑兜底用外框命中，而不是字形像素命中；这样触控板轻触双击在文字边缘
+     * 也能稳定进入官方 TextEditor。
+     *
+     * @param {Object} element Leafer 节点。
+     * @param {{ x: number, y: number }} worldPoint Leafer 世界坐标。
+     * @returns {boolean} 是否命中元素外框。
+     */
+    const isPointInElementBounds = (element, worldPoint) => {
+      const bounds = element?.worldBoxBounds
+      const tolerance = 6
+
+      if (!bounds || !Number.isFinite(worldPoint?.x) || !Number.isFinite(worldPoint?.y)) {
+        return false
+      }
+
+      return (
+        worldPoint.x >= bounds.x - tolerance &&
+        worldPoint.x <= bounds.x + bounds.width + tolerance &&
+        worldPoint.y >= bounds.y - tolerance &&
+        worldPoint.y <= bounds.y + bounds.height + tolerance
+      )
     }
 
     const syncZoom = () => {
@@ -372,7 +508,7 @@ export default {
       handleImageChange,
       addText,
       addWatermark,
-      editSelectedText,
+      handleCanvasDoubleClick,
       zoomIn,
       zoomOut,
       resetZoom

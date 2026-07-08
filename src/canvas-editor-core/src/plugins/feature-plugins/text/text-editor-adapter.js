@@ -1,4 +1,5 @@
 import { TextEditor as LeaferTextEditor } from '@leafer-in/text-editor'
+import '@leafer-in/text-editor'
 
 import { prepareTextEditorInput, stopEventPropagation } from '../../../utils/dom.js'
 

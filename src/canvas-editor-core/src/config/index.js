@@ -319,11 +319,25 @@ export const DEFAULT_CANVAS_CONFIG = {
     /** 是否启用 hover 高亮。 */
     hover: true,
 
+    /** 鼠标滑过元素时使用外框路径绘制 hover 边框。 */
+    hoverPathType: 'box',
+
+    /** 鼠标滑过元素时的边框样式。 */
+    hoverStyle: {
+      /** hover 边框颜色，默认跟随主题主色。 */
+      stroke: EDITOR_THEME_PRIMARY,
+      /** hover 边框宽度。 */
+      strokeWidth: 1
+    },
+
+    /** 选中元素时使用外框路径绘制选中边框。 */
+    selectedPathType: 'box',
+
     /** 选择触发方式：press 表示按下即选中。 */
     select: 'press',
 
-    /** 是否自动打开内部编辑器；false 表示由插件主动控制。 */
-    openInner: false,
+    /** 双击选中元素时打开官方内部编辑器，例如 Text 会进入 TextEditor。 */
+    openInner: 'double',
 
     /** 是否允许多选。 */
     multipleSelect: true,

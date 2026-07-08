@@ -1,5 +1,5 @@
-import { Group, Image as LeaferImage, Rect, Text, PointerEvent, DragEvent } from 'leafer-ui'
-import { EditorEvent, EditorRotateEvent } from '@leafer-in/editor'
+import { Group, Image as LeaferImage, Rect, Text, PointerEvent, DragEvent, MoveEvent } from 'leafer-ui'
+import { EditorEvent, EditorMoveEvent, EditorRotateEvent, EditorScaleEvent } from '@leafer-in/editor'
 
 import copyIconSvg from '../assets/icons/copy.svg?raw'
 import deleteIconSvg from '../assets/icons/delete-themes.svg?raw'
@@ -170,6 +170,27 @@ export class EditorActionButtons {
   /** @type {import('leafer-ui').UI[]} */
   #cursorHoverTargets
 
+  /** @type {import('@leafer-in/interface').IEditBox | null} */
+  #patchedEditBox
+
+  /** @type {((bounds: import('@leafer-ui/interface').IBoundsData) => void) | null} */
+  #originalEditBoxUpdateBounds
+
+  /** @type {import('@leafer-ui/interface').IEventListenerId[]} */
+  #hoverFallbackEventIds
+
+  /** @type {import('@leafer-ui/interface').IEventListenerId[]} */
+  #textHandleEventIds
+
+  /** @type {HTMLElement | null} */
+  #hoverFallbackView
+
+  /** @type {((event: PointerEvent) => void) | null} */
+  #onDomHoverFallbackMove
+
+  /** @type {(() => void) | null} */
+  #onDomHoverFallbackLeave
+
   /** @type {boolean} */
   #disposed = false
 
@@ -196,13 +217,382 @@ export class EditorActionButtons {
     this.#rotationTip = null
     this.#middleHandles = []
     this.#cursorHoverTargets = []
+    this.#patchedEditBox = null
+    this.#originalEditBoxUpdateBounds = null
+    this.#hoverFallbackEventIds = []
+    this.#textHandleEventIds = []
+    this.#hoverFallbackView = null
+    this.#onDomHoverFallbackMove = null
+    this.#onDomHoverFallbackLeave = null
 
     this.#innerEditor.on_(EditorEvent.SELECT, this.#onSelect, this)
     this.#innerEditor.on_(EditorEvent.BEFORE_SELECT, this.#onBeforeSelect, this)
+    this.#innerEditor.on_(EditorMoveEvent.BEFORE_MOVE, this.#syncTextHeightHandlesAfterTransform, this)
+    this.#innerEditor.on_(EditorMoveEvent.MOVE, this.#syncTextHeightHandlesAfterTransform, this)
+    this.#innerEditor.on_(EditorScaleEvent.BEFORE_SCALE, this.#syncTextHeightHandlesAfterTransform, this)
+    this.#innerEditor.on_(EditorScaleEvent.SCALE, this.#syncTextHeightHandlesAfterTransform, this)
     this.#innerEditor.on_(EditorRotateEvent.ROTATE, this.#onRotate, this)
+    this.#bindHoverFallback()
   }
 
   // ────────── 事件处理 ──────────
+
+  /**
+   * 绑定官方 hoverStroker 的兜底更新。
+   *
+   * @returns {void}
+   */
+  #bindHoverFallback() {
+    this.#innerEditor.waitLeafer?.(() => {
+      const app = this.#innerEditor?.app
+
+      if (!app?.on_) {
+        return
+      }
+
+      this.#hoverFallbackEventIds = app.on_([
+        [PointerEvent.MOVE, this.#onHoverFallbackMove, this],
+        [[PointerEvent.LEAVE, DragEvent.START], this.#hideHoverFallback, this]
+      ])
+      this.#textHandleEventIds = app.on_([
+        [[MoveEvent.BEFORE_MOVE, MoveEvent.MOVE, MoveEvent.END], this.#syncTextHeightHandlesNow, this, true],
+        [[DragEvent.START, DragEvent.DRAG, DragEvent.END], this.#syncTextHeightHandlesNow, this, true]
+      ])
+
+      this.#bindDomHoverFallback(app.view)
+    })
+  }
+
+  /**
+   * 绑定 DOM 指针移动兜底。
+   *
+   * @param {HTMLElement | HTMLCanvasElement} view Leafer 挂载视图。
+   * @returns {void}
+   */
+  #bindDomHoverFallback(view) {
+    if (!view?.addEventListener) {
+      return
+    }
+
+    this.#hoverFallbackView = view
+    this.#onDomHoverFallbackMove = (event) => this.#onDomHoverFallbackPointerMove(event)
+    this.#onDomHoverFallbackLeave = () => this.#hideHoverFallback()
+    view.addEventListener('pointermove', this.#onDomHoverFallbackMove)
+    view.addEventListener('pointerleave', this.#onDomHoverFallbackLeave)
+  }
+
+  /**
+   * 鼠标移动时更新官方 hover 边框。
+   *
+   * @param {import('leafer-ui').PointerEvent} event Leafer 指针事件。
+   * @returns {void}
+   */
+  #onHoverFallbackMove(event) {
+    if (!this.#canShowHoverFallback()) {
+      this.#hideHoverFallback()
+      return
+    }
+
+    this.#setHoverFallbackTarget(this.#findHoverTarget(event))
+  }
+
+  /**
+   * 判断当前是否允许显示 hover 边框。
+   *
+   * @returns {boolean} 是否允许显示。
+   */
+  #canShowHoverFallback() {
+    const editor = this.#innerEditor
+
+    return Boolean(
+      editor &&
+      editor.mergeConfig?.hover &&
+      !editor.dragging &&
+      !editor.innerEditing
+    )
+  }
+
+  /**
+   * 从指针事件路径中查找可编辑的 hover 目标。
+   *
+   * @param {import('leafer-ui').PointerEvent} event Leafer 指针事件。
+   * @returns {import('leafer-ui').UI | null} hover 目标。
+   */
+  #findHoverTarget(event) {
+    const list = event?.path?.list ?? []
+
+    const pathTarget = list.find((leaf) => {
+      return leaf?.editable && !this.#innerEditor?.hasItem?.(leaf)
+    })
+
+    return pathTarget ?? this.#findHoverTargetByPoint(event)
+  }
+
+  /**
+   * 使用指针世界坐标查找可编辑 hover 目标。
+   *
+   * @param {import('leafer-ui').PointerEvent} event Leafer 指针事件。
+   * @returns {import('leafer-ui').UI | null} hover 目标。
+   */
+  #findHoverTargetByPoint(event) {
+    const point = this.#getEventWorldPoint(event)
+
+    if (!point) {
+      return null
+    }
+
+    return this.#findEditableByBounds(this.#innerEditor?.app?.tree, point)
+  }
+
+  /**
+   * 获取指针事件的世界坐标。
+   *
+   * @param {import('leafer-ui').PointerEvent} event Leafer 指针事件。
+   * @returns {{ x: number, y: number } | null} 世界坐标。
+   */
+  #getEventWorldPoint(event) {
+    if (Number.isFinite(event?.x) && Number.isFinite(event?.y)) {
+      return { x: event.x, y: event.y }
+    }
+
+    return null
+  }
+
+  /**
+   * DOM 指针移动时更新 hover 边框。
+   *
+   * @param {PointerEvent} event DOM 指针事件。
+   * @returns {void}
+   */
+  #onDomHoverFallbackPointerMove(event) {
+    if (!this.#canShowHoverFallback()) {
+      this.#hideHoverFallback()
+      return
+    }
+
+    const point = this.#innerEditor?.app?.tree?.getWorldPointByClient?.(
+      {
+        clientX: event.clientX,
+        clientY: event.clientY
+      },
+      true
+    )
+
+    const target = point ? this.#findEditableByBounds(this.#innerEditor?.app?.tree, point) : null
+    this.#setHoverFallbackTarget(target)
+    this.#syncDomCursorByWorldPoint(point)
+    this.#syncTextHeightHandlesNow()
+  }
+
+  /**
+   * 在节点树中按外框命中查找最上层可编辑元素。
+   *
+   * @param {import('leafer-ui').UI} root 根节点。
+   * @param {{ x: number, y: number }} point 世界坐标。
+   * @returns {import('leafer-ui').UI | null} hover 目标。
+   */
+  #findEditableByBounds(root, point) {
+    const children = root?.children ?? []
+
+    for (let i = children.length - 1; i >= 0; i -= 1) {
+      const child = children[i]
+      const deep = child?.children?.length ? this.#findEditableByBounds(child, point) : null
+
+      if (deep) {
+        return deep
+      }
+
+      if (this.#isHoverableElementAtPoint(child, point)) {
+        return child
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * 判断节点是否可作为 hover 目标。
+   *
+   * @param {import('leafer-ui').UI} element Leafer 节点。
+   * @param {{ x: number, y: number }} point 世界坐标。
+   * @returns {boolean} 是否命中。
+   */
+  #isHoverableElementAtPoint(element, point) {
+    const bounds = element?.worldBoxBounds
+
+    if (!element?.editable || this.#innerEditor?.hasItem?.(element) || !bounds) {
+      return false
+    }
+
+    return (
+      point.x >= bounds.x &&
+      point.x <= bounds.x + bounds.width &&
+      point.y >= bounds.y &&
+      point.y <= bounds.y + bounds.height
+    )
+  }
+
+  /**
+   * 使用官方 hoverStroker 显示 hover 边框。
+   *
+   * @param {import('leafer-ui').UI | null} target hover 目标。
+   * @returns {void}
+   */
+  #setHoverFallbackTarget(target) {
+    const hoverStroker = this.#innerEditor?.selector?.hoverStroker
+
+    if (!hoverStroker) {
+      return
+    }
+
+    const config = this.#innerEditor.mergeConfig ?? {}
+    hoverStroker.setTarget(target, {
+      stroke: config.hoverStyle?.stroke ?? config.stroke,
+      strokeWidth: config.hoverStyle?.strokeWidth ?? config.strokeWidth,
+      strokePathType: config.hoverPathType ?? 'box',
+      ...(config.hoverStyle ?? {})
+    })
+  }
+
+  /**
+   * 隐藏 hover 边框。
+   *
+   * @returns {void}
+   */
+  #hideHoverFallback() {
+    const hoverStroker = this.#innerEditor?.selector?.hoverStroker
+
+    if (hoverStroker) {
+      hoverStroker.target = null
+      hoverStroker.update()
+    }
+  }
+
+  /**
+   * 根据 DOM 指针所在世界坐标同步官方编辑框控制点的 cursor。
+   *
+   * Leafer 官方会在节点命中后更新 cursor，但自定义按钮由多层 Group/Image/Rect 组成，
+   * 某些场景会先命中子节点导致 cursor 下一次点击才刷新，这里只做同步兜底。
+   *
+   * @param {{ x: number, y: number } | null} point 世界坐标。
+   * @returns {void}
+   */
+  #syncDomCursorByWorldPoint(point) {
+    if (!point || this.#innerEditor?.dragging) {
+      return
+    }
+
+    const cursor = this.#findEditControlCursor(point)
+
+    if (cursor) {
+      this.#setDomCursor(cursor)
+      return
+    }
+
+    this.#setDomCursor('')
+  }
+
+  /**
+   * 查找当前世界坐标命中的编辑控制节点光标。
+   *
+   * @param {{ x: number, y: number }} point 世界坐标。
+   * @returns {string | null} CSS cursor 字符串。
+   */
+  #findEditControlCursor(point) {
+    const editBox = this.#innerEditor?.editBox
+
+    if (!editBox?.visible) {
+      return null
+    }
+
+    if (this.#isPointInVisibleNode(this.#layerMenu, point)) {
+      return 'pointer'
+    }
+
+    if (this.#isPointInVisibleNode(this.#btnGroup, point)) {
+      return 'pointer'
+    }
+
+    if (this.#isPointInVisibleNode(this.#rotatePoint, point)) {
+      return 'pointer'
+    }
+
+    const pointCursor = this.#findResizePointCursor(editBox, point)
+    if (pointCursor) {
+      return pointCursor
+    }
+
+    const lineCursor = this.#findResizeLineCursor(editBox, point)
+    if (lineCursor) {
+      return lineCursor
+    }
+
+    if (this.#isPointInVisibleNode(editBox.rect, point)) {
+      return this.#getMoveCursor(editBox)
+    }
+
+    return null
+  }
+
+  /**
+   * 查找命中的缩放控制点 cursor。
+   *
+   * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
+   * @param {{ x: number, y: number }} point 世界坐标。
+   * @returns {string | null} CSS cursor 字符串。
+   */
+  #findResizePointCursor(editBox, point) {
+    const points = editBox?.resizePoints ?? []
+
+    for (let index = points.length - 1; index >= 0; index -= 1) {
+      if (this.#isPointInVisibleNode(points[index], point)) {
+        return this.#getResizeHandleCursor(index)
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * 查找命中的缩放边线 cursor。
+   *
+   * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
+   * @param {{ x: number, y: number }} point 世界坐标。
+   * @returns {string | null} CSS cursor 字符串。
+   */
+  #findResizeLineCursor(editBox, point) {
+    const lines = editBox?.resizeLines ?? []
+
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      if (this.#isPointInVisibleNode(lines[index], point)) {
+        return RESIZE_LINE_CURSORS[index] ?? 'pointer'
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * 判断世界坐标是否命中可见节点外框。
+   *
+   * @param {import('leafer-ui').UI | null} node Leafer 节点。
+   * @param {{ x: number, y: number }} point 世界坐标。
+   * @returns {boolean} 是否命中。
+   */
+  #isPointInVisibleNode(node, point) {
+    const bounds = node?.worldBoxBounds
+
+    if (!node || node.visible === false || !bounds) {
+      return false
+    }
+
+    return (
+      point.x >= bounds.x &&
+      point.x <= bounds.x + bounds.width &&
+      point.y >= bounds.y &&
+      point.y <= bounds.y + bounds.height
+    )
+  }
 
   #onBeforeSelect(e) {
     if (this.#isTogglingLock) return
@@ -260,6 +650,7 @@ export class EditorActionButtons {
 
     // 成功拿到 editBox，清零重试计数
     this.#lockRetryCount = 0
+    this.#patchTextEditBoxUpdateBounds(editBox)
 
     // 计算选中元素的共享属性快照，并共享到 innerEditor，供其它模块使用
     const shared = this.#computeSharedAttributes(selected)
@@ -403,12 +794,16 @@ export class EditorActionButtons {
       width: MENU_WIDTH,
       height: MENU_ITEM_HEIGHT,
       cornerRadius: 6,
-      fill: this.#theme.transparentFillColor
+      fill: this.#theme.transparentFillColor,
+      cursor: 'pointer'
     })
     const icon = this.#createMenuIcon(action.icon)
     const label = this.#createMenuText(action.label, 34, this.#theme.textColor)
     const shortcut = this.#createShortcutText(action.shortcut, this.#theme.textColor)
 
+    icon.cursor = 'pointer'
+    label.cursor = 'pointer'
+    shortcut.cursor = 'pointer'
     item.addMany(bg, icon, label, shortcut)
     item.on(PointerEvent.ENTER, (e) => {
       this.#setCanvasCursor('pointer', e.current)
@@ -507,6 +902,79 @@ export class EditorActionButtons {
     editBox.buttons.visible = true
     editBox.layoutButtons?.()
     this.#hideRotationTip()
+  }
+
+  /**
+   * 官方 EditBox 在变换后会刷新控制点，需要再次隐藏文本高度把手。
+   *
+   * @returns {void}
+   */
+  #syncTextHeightHandlesAfterTransform() {
+    const selected = this.#innerEditor?.list ?? []
+
+    if (!selected.some(isTextElement)) {
+      return
+    }
+
+    this.#hideTextHeightHandles(this.#innerEditor?.editBox, selected)
+    requestAnimationFrame(() => {
+      if (!this.#disposed) {
+        this.#hideTextHeightHandles(this.#innerEditor?.editBox, selected)
+      }
+    })
+  }
+
+  /**
+   * 包装官方 EditBox.updateBounds，在官方刷新控制点后同帧隐藏文本高度把手。
+   *
+   * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
+   * @returns {void}
+   */
+  #patchTextEditBoxUpdateBounds(editBox) {
+    if (!editBox || this.#patchedEditBox === editBox) {
+      return
+    }
+
+    this.#restoreEditBoxUpdateBounds()
+
+    const originalUpdateBounds = editBox.updateBounds
+    if (typeof originalUpdateBounds !== 'function') {
+      return
+    }
+
+    this.#patchedEditBox = editBox
+    this.#originalEditBoxUpdateBounds = originalUpdateBounds
+    editBox.updateBounds = (bounds) => {
+      originalUpdateBounds.call(editBox, bounds)
+      this.#syncTextHeightHandlesNow()
+    }
+  }
+
+  /**
+   * 还原官方 EditBox.updateBounds。
+   *
+   * @returns {void}
+   */
+  #restoreEditBoxUpdateBounds() {
+    if (this.#patchedEditBox && this.#originalEditBoxUpdateBounds) {
+      this.#patchedEditBox.updateBounds = this.#originalEditBoxUpdateBounds
+    }
+
+    this.#patchedEditBox = null
+    this.#originalEditBoxUpdateBounds = null
+  }
+
+  /**
+   * 在 Leafer 移动/拖拽事件当帧隐藏文本高度把手，避免官方刷新时短暂闪现。
+   *
+   * @returns {void}
+   */
+  #syncTextHeightHandlesNow() {
+    const selected = this.#innerEditor?.list ?? []
+
+    if (selected.some(isTextElement)) {
+      this.#hideTextHeightHandles(this.#innerEditor?.editBox, selected)
+    }
   }
 
   /**
@@ -672,18 +1140,27 @@ export class EditorActionButtons {
     const isTextSelected = Array.isArray(selected) && selected.some(isTextElement)
 
     editBox?.resizePoints?.forEach((point, index) => {
-      if (isTextSelected && (index === 1 || index === 5)) return
+      if (isTextSelected && (index === 1 || index === 5)) {
+        point.visible = false
+        point.cursor = undefined
+        point.hittable = false
+        return
+      }
 
+      point.hittable = true
       point.cursor = this.#getResizeHandleCursor(index)
       this.#bindImmediateCursorHover(point)
     })
 
     editBox?.resizeLines?.forEach((line, index) => {
       if (isTextSelected && (index === 0 || index === 2)) {
+        line.visible = false
         line.cursor = undefined
+        line.hittable = false
         return
       }
 
+      line.hittable = true
       line.cursor = RESIZE_LINE_CURSORS[index] ?? 'pointer'
       this.#bindImmediateCursorHover(line)
     })
@@ -733,10 +1210,10 @@ export class EditorActionButtons {
       return
     }
 
-    this.#hideTextHeightHandles(editBox)
+    this.#hideTextHeightHandles(editBox, selected)
     requestAnimationFrame(() => {
       if (!this.#disposed) {
-        this.#hideTextHeightHandles(this.#innerEditor?.editBox)
+        this.#hideTextHeightHandles(this.#innerEditor?.editBox, selected)
       }
     })
   }
@@ -745,14 +1222,23 @@ export class EditorActionButtons {
    * 隐藏文本选择框上下两个控制高度的中间把手。
    *
    * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
+   * @param {import('leafer-ui').UI[]} [selected] 当前选中元素。
    * @returns {void}
    */
-  #hideTextHeightHandles(editBox) {
+  #hideTextHeightHandles(editBox, selected = this.#innerEditor?.list ?? []) {
+    const isTextSelected = Array.isArray(selected) && selected.some(isTextElement)
+
+    if (!isTextSelected) {
+      return
+    }
+
     ;[1, 5].forEach((index) => {
       const point = editBox?.resizePoints?.[index]
       if (!point) return
 
       point.visible = false
+      point.cursor = undefined
+      point.hittable = false
     })
 
     ;[0, 2].forEach((index) => {
@@ -761,6 +1247,7 @@ export class EditorActionButtons {
 
       line.visible = false
       line.cursor = undefined
+      line.hittable = false
     })
   }
 
@@ -991,18 +1478,61 @@ export class EditorActionButtons {
     this.#updateCanvasCursor(e.current)
   }
 
+  /**
+   * 立即写入 canvas 的 DOM 光标，兜底官方交互层下一帧才更新的问题。
+   *
+   * @param {import('@leafer-ui/interface').ICursorType} cursor 光标样式。
+   * @param {import('leafer-ui').UI} target 当前 hover 的节点。
+   * @returns {void}
+   */
   #setCanvasCursor(cursor, target) {
     const interaction = this.#getInteraction(target)
     interaction?.setCursor?.(cursor)
+    this.#setDomCursor(cursor)
   }
 
+  /**
+   * 离开控制点后交还给 Leafer 官方交互层重新计算光标。
+   *
+   * @param {import('leafer-ui').UI} target 当前离开的节点。
+   * @returns {void}
+   */
   #updateCanvasCursor(target) {
     const interaction = this.#getInteraction(target)
     interaction?.updateCursor?.()
+    this.#setDomCursor('')
+    requestAnimationFrame(() => {
+      if (!this.#disposed) {
+        interaction?.updateCursor?.()
+      }
+    })
   }
 
+  /**
+   * 获取 Leafer 交互层实例。
+   *
+   * @param {import('leafer-ui').UI} target 当前 hover 的节点。
+   * @returns {Object | null} Leafer 交互层实例。
+   */
   #getInteraction(target) {
     return target?.leafer?.interaction ?? target?.app?.interaction ?? this.#innerEditor?.app?.interaction
+  }
+
+  /**
+   * 直接设置宿主视图 cursor，作为官方 updateCursor 的同步兜底。
+   *
+   * @param {import('@leafer-ui/interface').ICursorType} cursor 光标样式。
+   * @returns {void}
+   */
+  #setDomCursor(cursor) {
+    const view = this.#innerEditor?.app?.view
+
+    if (view?.style && typeof cursor === 'string') {
+      view.style.cursor = cursor
+      view.querySelectorAll?.('canvas')?.forEach((canvas) => {
+        canvas.style.cursor = cursor
+      })
+    }
   }
 
   // ────────── 操作逻辑 ──────────
@@ -1213,12 +1743,57 @@ export class EditorActionButtons {
     this.#removeButtons()
     this.#unbindMoveCursorEvents()
     this.#unbindMiddleHandleHover()
+    this.#unbindHoverFallback()
+    this.#unbindTextHandleEvents()
+    this.#restoreEditBoxUpdateBounds()
 
     if (this.#innerEditor) {
-    this.#innerEditor.off_(EditorEvent.SELECT, this.#onSelect, this)
-    this.#innerEditor.off_(EditorEvent.BEFORE_SELECT, this.#onBeforeSelect, this)
+      this.#innerEditor.off_(EditorEvent.SELECT, this.#onSelect, this)
+      this.#innerEditor.off_(EditorEvent.BEFORE_SELECT, this.#onBeforeSelect, this)
+      this.#innerEditor.off_(EditorMoveEvent.BEFORE_MOVE, this.#syncTextHeightHandlesAfterTransform, this)
+      this.#innerEditor.off_(EditorMoveEvent.MOVE, this.#syncTextHeightHandlesAfterTransform, this)
+      this.#innerEditor.off_(EditorScaleEvent.BEFORE_SCALE, this.#syncTextHeightHandlesAfterTransform, this)
+      this.#innerEditor.off_(EditorScaleEvent.SCALE, this.#syncTextHeightHandlesAfterTransform, this)
       this.#innerEditor.off_(EditorRotateEvent.ROTATE, this.#onRotate, this)
       this.#innerEditor = null
+    }
+  }
+
+  /**
+   * 解绑 hover 兜底事件。
+   *
+   * @returns {void}
+   */
+  #unbindHoverFallback() {
+    if (this.#hoverFallbackEventIds?.length) {
+      this.#innerEditor?.app?.off_(this.#hoverFallbackEventIds)
+      this.#hoverFallbackEventIds = []
+    }
+
+    if (this.#hoverFallbackView && this.#onDomHoverFallbackMove) {
+      this.#hoverFallbackView.removeEventListener('pointermove', this.#onDomHoverFallbackMove)
+    }
+
+    if (this.#hoverFallbackView && this.#onDomHoverFallbackLeave) {
+      this.#hoverFallbackView.removeEventListener('pointerleave', this.#onDomHoverFallbackLeave)
+    }
+
+    this.#hoverFallbackView = null
+    this.#onDomHoverFallbackMove = null
+    this.#onDomHoverFallbackLeave = null
+
+    this.#hideHoverFallback()
+  }
+
+  /**
+   * 解绑文本高度把手同步事件。
+   *
+   * @returns {void}
+   */
+  #unbindTextHandleEvents() {
+    if (this.#textHandleEventIds?.length) {
+      this.#innerEditor?.app?.off_(this.#textHandleEventIds)
+      this.#textHandleEventIds = []
     }
   }
 }

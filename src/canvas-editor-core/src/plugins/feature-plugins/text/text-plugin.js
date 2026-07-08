@@ -1,5 +1,5 @@
 import { Text as LeaferText } from 'leafer-ui'
-import { EditorEvent, InnerEditorEvent } from '@leafer-in/editor'
+import { EditorEvent, EditorScaleEvent, InnerEditorEvent } from '@leafer-in/editor'
 
 import { EditorError } from '../../../errors/editor-error.js'
 import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
@@ -7,6 +7,7 @@ import { applyTextEditorStyleLater } from '../../../utils/dom.js'
 import { installTextEditorAdapter } from './text-editor-adapter.js'
 
 const RAW_TEXT_KEY = '__canvasEditorRawText'
+const MIN_TEXT_PIXEL = 1
 
 /**
  * 文本插件 —— 基于 leafer-ui 原生 Text 节点提供文本添加与样式更新能力。
@@ -59,6 +60,7 @@ export class TextPlugin {
     installTextEditorAdapter()
     this._context = context
     context.innerEditor?.on_(EditorEvent.SELECT, this._handleSelect, this)
+    context.innerEditor?.on_(EditorScaleEvent.SCALE, this._handleScale, this)
     context.innerEditor?.on_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
   }
 
@@ -78,6 +80,7 @@ export class TextPlugin {
       const inputOptions = this._getAddInputOptions(content, options)
       const textOptions = this._normalizeAddOptions(inputOptions, state)
       const { renderOptions, rawText } = this._getRenderableTextOptions(textOptions)
+      this._applyTextEditConfig(renderOptions)
       this._applyMeasuredAddWidth(renderOptions, rawText, inputOptions, state)
       const text = new LeaferText({
         draggable: true,
@@ -122,6 +125,7 @@ export class TextPlugin {
     const normalizedOptions = TextPlugin.normalizeOptions(updateOptions ?? {})
 
     const { renderOptions, rawText } = this._getRenderableTextOptions(normalizedOptions, text)
+    this._applyTextEditConfig(renderOptions)
 
     Object.assign(text, renderOptions)
     this._setRawText(text, rawText)
@@ -138,13 +142,13 @@ export class TextPlugin {
   /**
    * 打开文本编辑器。
    *
-   * @param {LeaferText} [target] 指定文本节点，默认使用当前或最近选中文本。
+   * @param {LeaferText} [target] 指定文本节点，默认使用当前选中文本。
    * @returns {LeaferText | null} 进入编辑的文本节点。
    */
   edit(target) {
     this._assertReady()
 
-    const text = target ?? this.getSelected()
+    const text = target ?? this._getSelectedTextOnly()
 
     if (!text) {
       return null
@@ -178,14 +182,17 @@ export class TextPlugin {
     const options = TextPlugin.normalizeOptions({
       text: this._getRawText(text),
       fontFamily: this._stripFontFamilyQuotes(text.fontFamily ?? data.fontFamily),
-      fontSize: text.fontSize ?? data.fontSize,
+      fontSize: this._normalizePixelValue(text.fontSize ?? data.fontSize),
       fontWeight: text.fontWeight ?? data.fontWeight,
       italic: Boolean(text.italic ?? data.italic),
       fill: typeof text.fill === 'string' ? text.fill : data.fill,
       textAlign: text.textAlign ?? data.textAlign,
       textDecoration: text.textDecoration ?? data.textDecoration,
-      letterSpacing: text.letterSpacing ?? data.letterSpacing ?? data.__letterSpacing,
-      lineHeight: text.lineHeight ?? data.lineHeight ?? data.__lineHeight,
+      letterSpacing: this._normalizePixelValue(
+        text.letterSpacing ?? data.letterSpacing ?? data.__letterSpacing,
+        0
+      ),
+      lineHeight: this._normalizePixelValue(text.lineHeight ?? data.lineHeight ?? data.__lineHeight),
       writingMode: text.writingMode ?? data.writingMode,
       width: text.width ?? data.width,
       verticalAlign: text.verticalAlign ?? data.verticalAlign
@@ -224,6 +231,7 @@ export class TextPlugin {
    */
   destroy() {
     this._context?.innerEditor?.off_(EditorEvent.SELECT, this._handleSelect, this)
+    this._context?.innerEditor?.off_(EditorScaleEvent.SCALE, this._handleScale, this)
     this._context?.innerEditor?.off_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
     this._context = null
     this._activeText = null
@@ -325,6 +333,19 @@ export class TextPlugin {
 
     if (inputOptions.x === undefined) {
       renderOptions.x = (state.width - width) / 2
+    }
+  }
+
+  /**
+   * 为 Text 节点设置官方编辑配置，使缩放选择框时同步修改 fontSize。
+   *
+   * @param {Object} renderOptions 文本渲染配置。
+   * @returns {void}
+   */
+  _applyTextEditConfig(renderOptions) {
+    renderOptions.editConfig = {
+      ...(renderOptions.editConfig ?? {}),
+      editSize: 'font-size'
     }
   }
 
@@ -494,13 +515,120 @@ export class TextPlugin {
     return single ? [single] : []
   }
 
+  /**
+   * 只获取当前真实选中的文本节点，不回退到最近选中过的文本。
+   *
+   * 双击画布空白时可能会调用无目标 edit()，此时不能使用 _activeText，
+   * 否则会把上一次选中的文本重新打开编辑。
+   *
+   * @returns {LeaferText | null} 当前选中的文本节点。
+   * @private
+   */
+  _getSelectedTextOnly() {
+    const text = this._getSelectedElements().find(isTextElement) ?? null
+
+    if (text) {
+      this._activeText = text
+    }
+
+    return text
+  }
+
   _handleSelect(event) {
     const selected = event?.list ?? this._getSelectedElements()
     const text = selected.find(isTextElement)
 
     if (text) {
+      this._ensureTextEditConfig(text)
       this._activeText = text
       this._emitSelected(text)
+    }
+  }
+
+  /**
+   * 缩放文本时归整像素值，并实时通知外部 UI 刷新。
+   *
+   * @param {import('@leafer-in/interface').IEditorScaleEvent} event 缩放事件。
+   * @returns {void}
+   * @private
+   */
+  _handleScale(event) {
+    const text = event?.target
+
+    if (!isTextElement(text) || this._context?.innerEditor?.list?.length !== 1) {
+      return
+    }
+
+    this._normalizeScaledTextPixels(text)
+    this._activeText = text
+    this._context?.innerEditor?.updateEditBox?.()
+    this._emitSelected(text)
+  }
+
+  /**
+   * 将官方 font-size 模式产生的小数像素归整为整数。
+   *
+   * @param {LeaferText} text 文本节点。
+   * @returns {void}
+   * @private
+   */
+  _normalizeScaledTextPixels(text) {
+    const nextStyle = {
+      fontSize: this._normalizePixelValue(text.fontSize ?? text.__?.fontSize)
+    }
+    const lineHeight = this._normalizePixelValue(text.lineHeight ?? text.__?.lineHeight)
+    const letterSpacing = this._normalizePixelValue(text.letterSpacing ?? text.__?.letterSpacing, 0)
+
+    if (lineHeight !== undefined) {
+      nextStyle.lineHeight = lineHeight
+    }
+
+    if (letterSpacing !== undefined) {
+      nextStyle.letterSpacing = letterSpacing
+    }
+
+    text.set?.(nextStyle)
+    text.forceUpdate?.()
+    text.updateLayout?.()
+  }
+
+  /**
+   * 归整像素值为整数。
+   *
+   * @param {number | undefined} value 原始像素值。
+   * @param {number} [min=MIN_TEXT_PIXEL] 最小值。
+   * @returns {number | undefined} 整数像素值。
+   * @private
+   */
+  _normalizePixelValue(value, min = MIN_TEXT_PIXEL) {
+    if (value === undefined || value === null) {
+      return undefined
+    }
+
+    const number = Number(value)
+
+    if (!Number.isFinite(number)) {
+      return undefined
+    }
+
+    return Math.max(min, Math.round(number))
+  }
+
+  /**
+   * 给已有 Text 节点补齐官方编辑配置。
+   *
+   * @param {LeaferText} text 文本节点。
+   * @returns {void}
+   * @private
+   */
+  _ensureTextEditConfig(text) {
+    if (!isTextElement(text)) {
+      return
+    }
+
+    text.editConfig = {
+      ...(text.editConfig ?? {}),
+      editSize: 'font-size'
     }
   }
 

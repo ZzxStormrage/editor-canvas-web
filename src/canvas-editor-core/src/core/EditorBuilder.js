@@ -1,8 +1,7 @@
 import { Group } from 'leafer-ui'
 import { App } from '@leafer-ui/app'
-import { Editor as LeaferEditor } from '@leafer-in/editor'
+import '@leafer-in/editor'
 
-import { DEFAULT_CANVAS_CONFIG } from '../config/index.js'
 import { EventBus } from '../logic/event-bus.js'
 import { PluginManager } from '../plugins/plugin-manager.js'
 import { registerDefaultPlugins } from '../plugins/index.js'
@@ -68,6 +67,12 @@ export class EditorBuilder {
 
   buildLeafer() {
     const { tree: userTreeOptions, sky: userSkyOptions, ...leaferOptions } = this.#options.leaferOptions ?? {}
+    const snapHooks = createEditorSnapHooks({
+      getInnerEditor: () => this.#innerEditor,
+      getContentLayer: () => this.#contentLayer,
+      getState: () => this.#state?.proxy,
+      editorOptions: this.#options.editor
+    })
 
     this.#leafer = new App({
       ...leaferOptions,
@@ -76,29 +81,65 @@ export class EditorBuilder {
       height: this.#size.height,
       fill: 'transparent',
       pixelRatio: this.#options.pixelRatio,
-      type: 'design',
       tree: userTreeOptions ?? { type: 'design' },
-      sky: userSkyOptions ?? { hittable: true }
+      sky: userSkyOptions ?? { hittable: true },
+      editor: this.#createOfficialEditorConfig(snapHooks)
     })
-    this.#treeLeafer = this.#ensureAppLayer('tree', { type: 'design' })
-    this.#skyLeafer = this.#ensureAppLayer('sky', { hittable: true })
+    this.#resolveOfficialEditorLayers(userTreeOptions, userSkyOptions)
     return this
   }
 
-  #ensureAppLayer(name, options) {
-    const layer = this.#leafer[name]
+  /**
+   * 解析官方 App({ editor }) 创建出的 tree / sky / editor。
+   *
+   * 当前项目依赖里部分 Leafer 包版本不完全一致，某些版本不会把 tree / sky
+   * 挂到 app 同名属性上；这里仍然使用官方 App({ editor }) 创建 Editor，
+   * 只做分层引用的兼容解析，避免把业务内容层误加到 Editor 覆盖层。
+   *
+   * @param {Object} userTreeOptions tree 层配置。
+   * @param {Object} userSkyOptions sky 层配置。
+   * @returns {void}
+   */
+  #resolveOfficialEditorLayers(userTreeOptions, userSkyOptions) {
+    const layers = this.#leafer.children ?? []
+    const skyLayer = this.#leafer.sky ?? layers.find((layer) => layer.children?.includes(this.#leafer.editor))
 
-    if (layer?.add) {
-      return layer
+    this.#innerEditor = this.#leafer.editor ?? skyLayer?.children?.[0]
+    this.#skyLeafer = skyLayer ?? this.#leafer.addLeafer?.(userSkyOptions ?? { hittable: true })
+    this.#treeLeafer = this.#leafer.tree ?? layers.find((layer) => layer !== this.#skyLeafer)
+
+    if (!this.#treeLeafer?.add) {
+      this.#treeLeafer = this.#leafer.addLeafer?.(userTreeOptions ?? { type: 'design' })
     }
 
-    if (typeof this.#leafer.addLeafer === 'function') {
-      const createdLayer = this.#leafer.addLeafer(options)
-      this.#leafer[name] = createdLayer
-      return createdLayer
+    if (this.#innerEditor && this.#skyLeafer && this.#innerEditor.parent !== this.#skyLeafer) {
+      this.#skyLeafer.add(this.#innerEditor)
     }
 
-    throw new Error(`leafer-ui App layer "${name}" was not created.`)
+    this.#bindOfficialEditorApp()
+
+    if (!this.#treeLeafer?.add || !this.#skyLeafer?.add || !this.#innerEditor) {
+      throw new Error('Leafer official App({ editor }) initialization failed.')
+    }
+  }
+
+  /**
+   * 补齐官方 Editor 运行时需要的 App 引用。
+   *
+   * @returns {void}
+   */
+  #bindOfficialEditorApp() {
+    this.#leafer.tree = this.#treeLeafer
+    this.#leafer.sky = this.#skyLeafer
+    this.#leafer.editor = this.#innerEditor
+
+    if (this.#skyLeafer) {
+      this.#skyLeafer.parent = this.#leafer
+    }
+
+    if (this.#treeLeafer) {
+      this.#treeLeafer.parent = this.#leafer
+    }
   }
 
   // ───────────── 步骤 2：搭建场景树 ─────────────
@@ -160,51 +201,6 @@ export class EditorBuilder {
 
     this.#pluginManager = new PluginManager()
     registerDefaultPlugins(this.#pluginManager)
-
-    // 创建官方 Editor 实例（@leafer-in/editor），
-    // 挂载到独立 skyLeafer 层 —— 屏幕坐标空间。
-    const snapHooks = createEditorSnapHooks({
-      getInnerEditor: () => this.#innerEditor,
-      contentLayer: this.#contentLayer,
-      state: this.#state.proxy,
-      editorOptions: this.#options.editor
-    })
-
-    this.#innerEditor = new LeaferEditor({
-      keyEvent: this.#options.editor.keyEvent,
-      stroke: this.#options.editor.stroke,
-      strokeWidth: this.#options.editor.strokeWidth,
-      pointFill: this.#options.editor.pointFill,
-      pointSize: this.#options.editor.pointSize,
-      pointRadius: this.#options.editor.pointRadius,
-      middlePoint: this.#options.editor.middlePoint,
-      rotateGap: this.#options.editor.rotateGap,
-      circle: this.#options.editor.circle,
-      circleDirection: this.#options.editor.circleDirection,
-      circleMargin: this.#options.editor.circleMargin,
-      moveCursor: this.#options.editor.moveCursor,
-      buttonsDirection: this.#options.editor.buttonsDirection,
-      buttonsMargin: this.#options.editor.buttonsMargin,
-      hideRotatePoints: this.#options.editor.hideRotatePoints,
-      hideOnSmall: this.#options.editor.hideOnSmall,
-      selector: this.#options.editor.selector,
-      editBox: this.#options.editor.editBox,
-      hover: this.#options.editor.hover,
-      select: this.#options.editor.select,
-      openInner: this.#options.editor.openInner,
-      multipleSelect: this.#options.editor.multipleSelect,
-      boxSelect: this.#options.editor.boxSelect,
-      moveable: this.#options.editor.moveable,
-      resizeable: this.#options.editor.resizeable,
-      flipable: this.#options.editor.flipable,
-      rotateable: this.#options.editor.rotateable,
-      skewable: this.#options.editor.skewable,
-      arrowStep: this.#options.editor.arrowStep,
-      arrowFastStep: this.#options.editor.arrowFastStep,
-      beforeMove: snapHooks.beforeMove,
-      beforeRotate: snapHooks.beforeRotate
-    })
-    this.#skyLeafer.add(this.#innerEditor)
 
     this.#viewport = new ViewportManager(this.#leafer, this.#stage, this.#state.proxy, this.#eventBus)
 
@@ -286,6 +282,53 @@ export class EditorBuilder {
     }
 
     return editor
+  }
+
+  /**
+   * 创建传给官方 App({ editor }) 的 Editor 配置。
+   *
+   * @param {{ beforeMove: Function, beforeRotate: Function }} snapHooks 吸附钩子。
+   * @returns {Object} 官方 Editor 配置。
+   */
+  #createOfficialEditorConfig(snapHooks) {
+    return {
+      keyEvent: this.#options.editor.keyEvent,
+      stroke: this.#options.editor.stroke,
+      strokeWidth: this.#options.editor.strokeWidth,
+      pointFill: this.#options.editor.pointFill,
+      pointSize: this.#options.editor.pointSize,
+      pointRadius: this.#options.editor.pointRadius,
+      middlePoint: this.#options.editor.middlePoint,
+      rotateGap: this.#options.editor.rotateGap,
+      circle: this.#options.editor.circle,
+      circleDirection: this.#options.editor.circleDirection,
+      circleMargin: this.#options.editor.circleMargin,
+      moveCursor: this.#options.editor.moveCursor,
+      buttonsDirection: this.#options.editor.buttonsDirection,
+      buttonsMargin: this.#options.editor.buttonsMargin,
+      hideRotatePoints: this.#options.editor.hideRotatePoints,
+      hideOnSmall: this.#options.editor.hideOnSmall,
+      selector: this.#options.editor.selector,
+      editBox: this.#options.editor.editBox,
+      hover: this.#options.editor.hover,
+      hoverStyle: this.#options.editor.hoverStyle,
+      hoverPathType: this.#options.editor.hoverPathType,
+      selectedStyle: this.#options.editor.selectedStyle,
+      selectedPathType: this.#options.editor.selectedPathType,
+      select: this.#options.editor.select,
+      openInner: this.#options.editor.openInner,
+      multipleSelect: this.#options.editor.multipleSelect,
+      boxSelect: this.#options.editor.boxSelect,
+      moveable: this.#options.editor.moveable,
+      resizeable: this.#options.editor.resizeable,
+      flipable: this.#options.editor.flipable,
+      rotateable: this.#options.editor.rotateable,
+      skewable: this.#options.editor.skewable,
+      arrowStep: this.#options.editor.arrowStep,
+      arrowFastStep: this.#options.editor.arrowFastStep,
+      beforeMove: snapHooks.beforeMove,
+      beforeRotate: snapHooks.beforeRotate
+    }
   }
 
   /**

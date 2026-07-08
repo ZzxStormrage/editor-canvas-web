@@ -28,17 +28,17 @@ const GUIDE_STYLE = {
  *
  * @param {Object} params
  * @param {() => import('@leafer-in/editor').Editor | null} params.getInnerEditor
- * @param {import('leafer-ui').Group} params.contentLayer
- * @param {Object} params.state
+ * @param {() => import('leafer-ui').Group | null} params.getContentLayer
+ * @param {() => Object | null} params.getState
  * @param {Object} params.editorOptions
  * @returns {{ beforeMove: Function, beforeRotate: Function }}
  */
-export function createEditorSnapHooks({ getInnerEditor, contentLayer, state, editorOptions }) {
+export function createEditorSnapHooks({ getInnerEditor, getContentLayer, getState, editorOptions }) {
   const moveSnap = normalizeSnapOption(editorOptions.moveSnap, DEFAULT_MOVE_SNAP)
   const rotateSnap = normalizeSnapOption(editorOptions.rotateSnap, DEFAULT_ROTATE_SNAP)
   const userBeforeMove = editorOptions.beforeMove
   const userBeforeRotate = editorOptions.beforeRotate
-  const guides = createSnapGuideRenderer(contentLayer, state, editorOptions.theme)
+  const guides = createSnapGuideRenderer(getContentLayer, getState, editorOptions.theme)
 
   return {
     beforeMove(data) {
@@ -47,6 +47,9 @@ export function createEditorSnapHooks({ getInnerEditor, contentLayer, state, edi
 
       const move = checked ?? { x: data.x, y: data.y }
       if (!moveSnap.enabled) return checked
+
+      const contentLayer = getContentLayer()
+      const state = getState()
 
       return snapMove({
         target: data.target,
@@ -99,6 +102,7 @@ function runBeforeRotate(beforeRotate, data) {
 
 function snapMove({ target, x, y, threshold, canvas, elements, contentLayer, state, selected, guides }) {
   if (!target || (!x && !y)) return { x, y }
+  if (!contentLayer || !state) return { x, y }
 
   const bounds = target.worldBoxBounds
   if (!isValidBounds(bounds)) {
@@ -211,7 +215,7 @@ function findSnapOffset(sourceLines, targetLines, threshold) {
   return best
 }
 
-function createSnapGuideRenderer(contentLayer, state, theme = {}) {
+function createSnapGuideRenderer(getContentLayer, getState, theme = {}) {
   let group = null
   let verticalLine = null
   let horizontalLine = null
@@ -219,8 +223,12 @@ function createSnapGuideRenderer(contentLayer, state, theme = {}) {
 
   return {
     show({ vertical, horizontal }) {
-      ensureGuides()
+      if (!ensureGuides()) return
       clearHideTimer()
+      const contentLayer = getContentLayer()
+      const state = getState()
+
+      if (!contentLayer || !state) return
 
       if (Number.isFinite(vertical)) {
         verticalLine.path = createVerticalGuidePath(contentLayer, state, vertical)
@@ -247,7 +255,9 @@ function createSnapGuideRenderer(contentLayer, state, theme = {}) {
   }
 
   function ensureGuides() {
-    if (group) return
+    if (group) return true
+    const contentLayer = getContentLayer()
+    if (!contentLayer) return false
 
     group = new Group({
       visible: false,
@@ -260,6 +270,7 @@ function createSnapGuideRenderer(contentLayer, state, theme = {}) {
     horizontalLine = createGuideLine(theme)
     group.addMany(verticalLine, horizontalLine)
     contentLayer?.add(group)
+    return true
   }
 
   function clearHideTimer() {
