@@ -99,6 +99,11 @@ const MENU_ITEM_HEIGHT = 34
 const MENU_GAP = 8
 const RESIZE_HANDLE_CURSORS = ['nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize']
 const RESIZE_LINE_CURSORS = ['ns-resize', 'ew-resize', 'ns-resize', 'ew-resize']
+const TEXT_WIDTH_RESIZE_POINT_INDEXES = new Set([3, 7])
+const TEXT_WIDTH_RESIZE_LINE_INDEXES = new Set([1, 3])
+const TEXT_HEIGHT_RESIZE_POINT_INDEXES = new Set([1, 5])
+const TEXT_HEIGHT_RESIZE_LINE_INDEXES = new Set([0, 2])
+const TEXT_WIDTH_EDIT_CONFIG = { editSize: 'size', lockRatio: false }
 function createIconUrl(svg, color) {
   const crispSvg = svg
     .replace(/<svg\s+width="24"\s+height="24"/, '<svg width="96" height="96"')
@@ -170,6 +175,12 @@ export class EditorActionButtons {
   /** @type {import('leafer-ui').UI[]} */
   #cursorHoverTargets
 
+  /** @type {import('leafer-ui').UI[]} */
+  #textWidthResizeTargets
+
+  /** @type {Map<import('leafer-ui').UI, Object | null>} */
+  #textWidthResizeConfigs
+
   /** @type {import('@leafer-in/interface').IEditBox | null} */
   #patchedEditBox
 
@@ -217,6 +228,8 @@ export class EditorActionButtons {
     this.#rotationTip = null
     this.#middleHandles = []
     this.#cursorHoverTargets = []
+    this.#textWidthResizeTargets = []
+    this.#textWidthResizeConfigs = new Map()
     this.#patchedEditBox = null
     this.#originalEditBoxUpdateBounds = null
     this.#hoverFallbackEventIds = []
@@ -1064,6 +1077,7 @@ export class EditorActionButtons {
   #removeButtons() {
     this.#unbindMiddleHandleHover()
     this.#unbindImmediateCursorHover()
+    this.#unbindTextWidthResizeMode()
     this.#unbindRotateButton()
     this.#removeRotationTip()
     this.#removeLayerMenu()
@@ -1145,28 +1159,46 @@ export class EditorActionButtons {
     const isTextSelected = Array.isArray(selected) && selected.some(isTextElement)
 
     editBox?.resizePoints?.forEach((point, index) => {
-      if (isTextSelected && (index === 1 || index === 5)) {
+      if (isTextSelected && TEXT_HEIGHT_RESIZE_POINT_INDEXES.has(index)) {
         point.visible = false
         point.cursor = undefined
         point.hittable = false
+        point.editConfig = undefined
         return
       }
 
+      point.visible = true
       point.hittable = true
       point.cursor = this.#getResizeHandleCursor(index)
+      point.editConfig =
+        isTextSelected && TEXT_WIDTH_RESIZE_POINT_INDEXES.has(index)
+          ? TEXT_WIDTH_EDIT_CONFIG
+          : undefined
+      if (isTextSelected && TEXT_WIDTH_RESIZE_POINT_INDEXES.has(index)) {
+        this.#bindTextWidthResizeMode(point)
+      }
       this.#bindImmediateCursorHover(point)
     })
 
     editBox?.resizeLines?.forEach((line, index) => {
-      if (isTextSelected && (index === 0 || index === 2)) {
+      if (isTextSelected && TEXT_HEIGHT_RESIZE_LINE_INDEXES.has(index)) {
         line.visible = false
         line.cursor = undefined
         line.hittable = false
+        line.editConfig = undefined
         return
       }
 
+      line.visible = true
       line.hittable = true
       line.cursor = RESIZE_LINE_CURSORS[index] ?? 'pointer'
+      line.editConfig =
+        isTextSelected && TEXT_WIDTH_RESIZE_LINE_INDEXES.has(index)
+          ? TEXT_WIDTH_EDIT_CONFIG
+          : undefined
+      if (isTextSelected && TEXT_WIDTH_RESIZE_LINE_INDEXES.has(index)) {
+        this.#bindTextWidthResizeMode(line)
+      }
       this.#bindImmediateCursorHover(line)
     })
   }
@@ -1195,6 +1227,38 @@ export class EditorActionButtons {
     this.#cursorHoverTargets = []
   }
 
+  /**
+   * 绑定文本左右宽度控制点的临时编辑模式。
+   *
+   * @param {import('leafer-ui').UI} target 控制点或控制边线。
+   * @returns {void}
+   */
+  #bindTextWidthResizeMode(target) {
+    if (!target || this.#textWidthResizeTargets.includes(target)) {
+      return
+    }
+
+    this.#textWidthResizeTargets.push(target)
+    target.on_(PointerEvent.DOWN, this.#onTextWidthResizeStart, this)
+    target.on_(PointerEvent.UP, this.#onTextWidthResizeEnd, this)
+    target.on_(DragEvent.END, this.#onTextWidthResizeEnd, this)
+  }
+
+  /**
+   * 解绑文本左右宽度控制点的临时编辑模式。
+   *
+   * @returns {void}
+   */
+  #unbindTextWidthResizeMode() {
+    this.#textWidthResizeTargets.forEach((target) => {
+      target.off_(PointerEvent.DOWN, this.#onTextWidthResizeStart, this)
+      target.off_(PointerEvent.UP, this.#onTextWidthResizeEnd, this)
+      target.off_(DragEvent.END, this.#onTextWidthResizeEnd, this)
+    })
+    this.#textWidthResizeTargets = []
+    this.#restoreTextFontSizeEditMode()
+  }
+
   #unbindMiddleHandleHover() {
     this.#middleHandles.forEach((point) => {
       point.off_(PointerEvent.ENTER, this.#onMiddleHandleEnter, this)
@@ -1204,7 +1268,7 @@ export class EditorActionButtons {
   }
 
   /**
-   * 文本高度由内容和行高决定，选择框只保留左右宽度把手。
+   * 文本高度由内容和行高决定，选择框隐藏上下高度把手和边线。
    *
    * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
    * @param {import('leafer-ui').UI[]} selected 当前选中元素。
@@ -1224,7 +1288,7 @@ export class EditorActionButtons {
   }
 
   /**
-   * 隐藏文本选择框上下两个控制高度的中间把手。
+   * 隐藏文本选择框中上下两个会改变高度的缩放控制点。
    *
    * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
    * @param {import('leafer-ui').UI[]} [selected] 当前选中元素。
@@ -1237,8 +1301,11 @@ export class EditorActionButtons {
       return
     }
 
-    ;[1, 5].forEach((index) => {
-      const point = editBox?.resizePoints?.[index]
+    editBox?.resizePoints?.forEach((point, index) => {
+      if (!TEXT_HEIGHT_RESIZE_POINT_INDEXES.has(index)) {
+        return
+      }
+
       if (!point) return
 
       point.visible = false
@@ -1246,8 +1313,11 @@ export class EditorActionButtons {
       point.hittable = false
     })
 
-    ;[0, 2].forEach((index) => {
-      const line = editBox?.resizeLines?.[index]
+    editBox?.resizeLines?.forEach((line, index) => {
+      if (!TEXT_HEIGHT_RESIZE_LINE_INDEXES.has(index)) {
+        return
+      }
+
       if (!line) return
 
       line.visible = false
@@ -1464,6 +1534,53 @@ export class EditorActionButtons {
       shadow: this.#theme.middleHandleShadow
     })
     this.#updateCanvasCursor(e.current)
+  }
+
+  /**
+   * 左右宽度控制点拖拽开始时，临时切到 size 模式。
+   *
+   * @returns {void}
+   */
+  #onTextWidthResizeStart() {
+    const selected = this.#innerEditor?.list ?? []
+
+    for (const item of selected) {
+      if (!isTextElement(item) || this.#textWidthResizeConfigs.has(item)) {
+        continue
+      }
+
+      this.#textWidthResizeConfigs.set(item, item.editConfig ? { ...item.editConfig } : null)
+      item.editConfig = {
+        ...(item.editConfig ?? {}),
+        editSize: 'size',
+        lockRatio: false
+      }
+    }
+  }
+
+  /**
+   * 左右宽度控制点拖拽结束时，恢复文本原本的编辑模式。
+   *
+   * @returns {void}
+   */
+  #onTextWidthResizeEnd() {
+    this.#restoreTextFontSizeEditMode()
+  }
+
+  /**
+   * 恢复文本进入宽度拖拽前的 editConfig。
+   *
+   * @returns {void}
+   */
+  #restoreTextFontSizeEditMode() {
+    this.#textWidthResizeConfigs.forEach((editConfig, text) => {
+      if (!isTextElement(text) || text.destroyed) {
+        return
+      }
+
+      text.editConfig = editConfig ?? { editSize: 'font-size' }
+    })
+    this.#textWidthResizeConfigs.clear()
   }
 
   #getMoveCursor(editBox) {

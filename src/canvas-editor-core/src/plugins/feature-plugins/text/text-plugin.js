@@ -127,8 +127,9 @@ export class TextPlugin {
     const { renderOptions, rawText } = this._getRenderableTextOptions(normalizedOptions, text)
     this._applyTextEditConfig(renderOptions)
 
-    Object.assign(text, renderOptions)
+    text.set?.(renderOptions)
     this._setRawText(text, rawText)
+    this._applyTextPatchFallback(text, renderOptions)
     text.forceUpdate?.()
     this._activeText = text
     this._context.innerEditor?.select(text)
@@ -319,7 +320,7 @@ export class TextPlugin {
   }
 
   /**
-   * 为 Text 节点设置官方编辑配置，使缩放选择框时同步修改 fontSize。
+   * 为 Text 节点设置官方编辑配置，使四角缩放时同步修改 fontSize。
    *
    * @param {Object} renderOptions 文本渲染配置。
    * @returns {void}
@@ -408,6 +409,25 @@ export class TextPlugin {
     }
 
     return { renderOptions, rawText }
+  }
+
+  /**
+   * 当运行时缺少 Leafer set() 方法时，使用属性赋值兜底。
+   *
+   * Leafer 的 Text 字体属性需要走 set() 才能稳定触发内部字体缓存重算。
+   * 这里仅保留极旧运行时的兜底逻辑，正常路径不会进入。
+   *
+   * @param {LeaferText} text 文本节点。
+   * @param {Object} renderOptions 文本渲染配置。
+   * @returns {void}
+   * @private
+   */
+  _applyTextPatchFallback(text, renderOptions) {
+    if (typeof text?.set === 'function') {
+      return
+    }
+
+    Object.assign(text, renderOptions)
   }
 
   _restoreRawTextForEditing(text) {
@@ -528,7 +548,10 @@ export class TextPlugin {
   }
 
   /**
-   * 缩放文本时归整像素值，并实时通知外部 UI 刷新。
+   * 四角缩放文本时归整像素值，并实时通知外部 UI 刷新。
+   *
+   * 左右宽度控制点会在 action-buttons 中单独覆盖为 size 模式，
+   * 不会改变 fontSize。
    *
    * @param {import('@leafer-in/interface').IEditorScaleEvent} event 缩放事件。
    * @returns {void}
