@@ -8,6 +8,8 @@ import { installTextEditorAdapter } from './text-editor-adapter.js'
 
 const RAW_TEXT_KEY = '__canvasEditorRawText'
 const MIN_TEXT_PIXEL = 1
+const VISUAL_ITALIC_KEY = '__canvasEditorVisualItalic'
+const VISUAL_ITALIC_SKEW_X = -12
 
 /**
  * 文本插件 —— 基于 leafer-ui 原生 Text 节点提供文本添加与样式更新能力。
@@ -89,6 +91,7 @@ export class TextPlugin {
       })
 
       this._setRawText(text, rawText)
+      this._applyVisualItalic(text, renderOptions)
       text.forceUpdate?.()
       text.updateLayout?.()
       contentLayer.add(text)
@@ -130,7 +133,9 @@ export class TextPlugin {
     text.set?.(renderOptions)
     this._setRawText(text, rawText)
     this._applyTextPatchFallback(text, renderOptions)
+    this._applyVisualItalic(text, renderOptions)
     text.forceUpdate?.()
+    text.updateLayout?.()
     this._activeText = text
     this._context.innerEditor?.select(text)
     applyTextEditorStyleLater(this.getStyle(text))
@@ -185,7 +190,7 @@ export class TextPlugin {
       fontFamily: this._stripFontFamilyQuotes(text.fontFamily ?? data.fontFamily),
       fontSize: this._normalizePixelValue(text.fontSize ?? data.fontSize),
       fontWeight: text.fontWeight ?? data.fontWeight,
-      italic: Boolean(text.italic ?? data.italic),
+      italic: Boolean(data.italic ?? text.italic),
       fill: typeof text.fill === 'string' ? text.fill : data.fill,
       textAlign: text.textAlign ?? data.textAlign,
       textDecoration: text.textDecoration ?? data.textDecoration,
@@ -257,6 +262,7 @@ export class TextPlugin {
   }
 
   _normalizeAddOptions(inputOptions, state) {
+    const bounds = this._getOperationBounds(state)
     const addOptions = {
       ...state.textOptions,
       ...inputOptions
@@ -274,15 +280,15 @@ export class TextPlugin {
 
     return {
       text: normalizedOptions.text ?? '',
-      x: inputOptions.x ?? this._getDefaultTextX(state, explicitWidth),
-      y: inputOptions.y ?? state.height / 2 - (normalizedOptions.fontSize ?? 32) / 2,
+      x: inputOptions.x ?? this._getDefaultTextX(bounds, explicitWidth),
+      y: inputOptions.y ?? bounds.y + bounds.height / 2 - (normalizedOptions.fontSize ?? 32) / 2,
       ...normalizedOptions,
       ...placementOptions
     }
   }
 
-  _getDefaultTextX(state, explicitWidth) {
-    return explicitWidth === undefined ? state.width / 2 : (state.width - explicitWidth) / 2
+  _getDefaultTextX(bounds, explicitWidth) {
+    return explicitWidth === undefined ? bounds.x + bounds.width / 2 : bounds.x + (bounds.width - explicitWidth) / 2
   }
 
   _normalizePlacementOptions(options) {
@@ -315,7 +321,24 @@ export class TextPlugin {
     renderOptions.width = width
 
     if (inputOptions.x === undefined) {
-      renderOptions.x = (state.width - width) / 2
+      const bounds = this._getOperationBounds(state)
+      renderOptions.x = bounds.x + (bounds.width - width) / 2
+    }
+  }
+
+  /**
+   * 获取当前操作区域，优先使用白色画板。
+   *
+   * @param {Object} state 编辑器状态。
+   * @returns {{ x: number, y: number, width: number, height: number }} 操作区域。
+   * @private
+   */
+  _getOperationBounds(state) {
+    return this._context?.artboard?.getContentBounds?.() ?? {
+      x: 0,
+      y: 0,
+      width: state.width,
+      height: state.height
     }
   }
 
@@ -428,6 +451,77 @@ export class TextPlugin {
     }
 
     Object.assign(text, renderOptions)
+  }
+
+  /**
+   * 应用可见斜体效果。
+   *
+   * Leafer 官方 Text 使用 italic 写入 canvas font，但部分中文字体或系统字体在 canvas
+   * 中不会合成可见斜体。这里保留官方 italic 字段，并额外使用可恢复的 skewX 做视觉兜底。
+   *
+   * @param {LeaferText} text 文本节点。
+   * @param {Object} renderOptions 文本渲染配置。
+   * @returns {void}
+   * @private
+   */
+  _applyVisualItalic(text, renderOptions) {
+    if (!isTextElement(text) || !Object.prototype.hasOwnProperty.call(renderOptions, 'italic')) {
+      return
+    }
+
+    if (renderOptions.italic) {
+      this._enableVisualItalic(text)
+      return
+    }
+
+    this._disableVisualItalic(text)
+  }
+
+  /**
+   * 开启视觉斜体兜底。
+   *
+   * @param {LeaferText} text 文本节点。
+   * @returns {void}
+   * @private
+   */
+  _enableVisualItalic(text) {
+    if (text[VISUAL_ITALIC_KEY]) {
+      return
+    }
+
+    const skewX = this._normalizeSkewValue(text.skewX ?? text.__?.skewX)
+    text[VISUAL_ITALIC_KEY] = true
+    text.set?.({ skewX: skewX + VISUAL_ITALIC_SKEW_X })
+  }
+
+  /**
+   * 关闭视觉斜体兜底，只移除本插件追加的倾斜角度。
+   *
+   * @param {LeaferText} text 文本节点。
+   * @returns {void}
+   * @private
+   */
+  _disableVisualItalic(text) {
+    if (!text[VISUAL_ITALIC_KEY]) {
+      return
+    }
+
+    const skewX = this._normalizeSkewValue(text.skewX ?? text.__?.skewX)
+    text.set?.({ skewX: skewX - VISUAL_ITALIC_SKEW_X })
+    text[VISUAL_ITALIC_KEY] = false
+  }
+
+  /**
+   * 归一化倾斜角度。
+   *
+   * @param {number | undefined} value 原始倾斜角度。
+   * @returns {number} 可计算的倾斜角度。
+   * @private
+   */
+  _normalizeSkewValue(value) {
+    const number = Number(value)
+
+    return Number.isFinite(number) ? number : 0
   }
 
   _restoreRawTextForEditing(text) {

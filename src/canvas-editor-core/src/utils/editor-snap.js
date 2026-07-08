@@ -30,15 +30,22 @@ const GUIDE_STYLE = {
  * @param {() => import('@leafer-in/editor').Editor | null} params.getInnerEditor
  * @param {() => import('leafer-ui').Group | null} params.getContentLayer
  * @param {() => Object | null} params.getState
+ * @param {() => import('../artboard.js').ArtboardManager | null} params.getArtboard
  * @param {Object} params.editorOptions
  * @returns {{ beforeMove: Function, beforeRotate: Function }}
  */
-export function createEditorSnapHooks({ getInnerEditor, getContentLayer, getState, editorOptions }) {
+export function createEditorSnapHooks({
+  getInnerEditor,
+  getContentLayer,
+  getState,
+  getArtboard,
+  editorOptions
+}) {
   const moveSnap = normalizeSnapOption(editorOptions.moveSnap, DEFAULT_MOVE_SNAP)
   const rotateSnap = normalizeSnapOption(editorOptions.rotateSnap, DEFAULT_ROTATE_SNAP)
   const userBeforeMove = editorOptions.beforeMove
   const userBeforeRotate = editorOptions.beforeRotate
-  const guides = createSnapGuideRenderer(getContentLayer, getState, editorOptions.theme)
+  const guides = createSnapGuideRenderer(getContentLayer, getState, getArtboard, editorOptions.theme)
 
   return {
     beforeMove(data) {
@@ -60,6 +67,7 @@ export function createEditorSnapHooks({ getInnerEditor, getContentLayer, getStat
         elements: moveSnap.elements,
         contentLayer,
         state,
+        artboard: getArtboard?.(),
         selected: getInnerEditor()?.list ?? [],
         guides
       })
@@ -100,7 +108,19 @@ function runBeforeRotate(beforeRotate, data) {
   return Number.isFinite(checked) ? checked : null
 }
 
-function snapMove({ target, x, y, threshold, canvas, elements, contentLayer, state, selected, guides }) {
+function snapMove({
+  target,
+  x,
+  y,
+  threshold,
+  canvas,
+  elements,
+  contentLayer,
+  state,
+  artboard,
+  selected,
+  guides
+}) {
   if (!target || (!x && !y)) return { x, y }
   if (!contentLayer || !state) return { x, y }
 
@@ -117,7 +137,7 @@ function snapMove({ target, x, y, threshold, canvas, elements, contentLayer, sta
   }
 
   const movingBounds = offsetBounds(bounds, worldMove.x, worldMove.y)
-  const snapLines = createSnapLines({ contentLayer, state, selected, target, canvas, elements })
+  const snapLines = createSnapLines({ contentLayer, state, artboard, selected, target, canvas, elements })
   const snapX = findSnapOffset(getVerticalLines(movingBounds), snapLines.vertical, threshold)
   const snapY = findSnapOffset(getHorizontalLines(movingBounds), snapLines.horizontal, threshold)
 
@@ -154,12 +174,12 @@ function snapRotation(target, rotation, step, threshold) {
   return Math.abs(diff) <= threshold ? rotation + diff : rotation
 }
 
-function createSnapLines({ contentLayer, state, selected, target, canvas, elements }) {
+function createSnapLines({ contentLayer, state, artboard, selected, target, canvas, elements }) {
   const vertical = []
   const horizontal = []
 
   if (canvas) {
-    const canvasBounds = getCanvasWorldBounds(contentLayer, state)
+    const canvasBounds = getCanvasWorldBounds(contentLayer, state, artboard)
     if (canvasBounds) {
       vertical.push(...getVerticalLines(canvasBounds))
       horizontal.push(...getHorizontalLines(canvasBounds))
@@ -182,7 +202,10 @@ function createSnapLines({ contentLayer, state, selected, target, canvas, elemen
   return { vertical, horizontal }
 }
 
-function getCanvasWorldBounds(contentLayer, state) {
+function getCanvasWorldBounds(contentLayer, state, artboard) {
+  const artboardBounds = artboard?.getWorldBounds?.()
+  if (artboardBounds) return artboardBounds
+
   const start = contentLayer?.getWorldPoint?.({ x: 0, y: 0 })
   const end = contentLayer?.getWorldPoint?.({ x: state.width, y: state.height })
   if (!start || !end) return null
@@ -215,7 +238,7 @@ function findSnapOffset(sourceLines, targetLines, threshold) {
   return best
 }
 
-function createSnapGuideRenderer(getContentLayer, getState, theme = {}) {
+function createSnapGuideRenderer(getContentLayer, getState, getArtboard, theme = {}) {
   let group = null
   let verticalLine = null
   let horizontalLine = null
@@ -231,14 +254,14 @@ function createSnapGuideRenderer(getContentLayer, getState, theme = {}) {
       if (!contentLayer || !state) return
 
       if (Number.isFinite(vertical)) {
-        verticalLine.path = createVerticalGuidePath(contentLayer, state, vertical)
+        verticalLine.path = createVerticalGuidePath(contentLayer, state, getArtboard?.(), vertical)
         verticalLine.visible = true
       } else {
         verticalLine.visible = false
       }
 
       if (Number.isFinite(horizontal)) {
-        horizontalLine.path = createHorizontalGuidePath(contentLayer, state, horizontal)
+        horizontalLine.path = createHorizontalGuidePath(contentLayer, state, getArtboard?.(), horizontal)
         horizontalLine.visible = true
       } else {
         horizontalLine.visible = false
@@ -290,8 +313,8 @@ function createGuideLine(theme) {
   return line
 }
 
-function createVerticalGuidePath(contentLayer, state, x) {
-  const bounds = getCanvasWorldBounds(contentLayer, state)
+function createVerticalGuidePath(contentLayer, state, artboard, x) {
+  const bounds = getCanvasWorldBounds(contentLayer, state, artboard)
   if (!bounds) return ''
 
   const start = worldToContentPoint(contentLayer, { x, y: bounds.y })
@@ -299,8 +322,8 @@ function createVerticalGuidePath(contentLayer, state, x) {
   return `M ${start.x} ${start.y} L ${end.x} ${end.y}`
 }
 
-function createHorizontalGuidePath(contentLayer, state, y) {
-  const bounds = getCanvasWorldBounds(contentLayer, state)
+function createHorizontalGuidePath(contentLayer, state, artboard, y) {
+  const bounds = getCanvasWorldBounds(contentLayer, state, artboard)
   if (!bounds) return ''
 
   const start = worldToContentPoint(contentLayer, { x: bounds.x, y })

@@ -56,6 +56,24 @@
       <button type="button" class="toolbar-button" @click="addText">添加文本</button>
       <input v-model="watermarkValue" class="text-input watermark-input" type="text" placeholder="输入水印文字" />
       <button type="button" class="toolbar-button" @click="addWatermark">添加水印</button>
+      <button type="button" class="toolbar-button" @click="deleteWatermark">删除水印</button>
+      <input
+        v-model.number="artboardWidth"
+        class="number-input artboard-input"
+        type="number"
+        min="120"
+        step="1"
+        title="画板宽度"
+      />
+      <input
+        v-model.number="artboardHeight"
+        class="number-input artboard-input"
+        type="number"
+        min="120"
+        step="1"
+        title="画板高度"
+      />
+      <button type="button" class="toolbar-button" @click="updateArtboardSize">调整画布</button>
       <button type="button" class="toolbar-button icon-button" @click="zoomOut">-</button>
       <span class="zoom-value">{{ zoomPercent }}%</span>
       <button type="button" class="toolbar-button icon-button" @click="zoomIn">+</button>
@@ -71,6 +89,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { init } from './canvas-editor-core/src/index'
 
+const WATERMARK_NODE_KEY = '__eleEditorWatermark'
+
 export default {
   setup() {
     const canvasRef = ref(null)
@@ -78,6 +98,8 @@ export default {
     const zoom = ref(1)
     const textValue = ref('双击编辑文字')
     const watermarkValue = ref('')
+    const artboardWidth = ref(375)
+    const artboardHeight = ref(667)
     const fontFamily = ref('PingFang SC')
     const fontSize = ref(36)
     const fontWeight = ref('400')
@@ -125,6 +147,7 @@ export default {
         applyTextOptionsToUI(options)
       })
       zoom.value = editor.state.zoom
+      syncArtboardControls()
     }
 
     /**
@@ -246,23 +269,24 @@ export default {
       }
 
       const content = watermarkValue.value?.trim() || '水印'
-      const canvasWidth = editor.state.width
-      const canvasHeight = editor.state.height
+      const artboardBounds = getArtboardBounds()
+      const canvasWidth = artboardBounds.width
+      const canvasHeight = artboardBounds.height
       const watermarkFontSize = 28
       const watermarkWidth = Math.max(180, Math.min(360, content.length * watermarkFontSize * 1.4))
       const columnGap = watermarkWidth + 110
       const rowGap = 150
-      const startX = -watermarkWidth
-      const startY = -rowGap
+      const startX = artboardBounds.x - watermarkWidth
+      const startY = artboardBounds.y - rowGap
       const tasks = []
 
       isAddingWatermark = true
 
       try {
-        for (let y = startY, rowIndex = 0; y < canvasHeight + rowGap; y += rowGap, rowIndex += 1) {
+        for (let y = startY, rowIndex = 0; y < artboardBounds.y + canvasHeight + rowGap; y += rowGap, rowIndex += 1) {
           const offsetX = rowIndex % 2 === 0 ? 0 : columnGap / 2
 
-          for (let x = startX - offsetX; x < canvasWidth + columnGap; x += columnGap) {
+          for (let x = startX - offsetX; x < artboardBounds.x + canvasWidth + columnGap; x += columnGap) {
             tasks.push(
               editor.text.add(content, {
                 x,
@@ -280,7 +304,7 @@ export default {
                 writingMode: 'x',
                 draggable: false,
                 editable: false
-              })
+              }).then(markWatermarkNode)
             )
           }
         }
@@ -290,6 +314,78 @@ export default {
       } finally {
         isAddingWatermark = false
       }
+    }
+
+    /**
+     * 给水印节点打标记，方便后续批量删除。
+     *
+     * @param {Object} watermark 水印文本节点。
+     * @returns {Object} 已打标记的水印节点。
+     */
+    const markWatermarkNode = (watermark) => {
+      watermark[WATERMARK_NODE_KEY] = true
+      return watermark
+    }
+
+    /**
+     * 删除当前画布上的所有水印节点。
+     *
+     * @returns {void}
+     */
+    const deleteWatermark = () => {
+      if (!editor) {
+        return
+      }
+
+      const watermarks = (editor.contentLayer?.children ?? []).filter((child) => {
+        return child?.[WATERMARK_NODE_KEY]
+      })
+
+      watermarks.forEach((watermark) => watermark.remove())
+      editor.deselect()
+    }
+
+    /**
+     * 同步画板宽高输入框。
+     *
+     * @returns {void}
+     */
+    const syncArtboardControls = () => {
+      const bounds = getArtboardBounds()
+
+      artboardWidth.value = normalizePixelForUI(bounds.width, 120)
+      artboardHeight.value = normalizePixelForUI(bounds.height, 120)
+    }
+
+    /**
+     * 获取当前白色画板边界。
+     *
+     * @returns {{ x: number, y: number, width: number, height: number }} 画板边界。
+     */
+    const getArtboardBounds = () => {
+      return editor?.artboard?.getContentBounds?.() ?? {
+        x: 0,
+        y: 0,
+        width: editor?.state?.width ?? 0,
+        height: editor?.state?.height ?? 0
+      }
+    }
+
+    /**
+     * 更新白色画板尺寸。
+     *
+     * @returns {void}
+     */
+    const updateArtboardSize = () => {
+      if (!editor) {
+        return
+      }
+
+      editor.setArtboardSize(
+        normalizePixelForUI(artboardWidth.value, 120),
+        normalizePixelForUI(artboardHeight.value, 120)
+      )
+      syncArtboardControls()
     }
 
     const updateSelectedText = () => {
@@ -491,6 +587,8 @@ export default {
       imageInputRef,
       textValue,
       watermarkValue,
+      artboardWidth,
+      artboardHeight,
       fontFamily,
       fontSize,
       fontWeight,
@@ -508,6 +606,8 @@ export default {
       handleImageChange,
       addText,
       addWatermark,
+      deleteWatermark,
+      updateArtboardSize,
       handleCanvasDoubleClick,
       zoomIn,
       zoomOut,

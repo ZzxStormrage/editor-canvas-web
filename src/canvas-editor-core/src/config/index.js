@@ -45,6 +45,9 @@ const EDITOR_THEME_HANDLE_HOVER_SHADOW = { x: 0, y: 3, blur: 10, spread: 0, colo
 /** 旋转角度提示的半透明背景色。 */
 const EDITOR_THEME_ROTATION_TIP_FILL = 'rgba(0, 0, 0, 0.7)'
 
+/** 内层画板默认阴影。 */
+const ARTBOARD_SHADOW = { x: 0, y: 12, blur: 32, spread: 0, color: 'rgba(15, 23, 42, 0.18)' }
+
 /**
  * 编辑器控件默认主题。
  *
@@ -207,6 +210,25 @@ export const DEFAULT_CANVAS_CONFIG = {
     backgroundSize: '24px 24px'
   },
 
+  /** 内层白色画板配置，后续素材新增、吸附和超出透明度都以它为操作区域。 */
+  artboard: {
+    /** 是否启用内层画板。 */
+    enabled: true,
+    /** 画板宽度。 */
+    width: 375,
+    /** 画板高度。 */
+    height: 667,
+    /** 画板最小宽度。 */
+    minWidth: 120,
+    /** 画板最小高度。 */
+    minHeight: 120,
+    /** 画板填充色。 */
+    fill: '#ffffff',
+    /** 画板阴影。 */
+    shadow: ARTBOARD_SHADOW,
+    /** 内容元素超过画板时的透明度；选择框和编辑按钮始终保持正常不透明。 */
+    overflowOpacity: 0.2
+  },
   /** Leafer 官方 Editor 和自定义编辑控件的配置。 */
   editor: {
     /** 编辑器控件主题，外部可覆盖同名字段实现换肤。 */

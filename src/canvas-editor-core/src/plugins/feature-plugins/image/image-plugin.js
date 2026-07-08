@@ -128,12 +128,13 @@ export class ImagePlugin {
    * @returns {{ x: number, y: number, width: number, height: number, lockRatio: boolean }} 图片节点配置。
    */
   _normalizePlacement(imageSize, options, state) {
+    const bounds = this._getOperationBounds(state);
     const mergedOptions = ImagePlugin.normalizeOptions({
       ...state.imageOptions,
       ...(options ?? {})
     });
-    const maxWidth = state.width * mergedOptions.maxWidthRatio;
-    const maxHeight = state.height * mergedOptions.maxHeightRatio;
+    const maxWidth = bounds.width * mergedOptions.maxWidthRatio;
+    const maxHeight = bounds.height * mergedOptions.maxHeightRatio;
     const scale = Math.min(maxWidth / imageSize.width, maxHeight / imageSize.height, 1);
     const width =
       normalizeOptionalPositiveNumber(mergedOptions.width, 'image.width') ??
@@ -143,11 +144,27 @@ export class ImagePlugin {
       imageSize.height * scale;
 
     return {
-      x: mergedOptions.x ?? (state.width - width) / 2,
-      y: mergedOptions.y ?? (state.height - height) / 2,
+      x: mergedOptions.x ?? bounds.x + (bounds.width - width) / 2,
+      y: mergedOptions.y ?? bounds.y + (bounds.height - height) / 2,
       width,
       height,
       lockRatio: mergedOptions.lockRatio ?? true
+    };
+  }
+
+  /**
+   * 获取当前操作区域，优先使用白色画板。
+   *
+   * @private
+   * @param {Object} state 编辑器状态。
+   * @returns {{ x: number, y: number, width: number, height: number }} 操作区域。
+   */
+  _getOperationBounds(state) {
+    return this._context?.artboard?.getContentBounds?.() ?? {
+      x: 0,
+      y: 0,
+      width: state.width,
+      height: state.height
     };
   }
 

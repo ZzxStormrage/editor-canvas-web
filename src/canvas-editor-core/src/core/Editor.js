@@ -38,16 +38,23 @@ export class Editor {
   #commands
   /** @type {import('@leafer-in/editor').Editor} */
   #innerEditor
+  /** @type {import('../artboard.js').ArtboardManager} */
+  #artboard
   /** @type {import('../plugins/action-buttons.js').EditorActionButtons} */
   #actionButtons
 
   // ──────── 只读属性 — 供外部查询 ────────
+  /** @returns {import('leafer-ui').Leafer} Leafer App 根实例。 */
   get leafer() {
     return this.#leafer
   }
+
+  /** @returns {import('leafer-ui').Group} 缩放容器。 */
   get stage() {
     return this.#stage
   }
+
+  /** @returns {import('leafer-ui').Group} 可编辑内容层。 */
   get contentLayer() {
     return this.#contentLayer
   }
@@ -55,24 +62,37 @@ export class Editor {
   get skyLeafer() {
     return this.#skyLeafer
   }
+  /** @returns {Proxy} 编辑器状态代理。 */
   get state() {
     return this.#state
   }
+
+  /** @returns {import('../logic/event-bus.js').EventBus} 编辑器事件总线。 */
   get eventBus() {
     return this.#bus
   }
+
+  /** @returns {import('../plugins/plugin-manager.js').PluginManager} 插件管理器。 */
   get pluginManager() {
     return this.#pluginManager
   }
+
+  /** @returns {import('../plugins/feature-plugins/image/image-plugin.js').ImagePlugin} 图片插件。 */
   get image() {
     return this.#pluginManager.get('image')
   }
+
+  /** @returns {import('../plugins/feature-plugins/text/text-plugin.js').TextPlugin} 文本插件。 */
   get text() {
     return this.#pluginManager.get('text')
   }
   /** @returns {import('@leafer-in/editor').Editor} 图形编辑器实例 */
   get editor() {
     return this.#innerEditor
+  }
+  /** @returns {import('../artboard.js').ArtboardManager} 白色画板管理器 */
+  get artboard() {
+    return this.#artboard
   }
 
   /**
@@ -86,6 +106,8 @@ export class Editor {
    * @param {*} viewport
    * @param {*} commandManager
    * @param {import('@leafer-in/editor').Editor} innerEditor
+   * @param {import('../artboard.js').ArtboardManager} artboard
+   * @param {import('../plugins/action-buttons.js').EditorActionButtons} actionButtons
    */
   constructor(
     leafer,
@@ -98,6 +120,7 @@ export class Editor {
     viewport,
     commandManager,
     innerEditor,
+    artboard,
     actionButtons
   ) {
     this.#leafer = leafer
@@ -110,6 +133,7 @@ export class Editor {
     this.#viewport = viewport
     this.#commands = commandManager
     this.#innerEditor = innerEditor
+    this.#artboard = artboard
     this.#actionButtons = actionButtons
   }
 
@@ -117,8 +141,10 @@ export class Editor {
 
   /**
    * 调整画布尺寸。
-   * @param {number} width
-   * @param {number} height
+   *
+   * @param {number} width 画布宽度。
+   * @param {number} height 画布高度。
+   * @returns {Editor} 当前编辑器实例。
    */
   resize(width, height) {
     const w = Number(width)
@@ -132,51 +158,102 @@ export class Editor {
 
   // ═══════════════════ 背景与网格 ═══════════════════
 
-  /** @param {string} bg — 背景色 */
+  /**
+   * 设置画布背景色。
+   *
+   * @param {string} bg 背景色。
+   * @returns {Editor} 当前编辑器实例。
+   */
   setBackground(bg) {
     this.#state.background = bg
     return this
   }
 
-  /** @param {boolean} show — 是否显示网格 */
+  /**
+   * 设置是否显示网格背景。
+   *
+   * @param {boolean} show 是否显示网格。
+   * @returns {Editor} 当前编辑器实例。
+   */
   setShowGrid(show) {
     this.#state.showGrid = show
     return this
   }
 
-  /** @param {'grid'|'blank'} type — 画布区域类型 */
+  /**
+   * 设置画布区域类型。
+   *
+   * @param {'grid' | 'blank'} type 画布区域类型。
+   * @returns {Editor} 当前编辑器实例。
+   */
   setAreaType(type) {
     this.#state.areaType = type
     return this
   }
 
-  /** @param {Object} gridOpts — 网格配置 */
+  /**
+   * 合并更新网格配置。
+   *
+   * @param {Object} gridOpts 网格配置。
+   * @returns {Editor} 当前编辑器实例。
+   */
   setGrid(gridOpts = {}) {
     this.#state.grid = { ...this.#state.grid, ...gridOpts }
     return this
   }
 
+  /**
+   * 调整当前白色画板尺寸。
+   *
+   * @param {number} width 画板宽度。
+   * @param {number} height 画板高度。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  setArtboardSize(width, height) {
+    this.#artboard?.resize(width, height)
+    return this
+  }
+
   // ═══════════════════ 缩放（委托给 ViewportManager） ═══════════════════
 
-  /** @param {number} z — 缩放级别 */
+  /**
+   * 设置缩放级别。
+   *
+   * @param {number} z 缩放级别。
+   * @returns {Editor} 当前编辑器实例。
+   */
   setZoom(z) {
     this.#viewport.setZoom(z)
     return this
   }
 
-  /** @param {number} [step] — 步进值 */
+  /**
+   * 放大画布。
+   *
+   * @param {number} [step] 步进值。
+   * @returns {Editor} 当前编辑器实例。
+   */
   zoomIn(step) {
     this.#viewport.zoomIn(step)
     return this
   }
 
-  /** @param {number} [step] — 步进值 */
+  /**
+   * 缩小画布。
+   *
+   * @param {number} [step] 步进值。
+   * @returns {Editor} 当前编辑器实例。
+   */
   zoomOut(step) {
     this.#viewport.zoomOut(step)
     return this
   }
 
-  /** 重置缩放为初始值 */
+  /**
+   * 重置缩放为初始值。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
   resetZoom() {
     this.#viewport.resetZoom()
     return this
@@ -191,20 +268,30 @@ export class Editor {
 
   /**
    * 执行命令并压入历史栈。
-   * @param {import('../commands/Command.js').Command} command
+   *
+   * @param {import('../commands/Command.js').Command} command 命令实例。
+   * @returns {Editor} 当前编辑器实例。
    */
   execute(command) {
     this.#commands.execute(command)
     return this
   }
 
-  /** 撤销 */
+  /**
+   * 撤销一步历史。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
   undo() {
     this.#commands.undo()
     return this
   }
 
-  /** 重做 */
+  /**
+   * 重做一步历史。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
   redo() {
     this.#commands.redo()
     return this
@@ -214,14 +301,20 @@ export class Editor {
 
   /**
    * 选中指定元素。
-   * @param {*} target
+   *
+   * @param {*} target Leafer 元素。
+   * @returns {Editor} 当前编辑器实例。
    */
   select(target) {
     this.#innerEditor?.select(target)
     return this
   }
 
-  /** 取消选中 */
+  /**
+   * 取消当前选中。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
   deselect() {
     this.#innerEditor?.cancel()
     return this
@@ -244,7 +337,9 @@ export class Editor {
 
   /**
    * 添加元素到选中列表。
-   * @param {*} item
+   *
+   * @param {*} item Leafer 元素。
+   * @returns {Editor} 当前编辑器实例。
    */
   addToSelection(item) {
     this.#innerEditor?.addItem(item)
@@ -253,7 +348,9 @@ export class Editor {
 
   /**
    * 从选中列表中移除元素。
-   * @param {*} item
+   *
+   * @param {*} item Leafer 元素。
+   * @returns {Editor} 当前编辑器实例。
    */
   removeFromSelection(item) {
     this.#innerEditor?.removeItem(item)
@@ -262,11 +359,16 @@ export class Editor {
 
   // ═══════════════════ 生命周期 ═══════════════════
 
-  /** 销毁编辑器，释放所有资源 */
+  /**
+   * 销毁编辑器，释放所有资源。
+   *
+   * @returns {void}
+   */
   destroy() {
     if (this.#state.destroyed) return
 
     this.#actionButtons?.destroy()
+    this.#artboard?.destroy()
     this.#viewport.destroy()
     this.#pluginManager.destroy()
     this.#bus.clear()
@@ -276,7 +378,11 @@ export class Editor {
 
   // ──────── 语义化别名 ────────
 
-  /** @deprecated — 使用 setZoom */
+  /**
+   * @deprecated 使用 setZoom()。
+   * @param {number} z 缩放级别。
+   * @returns {Editor} 当前编辑器实例。
+   */
   zoomTo(z) {
     return this.setZoom(z)
   }

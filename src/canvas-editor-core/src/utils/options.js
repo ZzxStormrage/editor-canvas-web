@@ -7,6 +7,7 @@ import { normalizeZoomOptions } from './zoom.js'
 import { normalizeImageOptions } from './image.js'
 import { normalizeTextOptions } from './text.js'
 import { normalizeEditorOptions } from './editor.js'
+import { normalizeArtboardOptions } from '../artboard.js'
 
 /**
  * 归一化初始化参数。
@@ -40,6 +41,7 @@ export function normalizeInitOptions(options) {
     zoom: normalizeZoomOptions(options.zoom),
     image: normalizeImageOptions(options.image, DEFAULT_CANVAS_CONFIG.image),
     text: normalizeTextOptions(options.text, DEFAULT_CANVAS_CONFIG.text),
+    artboard: normalizeArtboardOptions(options.artboard, DEFAULT_CANVAS_CONFIG.artboard),
     editor: normalizeEditorOptions(options.editor, DEFAULT_CANVAS_CONFIG.editor),
     pixelRatio: options.pixelRatio,
     autoResize: options.autoResize ?? DEFAULT_CANVAS_CONFIG.autoResize,

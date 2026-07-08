@@ -41,6 +41,7 @@ export { EventBus } from './logic/event-bus.js'
 export { EditorError } from './errors/editor-error.js'
 export { DEFAULT_CANVAS_CONFIG } from './config/index.js'
 export { TextPlugin } from './plugins/feature-plugins/text/text-plugin.js'
+export { ImagePlugin } from './plugins/feature-plugins/image/image-plugin.js'
 
 // ────── 工厂函数（保持向后兼容的 init 接口） ──────
 
@@ -59,7 +60,10 @@ export function createEditor(options = {}) {
 }
 
 /**
- * @deprecated — 使用 createEditor()
  * 保持向后兼容的 init 函数。
+ *
+ * @deprecated 使用 createEditor()。
+ * @param {Object} [options={}] 初始化参数。
+ * @returns {import('./core/Editor.js').Editor} 编辑器实例。
  */
 export const init = createEditor

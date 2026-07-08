@@ -16,6 +16,7 @@ import { normalizeInitOptions } from '../utils/options.js'
 import { resolveView, resolveSize } from '../utils/view.js'
 import { createResizeObserver } from '../utils/dom.js'
 import { createEditorSnapHooks } from '../utils/editor-snap.js'
+import { ArtboardManager } from '../artboard.js'
 
 /**
  * 编辑器构建器 —— **建造者模式**
@@ -45,6 +46,7 @@ export class EditorBuilder {
   #stage
   #contentLayer
   #area
+  #artboard
   #innerEditor
 
   #eventBus
@@ -65,12 +67,18 @@ export class EditorBuilder {
 
   // ───────────── 步骤 1：创建 Leafer ─────────────
 
+  /**
+   * 创建 Leafer App 和官方 Editor 插件实例。
+   *
+   * @returns {EditorBuilder} 当前构建器实例。
+   */
   buildLeafer() {
     const { tree: userTreeOptions, sky: userSkyOptions, ...leaferOptions } = this.#options.leaferOptions ?? {}
     const snapHooks = createEditorSnapHooks({
       getInnerEditor: () => this.#innerEditor,
       getContentLayer: () => this.#contentLayer,
       getState: () => this.#state?.proxy,
+      getArtboard: () => this.#artboard,
       editorOptions: this.#options.editor
     })
 
@@ -156,6 +164,11 @@ export class EditorBuilder {
   //
   // Editor 必须挂在独立 Leafer 上，否则缩放会导致控件坐标系错乱。
 
+  /**
+   * 搭建背景、缩放容器、内容层和白色画板。
+   *
+   * @returns {EditorBuilder} 当前构建器实例。
+   */
   buildScene() {
     this.#stage = new Group({
       x: 0,
@@ -164,9 +177,11 @@ export class EditorBuilder {
     })
     this.#contentLayer = new Group({ x: 0, y: 0 })
     this.#area = createArea(this.#size, this.#options)
+    this.#artboard = new ArtboardManager(this.#options.artboard, this.#size)
 
     // 内容层挂到缩放容器下
     this.#stage.add(this.#contentLayer)
+    this.#artboard.mount(this.#stage, this.#contentLayer)
 
     // tree / sky 由 leafer-ui App 创建。这里不再把 Group 直接挂到根 App，
     // 保持官方编辑器刷新链路中的 children 全部都是 Leafer 层。
@@ -178,6 +193,11 @@ export class EditorBuilder {
 
   // ───────────── 步骤 3：创建服务 ─────────────
 
+  /**
+   * 创建事件总线、插件管理器、命令管理器和视口服务。
+   *
+   * @returns {EditorBuilder} 当前构建器实例。
+   */
   buildServices() {
     this.#eventBus = new EventBus()
 
@@ -190,6 +210,7 @@ export class EditorBuilder {
         zoomOptions: this.#options.zoom,
         imageOptions: this.#options.image,
         textOptions: this.#options.text,
+        artboard: this.#artboard.options,
         editor: this.#options.editor,
         background: this.#options.background,
         showGrid: this.#options.showGrid,
@@ -243,11 +264,17 @@ export class EditorBuilder {
 
   // ───────────── 步骤 4：组装 Editor ─────────────
 
+  /**
+   * 组装最终对外暴露的 Editor 外观实例。
+   *
+   * @returns {Editor} 编辑器实例。
+   */
   buildEditor() {
     const context = {
       leafer: this.#leafer,
       stage: this.#stage,
       contentLayer: this.#contentLayer,
+      artboard: this.#artboard,
       skyLeafer: this.#skyLeafer,
       innerEditor: this.#innerEditor,
       eventBus: this.#eventBus,
@@ -256,6 +283,7 @@ export class EditorBuilder {
     }
 
     // Bootstrap plugins
+    this.#artboard.bootstrap(context)
     this.#pluginManager.bootstrap(context)
 
     // 注入视口缩放交互
@@ -273,6 +301,7 @@ export class EditorBuilder {
       this.#viewport,
       this.#commandManager,
       this.#innerEditor,
+      this.#artboard,
       this.#actionButtons
     )
 
