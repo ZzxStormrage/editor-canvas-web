@@ -1,8 +1,14 @@
-import 'vuetify/styles'
-import '@mdi/font/css/materialdesignicons.css'
+import 'vuetify/styles';
+import '@mdi/font/css/materialdesignicons.css';
 
-import { createVuetify } from 'vuetify'
-import { aliases, mdi } from 'vuetify/iconsets/mdi'
+import { createVuetify } from 'vuetify';
+import { aliases, mdi } from 'vuetify/iconsets/mdi';
+
+import {
+  EDITOR_COMPONENT_DEFAULTS,
+  EDITOR_THEME_COLORS,
+  EDITOR_THEME_NAME
+} from '../config/vuetify-theme.js';
 
 /**
  * 创建 Vuetify 插件实例。
@@ -19,43 +25,14 @@ export function createVuetifyPlugin() {
       }
     },
     theme: {
-      defaultTheme: 'eleLight',
+      defaultTheme: EDITOR_THEME_NAME,
       themes: {
-        eleLight: {
+        [EDITOR_THEME_NAME]: {
           dark: false,
-          colors: {
-            background: '#f7f9fd',
-            surface: '#ffffff',
-            primary: '#7c3aed',
-            secondary: '#22c7d5',
-            accent: '#ec6cff',
-            error: '#ef4444',
-            info: '#2563eb',
-            success: '#16a34a',
-            warning: '#f59e0b'
-          }
+          colors: EDITOR_THEME_COLORS
         }
       }
     },
-    defaults: {
-      VBtn: {
-        rounded: 'lg',
-        variant: 'flat',
-        density: 'comfortable',
-        height: 34
-      },
-      VTextField: {
-        density: 'compact',
-        variant: 'outlined',
-        color: 'primary',
-        hideDetails: true
-      },
-      VSelect: {
-        density: 'compact',
-        variant: 'outlined',
-        color: 'primary',
-        hideDetails: true
-      }
-    }
-  })
+    defaults: EDITOR_COMPONENT_DEFAULTS
+  });
 }

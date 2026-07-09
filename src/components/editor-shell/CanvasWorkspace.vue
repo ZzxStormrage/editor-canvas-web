@@ -1,14 +1,35 @@
 <template>
   <main class="canvas-workspace-panel">
     <div class="workspace-meta">
-      <v-chip prepend-icon="mdi-artboard" variant="flat">
+      <v-chip class="artboard-chip" color="surface" prepend-icon="mdi-artboard" variant="flat">
         {{ editor.artboardWidth.value }} x {{ editor.artboardHeight.value }}
       </v-chip>
       <div class="zoom-cluster">
-        <v-btn icon="mdi-minus" variant="tonal" aria-label="缩小" @click="editor.zoomOut" />
+        <v-btn
+          color="primary"
+          icon="mdi-minus"
+          size="small"
+          variant="tonal"
+          aria-label="缩小"
+          @click="editor.zoomOut"
+        />
         <span>{{ editor.zoomPercent.value }}%</span>
-        <v-btn icon="mdi-plus" variant="tonal" aria-label="放大" @click="editor.zoomIn" />
-        <v-btn icon="mdi-fit-to-page-outline" variant="tonal" aria-label="重置缩放" @click="editor.resetZoom" />
+        <v-btn
+          color="primary"
+          icon="mdi-plus"
+          size="small"
+          variant="tonal"
+          aria-label="放大"
+          @click="editor.zoomIn"
+        />
+        <v-btn
+          color="primary"
+          icon="mdi-fit-to-page-outline"
+          size="small"
+          variant="tonal"
+          aria-label="重置缩放"
+          @click="editor.resetZoom"
+        />
       </div>
     </div>
 

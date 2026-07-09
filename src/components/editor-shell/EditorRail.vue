@@ -4,14 +4,18 @@
       v-for="item in railItems"
       :key="item.label"
       class="rail-button"
-      :class="{ 'is-active': modelValue === item.value }"
-      variant="text"
+      :color="modelValue === item.value ? 'primary' : 'muted'"
+      :variant="modelValue === item.value ? 'tonal' : 'text'"
+      height="48"
+      rounded="lg"
       stacked
       :aria-label="item.label"
       @click="handleSelectPanel(item.value)"
     >
-      <v-icon :icon="item.icon" />
-      <span>{{ item.label }}</span>
+      <span class="rail-button-content">
+        <v-icon :icon="item.icon" />
+        <span>{{ item.label }}</span>
+      </span>
     </v-btn>
   </nav>
 </template>
