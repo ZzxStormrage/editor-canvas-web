@@ -9,6 +9,7 @@
 
 import { defineConfig, loadEnv } from "vite"
 import vue from "@vitejs/plugin-vue"
+import vuetify from "vite-plugin-vuetify"
 import AutoImport from "unplugin-auto-import/vite"
 import Components from "unplugin-vue-components/vite"
 import { VantResolver } from "@vant/auto-import-resolver"
@@ -30,6 +31,7 @@ export default ({ command, mode }) => {
 		},
 		plugins: [
 			vue(),
+			vuetify({ autoImport: true }),
 			versionInjector(),
 			AutoImport({
 				imports: ["vue"],
@@ -49,6 +51,7 @@ export default ({ command, mode }) => {
 				},
 			}),
 			Components({
+				dts: false,
 				resolvers: [VantResolver()],
 			}),
 		],

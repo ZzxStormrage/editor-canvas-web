@@ -10,8 +10,10 @@
 import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
+import { createVuetifyPlugin } from './plugins/vuetify.js'
 
 const app = createApp(App)
+const vuetify = createVuetifyPlugin()
 
 // 设置全局错误处理器
 app.config.errorHandler = (err, instance, info) => {
@@ -23,7 +25,7 @@ app.config.errorHandler = (err, instance, info) => {
   // 这里可以添加错误上报的逻辑，比如发送到后端服务器
 }
 
-app.mount('#app')
+app.use(vuetify).mount('#app')
 
 // 捕获未处理的 Promise 错误
 window.addEventListener('unhandledrejection', (event) => {
