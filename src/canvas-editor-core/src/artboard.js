@@ -306,6 +306,8 @@ export class ArtboardManager {
       this.#eventBus.on('image:added', ({ image }) => this.syncElement(image)),
       this.#eventBus.on('text:added', ({ text }) => this.syncElement(text)),
       this.#eventBus.on('text:updated', ({ text }) => this.syncElement(text)),
+      this.#eventBus.on('selection:deleted', () => this.syncAllElements()),
+      this.#eventBus.on('selection:layer-changed', () => this.syncAllElements()),
       this.#eventBus.on('text:selected', () => this.syncAllElements()),
       this.#eventBus.on('viewport:zoom-changed', () => this.syncAllElements()),
       this.#eventBus.on('canvas:resized', () => this.syncAllElements())

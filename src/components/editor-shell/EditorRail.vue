@@ -6,8 +6,9 @@
       class="rail-button"
       :color="modelValue === item.value ? 'primary' : 'muted'"
       :variant="modelValue === item.value ? 'tonal' : 'text'"
-      height="48"
-      rounded="lg"
+      density="compact"
+      height="46"
+      rounded="md"
       stacked
       :aria-label="item.label"
       @click="handleSelectPanel(item.value)"
@@ -34,7 +35,8 @@ const railItems = [
   { label: '图片', value: 'image', icon: 'mdi-image-outline' },
   { label: '文字', value: 'text', icon: 'mdi-format-text' },
   { label: '水印', value: 'watermark', icon: 'mdi-water-percent' },
-  { label: '画布', value: 'artboard', icon: 'mdi-artboard' }
+  { label: '画布', value: 'artboard', icon: 'mdi-artboard' },
+  { label: '工具', value: 'tools', icon: 'mdi-tools' }
 ];
 
 /**

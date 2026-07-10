@@ -14,15 +14,15 @@ export const EDITOR_THEME_NAME = 'eleLight';
  * @type {Record<string, string>}
  */
 export const EDITOR_THEME_COLORS = {
-  background: '#f7f9fd',
+  background: '#f5f7fb',
   'on-background': '#172033',
   surface: '#ffffff',
   'on-surface': '#172033',
   primary: '#7c3aed',
   'on-primary': '#ffffff',
-  secondary: '#22c7d5',
+  secondary: '#12b8c4',
   'on-secondary': '#ffffff',
-  accent: '#ec6cff',
+  accent: '#8b5cf6',
   error: '#ef4444',
   'on-error': '#ffffff',
   info: '#2563eb',
@@ -33,16 +33,16 @@ export const EDITOR_THEME_COLORS = {
   'on-warning': '#172033',
   'primary-soft': '#f3edff',
   panel: '#ffffff',
-  workspace: '#eef1f8',
-  canvas: '#f4f7fc',
-  grid: '#dce3ef',
+  workspace: '#eef2f7',
+  canvas: '#f7f9fd',
+  grid: '#d7deeb',
   text: '#172033',
-  muted: '#667085',
-  subtle: '#8a92a3',
-  line: '#edf0f5',
-  outline: '#97a2b6',
-  control: '#f1f2f6',
-  shadow: '#1c2439'
+  muted: '#596276',
+  subtle: '#7b8496',
+  line: '#e7ebf2',
+  outline: '#9aa4b7',
+  control: '#f4f6fa',
+  shadow: '#172033'
 };
 
 /**
@@ -54,19 +54,22 @@ export const EDITOR_THEME_COLORS = {
  */
 export const EDITOR_COMPONENT_DEFAULTS = {
   VBtn: {
-    rounded: 'lg',
+    rounded: 'md',
     variant: 'flat',
-    density: 'comfortable'
+    density: 'compact',
+    size: 'small',
+    height: 34
   },
   VBtnToggle: {
     color: 'primary',
-    density: 'comfortable',
-    rounded: 'lg',
+    density: 'compact',
+    rounded: 'md',
     variant: 'tonal'
   },
   VChip: {
-    density: 'comfortable',
-    rounded: 'lg'
+    density: 'compact',
+    rounded: 'md',
+    size: 'small'
   },
   VSlider: {
     color: 'primary',
@@ -75,21 +78,55 @@ export const EDITOR_COMPONENT_DEFAULTS = {
   },
   VTextField: {
     density: 'compact',
-    variant: 'solo-filled',
-    bgColor: 'control',
+    variant: 'outlined',
+    bgColor: 'surface',
     color: 'primary',
     hideDetails: true,
     hideSpinButtons: true,
     flat: true,
-    rounded: 'lg'
+    rounded: 'md'
   },
-  VSelect: {
+  VColorInput: {
     density: 'compact',
-    variant: 'solo-filled',
-    bgColor: 'control',
+    variant: 'outlined',
+    bgColor: 'surface',
     color: 'primary',
     hideDetails: true,
     flat: true,
-    rounded: 'lg'
+    rounded: 'md',
+    mode: 'hex',
+    modes: ['hex'],
+    hideActions: true,
+    hidePip: true,
+    showSwatches: true,
+    swatchesMaxHeight: 92,
+    swatches: [
+      ['#111827', '#374151', '#6b7280', '#ffffff'],
+      ['#7c3aed', '#8b5cf6', '#12b8c4', '#2563eb'],
+      ['#ef4444', '#f59e0b', '#16a34a', '#ec4899']
+    ]
+  },
+  VNumberInput: {
+    reverse: false,
+    controlVariant: 'default',
+    label: '',
+    hideInput: false,
+    inset: false,
+    variant: 'solo-filled',
+    density: 'compact',
+    bgColor: 'surface',
+    color: 'primary',
+    hideDetails: true,
+    flat: true,
+    rounded: 'md'
+  },
+  VSelect: {
+    density: 'compact',
+    variant: 'outlined',
+    bgColor: 'surface',
+    color: 'primary',
+    hideDetails: true,
+    flat: true,
+    rounded: 'md'
   }
 };

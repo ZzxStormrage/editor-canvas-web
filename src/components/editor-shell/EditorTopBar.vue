@@ -1,5 +1,5 @@
 <template>
-  <v-app-bar class="editor-top-bar" color="primary" flat height="46">
+  <v-app-bar class="editor-top-bar" color="primary" flat height="44">
     <div class="top-bar-content">
       <div class="top-bar-left">
         <v-icon icon="mdi-vector-square" size="20" />

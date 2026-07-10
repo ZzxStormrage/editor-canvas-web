@@ -259,6 +259,27 @@ export class Editor {
     return this
   }
 
+  /**
+   * 按当前画布可视区域缩放画板并居中。
+   *
+   * @param {number} [padding] 可视区域内边距。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  fitArtboardToView(padding) {
+    this.#viewport.fitArtboardToView(padding)
+    return this
+  }
+
+  /**
+   * 不改变缩放，仅将画板居中到当前可视区域。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  centerArtboard() {
+    this.#viewport.centerArtboard()
+    return this
+  }
+
   // ═══════════════════ 命令（预留 undo/redo） ═══════════════════
 
   /** @returns {import('../commands/CommandManager.js').CommandManager} */
@@ -354,6 +375,27 @@ export class Editor {
    */
   removeFromSelection(item) {
     this.#innerEditor?.removeItem(item)
+    return this
+  }
+
+  /**
+   * 执行当前选区的层级操作。
+   *
+   * @param {'front' | 'forward' | 'backward' | 'back'} action 层级动作。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  runLayerAction(action) {
+    this.#actionButtons?.runLayerAction(action)
+    return this
+  }
+
+  /**
+   * 关闭当前选区的层级菜单。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  closeLayerMenu() {
+    this.#actionButtons?.closeLayerMenu()
     return this
   }
 

@@ -223,12 +223,22 @@ export class EditorBuilder {
     this.#pluginManager = new PluginManager()
     registerDefaultPlugins(this.#pluginManager)
 
-    this.#viewport = new ViewportManager(this.#leafer, this.#stage, this.#state.proxy, this.#eventBus)
+    this.#viewport = new ViewportManager(
+      this.#leafer,
+      this.#view,
+      this.#stage,
+      this.#state.proxy,
+      this.#eventBus
+    )
 
     this.#commandManager = new CommandManager(this.#state.proxy, this.#eventBus)
 
     // 操作按钮（锁定、复制、删除）
-    this.#actionButtons = new EditorActionButtons(this.#innerEditor, this.#options.editor.theme)
+    this.#actionButtons = new EditorActionButtons(
+      this.#innerEditor,
+      this.#options.editor.theme,
+      this.#eventBus
+    )
 
     this.#bindAreaState()
 

@@ -7,11 +7,6 @@ import layerIconSvg from '../assets/icons/layers.svg?raw'
 import lockIconSvg from '../assets/icons/lock.svg?raw'
 import rotateIconSvg from '../assets/icons/rotate.svg?raw'
 import unlockIconSvg from '../assets/icons/unlock.svg?raw'
-
-import bringFrontIconSvg from '../assets/icons/bring-front.svg?raw'
-import forwardIconSvg from '../assets/icons/forward.svg?raw'
-import backwardIconSvg from '../assets/icons/backward.svg?raw'
-import sendBackIconSvg from '../assets/icons/send-back.svg?raw'
 import { isTextElement } from '../utils/text.js'
 
 /**
@@ -60,26 +55,22 @@ const LAYER_ACTION_DEFS = [
   {
     key: 'front',
     label: '移到最前',
-    shortcut: '⌥⌘]',
-    svg: bringFrontIconSvg
+    shortcut: '⌥⌘]'
   },
   {
     key: 'forward',
     label: '前移',
-    shortcut: '⌘]',
-    svg: forwardIconSvg
+    shortcut: '⌘]'
   },
   {
     key: 'backward',
     label: '后移',
-    shortcut: '⌘[',
-    svg: backwardIconSvg
+    shortcut: '⌘['
   },
   {
     key: 'back',
     label: '移到最后',
-    shortcut: '⌥⌘[',
-    svg: sendBackIconSvg
+    shortcut: '⌥⌘['
   }
 ]
 
@@ -94,7 +85,6 @@ const ROTATE_ICON_SIZE = ROTATE_BTN_SIZE - ROTATE_ICON_INSET * 2
 const ROTATE_ANGLE_GAP = 12
 const ROTATE_ANGLE_WIDTH = 50
 const ROTATE_ANGLE_HEIGHT = 24
-const MENU_WIDTH = 132
 const MENU_ITEM_HEIGHT = 34
 const MENU_GAP = 8
 const RESIZE_HANDLE_CURSORS = ['nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize']
@@ -104,6 +94,39 @@ const TEXT_WIDTH_RESIZE_LINE_INDEXES = new Set([1, 3])
 const TEXT_HEIGHT_RESIZE_POINT_INDEXES = new Set([1, 5])
 const TEXT_HEIGHT_RESIZE_LINE_INDEXES = new Set([0, 2])
 const TEXT_WIDTH_EDIT_CONFIG = { editSize: 'size', lockRatio: false }
+
+/**
+ * 兼容 Leafer 按钮子节点命中：指针可能落到 Group、背景或图标任意一层。
+ *
+ * @param {import('leafer-ui').UI[]} targets 需要绑定同一个动作的节点。
+ * @param {'tap' | 'down'} trigger 触发方式。
+ * @param {(event: Object) => void} handler 点击处理函数。
+ * @returns {void}
+ */
+function bindButtonAction(targets, trigger, handler) {
+  let isHandled = false
+  const handleAction = (event) => {
+    event.stop()
+
+    if (isHandled) {
+      return
+    }
+
+    isHandled = true
+    handler(event)
+    requestAnimationFrame(() => {
+      isHandled = false
+    })
+  }
+
+  targets.forEach((target) => {
+    target.on(trigger === 'down' ? PointerEvent.DOWN : PointerEvent.TAP, handleAction)
+    if (trigger === 'down') {
+      target.on(PointerEvent.TAP, (event) => event.stop())
+    }
+  })
+}
+
 function createIconUrl(svg, color) {
   const crispSvg = svg
     .replace(/<svg\s+width="24"\s+height="24"/, '<svg width="96" height="96"')
@@ -128,13 +151,11 @@ function createButtonStyles(theme) {
   }, {})
 }
 
-function createLayerActions(theme) {
+function createLayerActions() {
   return LAYER_ACTION_DEFS.map((action) => ({
     key: action.key,
     label: action.label,
-    shortcut: action.shortcut,
-    icon: createIconUrl(action.svg, theme.textColor),
-    disabledIcon: createIconUrl(action.svg, theme.disabledTextColor)
+    shortcut: action.shortcut
   }))
 }
 
@@ -142,20 +163,23 @@ export class EditorActionButtons {
   /** @type {import('@leafer-in/editor').Editor} */
   #innerEditor
 
+  /** @type {import('../logic/event-bus.js').EventBus | null} */
+  #eventBus
+
   /** @type {Object} */
   #theme
 
   /** @type {Record<string, { icon: string, disabledIcon: string }>} */
   #btnStyle
 
-  /** @type {Array<{ key: string, label: string, shortcut: string, icon: string, disabledIcon: string }>} */
+  /** @type {Array<{ key: string, label: string, shortcut: string }>} */
   #layerActions
 
   /** @type {import('leafer-ui').Group | null} */
   #btnGroup
 
-  /** @type {import('leafer-ui').Group | null} */
-  #layerMenu
+  /** @type {boolean} */
+  #isLayerMenuOpen
 
   /** @type {import('leafer-ui').Rect | null} */
   #cursorRect
@@ -214,14 +238,16 @@ export class EditorActionButtons {
   /**
    * @param {import('@leafer-in/editor').Editor} innerEditor
    * @param {Object} [theme]
+   * @param {import('../logic/event-bus.js').EventBus | null} [eventBus]
    */
-  constructor(innerEditor, theme = {}) {
+  constructor(innerEditor, theme = {}, eventBus = null) {
     this.#innerEditor = innerEditor
+    this.#eventBus = eventBus
     this.#theme = normalizeActionTheme(theme)
     this.#btnStyle = createButtonStyles(this.#theme)
-    this.#layerActions = createLayerActions(this.#theme)
+    this.#layerActions = createLayerActions()
     this.#btnGroup = null
-    this.#layerMenu = null
+    this.#isLayerMenuOpen = false
     this.#cursorRect = null
     this.#rotatePoint = null
     this.#rotateIcon = null
@@ -244,6 +270,9 @@ export class EditorActionButtons {
     this.#innerEditor.on_(EditorMoveEvent.MOVE, this.#syncTextHeightHandlesAfterTransform, this)
     this.#innerEditor.on_(EditorScaleEvent.BEFORE_SCALE, this.#syncTextHeightHandlesAfterTransform, this)
     this.#innerEditor.on_(EditorScaleEvent.SCALE, this.#syncTextHeightHandlesAfterTransform, this)
+    this.#innerEditor.on_(EditorMoveEvent.BEFORE_MOVE, this.closeLayerMenu, this)
+    this.#innerEditor.on_(EditorScaleEvent.BEFORE_SCALE, this.closeLayerMenu, this)
+    this.#innerEditor.on_(EditorRotateEvent.BEFORE_ROTATE, this.closeLayerMenu, this)
     this.#innerEditor.on_(EditorRotateEvent.ROTATE, this.#onRotate, this)
     this.#bindHoverFallback()
   }
@@ -523,10 +552,6 @@ export class EditorActionButtons {
       return null
     }
 
-    if (this.#isPointInVisibleNode(this.#layerMenu, point)) {
-      return 'pointer'
-    }
-
     if (this.#isPointInVisibleNode(this.#btnGroup, point)) {
       return 'pointer'
     }
@@ -638,6 +663,8 @@ export class EditorActionButtons {
   #onSelect(e) {
     if (this.#isTogglingLock) return
     const list = e?.list ?? []
+    this.closeLayerMenu()
+
     if (list.length === 0) {
       this.#removeButtons()
       return
@@ -684,14 +711,14 @@ export class EditorActionButtons {
 
     // 判断锁定态：使用共享属性决定（true = 全部锁定，false = 全部未锁定，undefined = 混合）
     const allLocked = shared.locked === true
+    const selectedSnapshot = [...selected]
 
     // 按钮定义：[key, callback, disabled?]
-    let layerMenuX = 0
     const btnDefs = [
       [allLocked ? 'unlock' : 'lock', () => this.#toggleLock(selected, allLocked), false],
       ['copy', () => this.#copySelected(selected), allLocked],
-      ['delete', () => this.#deleteSelected(selected), allLocked],
-      ['layer', () => this.#toggleLayerMenu(editBox, selected, layerMenuX), allLocked]
+      ['delete', () => this.#deleteSelected(selectedSnapshot), allLocked, 'down'],
+      ['layer', null, allLocked]
     ]
 
     const totalWidth = btnDefs.length * BTN_SIZE
@@ -712,13 +739,17 @@ export class EditorActionButtons {
 
     btnGroup.add(barBg)
 
-    for (const [key, onClick, disabled] of btnDefs) {
+    for (const [key, onClick, disabled, trigger] of btnDefs) {
       const style = this.#btnStyle[key] || this.#btnStyle.lock
-      const btn = disabled ? this.#createDisabledButton(key, offsetX) : this.#createButton(style, offsetX, onClick)
+      let btn = null
+      const handleClick = key === 'layer'
+        ? () => this.#toggleLayerMenu(editBox, selected, btn)
+        : onClick
+
+      btn = disabled
+        ? this.#createDisabledButton(key, offsetX)
+        : this.#createButton(style, offsetX, handleClick, trigger)
       btnGroup.add(btn)
-      if (key === 'layer') {
-        layerMenuX = offsetX + BTN_SIZE
-      }
       offsetX += BTN_SIZE
     }
 
@@ -763,141 +794,68 @@ export class EditorActionButtons {
   /**
    * @param {import('@leafer-in/interface').IEditBox} editBox
    * @param {import('leafer-ui').UI[]} selected
-   * @param {number} menuX
+   * @param {import('leafer-ui').Group} layerButton
    */
-  #toggleLayerMenu(editBox, selected, menuX) {
-    if (this.#layerMenu) {
-      this.#removeLayerMenu()
+  #toggleLayerMenu(editBox, selected, layerButton) {
+    if (this.#isLayerMenuOpen) {
+      this.closeLayerMenu()
       return
     }
 
-    const layerState = this.#getLayerState(selected)
-    const menu = new Group({
-      x: editBox.buttons.x + menuX + MENU_GAP,
+    this.#isLayerMenuOpen = true
+    this.#emitLayerMenuOpen(editBox, selected, layerButton)
+  }
+
+  /**
+   * 通知 Vue Overlay 打开层级菜单。
+   *
+   * 菜单 UI 由 Vue 组件渲染，Leafer 只负责提供按钮入口、选区状态和坐标。
+   *
+   * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
+   * @param {import('leafer-ui').UI[]} selected 当前选中元素。
+   * @param {import('leafer-ui').Group} layerButton 层级按钮节点。
+   * @returns {void}
+   */
+  #emitLayerMenuOpen(editBox, selected, layerButton) {
+    const position = this.#getLayerMenuPosition(editBox, layerButton)
+
+    this.#eventBus?.emit('selection:layer-menu-open', {
+      ...position,
+      actions: this.getLayerMenuActions(selected)
+    })
+  }
+
+  /**
+   * 使用按钮真实世界边界计算 Vue Overlay 菜单位置。
+   *
+   * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
+   * @param {import('leafer-ui').Group} layerButton 层级按钮节点。
+   * @returns {{ x: number, y: number }} Vue 菜单坐标。
+   */
+  #getLayerMenuPosition(editBox, layerButton) {
+    const bounds = layerButton?.worldBoxBounds
+
+    if (bounds) {
+      return {
+        x: bounds.x + bounds.width + MENU_GAP,
+        y: bounds.y + bounds.height / 2 - MENU_ITEM_HEIGHT / 2
+      }
+    }
+
+    return {
+      x: editBox.buttons.x + MENU_GAP,
       y: editBox.buttons.y - MENU_ITEM_HEIGHT / 2
-    })
-    const menuBg = new Rect({
-      width: MENU_WIDTH,
-      height: this.#layerActions.length * MENU_ITEM_HEIGHT,
-      cornerRadius: 8,
-      fill: this.#theme.surfaceColor,
-      stroke: this.#theme.borderColor,
-      strokeWidth: 1,
-      shadow: this.#theme.menuShadow
-    })
-
-    menu.add(menuBg)
-
-    this.#layerActions.forEach((action, index) => {
-      const canUse = layerState[action.key]
-      const item = canUse
-        ? this.#createLayerMenuItem(action, index, () => this.#runLayerAction(action.key, selected))
-        : this.#createDisabledLayerMenuItem(action, index)
-      menu.add(item)
-    })
-
-    this.#layerMenu = menu
-    editBox.view.add(menu)
+    }
   }
 
   /**
-   * @param {{ key: string, label: string, shortcut: string, icon: string }} action
-   * @param {number} index
-   * @param {() => void} onClick
-   * @returns {Group}
+   * 关闭 Vue Overlay 层级菜单。
+   *
+   * @returns {void}
    */
-  #createLayerMenuItem(action, index, onClick) {
-    const item = new Group({ x: 0, y: index * MENU_ITEM_HEIGHT, cursor: 'pointer' })
-    const bg = new Rect({
-      width: MENU_WIDTH,
-      height: MENU_ITEM_HEIGHT,
-      cornerRadius: 6,
-      fill: this.#theme.transparentFillColor,
-      cursor: 'pointer'
-    })
-    const icon = this.#createMenuIcon(action.icon)
-    const label = this.#createMenuText(action.label, 34, this.#theme.textColor)
-    const shortcut = this.#createShortcutText(action.shortcut, this.#theme.textColor)
-
-    icon.cursor = 'pointer'
-    label.cursor = 'pointer'
-    shortcut.cursor = 'pointer'
-    item.addMany(bg, icon, label, shortcut)
-    item.on(PointerEvent.ENTER, (e) => {
-      this.#setCanvasCursor('pointer', e.current)
-      bg.fill = this.#theme.hoverFillColor
-    })
-    item.on(PointerEvent.LEAVE, (e) => {
-      bg.fill = this.#theme.transparentFillColor
-      this.#updateCanvasCursor(e.current)
-    })
-    item.on(PointerEvent.TAP, (e) => {
-      e.stop()
-      onClick?.()
-    })
-
-    return item
-  }
-
-  /**
-   * @param {{ key: string, label: string, shortcut: string, icon: string }} action
-   * @param {number} index
-   * @returns {Group}
-   */
-  #createDisabledLayerMenuItem(action, index) {
-    const item = new Group({ x: 0, y: index * MENU_ITEM_HEIGHT })
-    const icon = this.#createMenuIcon(action.disabledIcon)
-    const label = this.#createMenuText(action.label, 34, this.#theme.disabledTextColor)
-    const shortcut = this.#createShortcutText(action.shortcut, this.#theme.disabledTextColor)
-
-    item.addMany(icon, label, shortcut)
-    return item
-  }
-
-  /**
-   * @param {string} url
-   * @returns {LeaferImage}
-   */
-  #createMenuIcon(url) {
-    return new LeaferImage({ url, x: 10, y: 7, width: 20, height: 20 })
-  }
-
-  /**
-   * @param {string} text
-   * @param {number} x
-   * @param {string} color
-   * @returns {Text}
-   */
-  #createMenuText(text, x, color) {
-    return new Text({
-      text,
-      x,
-      y: 0,
-      width: 58,
-      height: MENU_ITEM_HEIGHT,
-      fontSize: 13,
-      fill: color,
-      verticalAlign: 'middle'
-    })
-  }
-
-  /**
-   * @param {string} text
-   * @param {string} color
-   * @returns {Text}
-   */
-  #createShortcutText(text, color) {
-    return new Text({
-      text,
-      x: 91,
-      y: 7,
-      width: 32,
-      height: 20,
-      fontSize: 11,
-      fill: color,
-      textAlign: 'center',
-      verticalAlign: 'middle'
-    })
+  closeLayerMenu() {
+    this.#isLayerMenuOpen = false
+    this.#eventBus?.emit('selection:layer-menu-close')
   }
 
   /**
@@ -999,9 +957,10 @@ export class EditorActionButtons {
    * @param {{ icon: string, disabledIcon: string }} style
    * @param {number} offsetX
    * @param {() => void} onClick
+   * @param {'tap' | 'down'} [trigger]
    * @returns {Group}
    */
-  #createButton(style, offsetX, onClick) {
+  #createButton(style, offsetX, onClick, trigger = 'tap') {
     const btn = new Group({ x: offsetX, y: 3, cursor: 'pointer' })
 
     const bg = new Rect({
@@ -1026,8 +985,7 @@ export class EditorActionButtons {
       bg.fill = this.#theme.transparentFillColor
       this.#updateCanvasCursor(e.current)
     })
-    btn.on(PointerEvent.TAP, (e) => {
-      e.stop()
+    bindButtonAction([btn, bg, icon], trigger, () => {
       onClick?.()
     })
 
@@ -1080,19 +1038,11 @@ export class EditorActionButtons {
     this.#unbindTextWidthResizeMode()
     this.#unbindRotateButton()
     this.#removeRotationTip()
-    this.#removeLayerMenu()
+    this.closeLayerMenu()
     if (this.#btnGroup) {
       this.#btnGroup.remove()
       this.#btnGroup.destroy()
       this.#btnGroup = null
-    }
-  }
-
-  #removeLayerMenu() {
-    if (this.#layerMenu) {
-      this.#layerMenu.remove()
-      this.#layerMenu.destroy()
-      this.#layerMenu = null
     }
   }
 
@@ -1405,6 +1355,7 @@ export class EditorActionButtons {
   }
 
   #onRotateButtonDown() {
+    this.closeLayerMenu()
     const selected = this.#innerEditor?.list ?? []
     const rotation = selected.length === 1 ? selected[0]?.rotation : this.#computeSharedAttributes(selected).rotation
     this.#showRotationTip(this.#formatRotation(rotation ?? 0))
@@ -1502,6 +1453,7 @@ export class EditorActionButtons {
   }
 
   #onMoveCursorDown() {
+    this.closeLayerMenu()
     if (this.#cursorRect) {
       this.#cursorRect.cursor = this.#getMoveCursor(this.#innerEditor?.editBox)
       this.#setCanvasCursor(this.#cursorRect.cursor, this.#cursorRect)
@@ -1713,10 +1665,20 @@ export class EditorActionButtons {
    * @param {import('leafer-ui').UI[]} selected
    */
   #deleteSelected(selected) {
-    this.#innerEditor.cancel() // 先取消选中
-    for (const item of selected) {
+    const targets = [...(selected ?? [])]
+
+    if (targets.length === 0) {
+      return
+    }
+
+    for (const item of targets) {
       item.remove()
     }
+
+    this.#eventBus?.emit('selection:deleted', { targets })
+    this.#innerEditor.cancel()
+    this.#innerEditor.updateEditBox?.()
+    this.closeLayerMenu()
   }
 
   /**
@@ -1738,8 +1700,41 @@ export class EditorActionButtons {
       }
     }
 
-    this.#removeLayerMenu()
+    this.closeLayerMenu()
+    this.#eventBus?.emit('selection:layer-changed', { action, selected })
     this.#innerEditor.updateEditBox?.()
+  }
+
+  /**
+   * 执行当前选区的层级操作，供 Vue 菜单组件调用。
+   *
+   * @param {'front' | 'forward' | 'backward' | 'back'} action 层级动作。
+   * @returns {void}
+   */
+  runLayerAction(action) {
+    const selected = this.#innerEditor?.list ?? []
+
+    if (selected.length === 0) {
+      this.closeLayerMenu()
+      return
+    }
+
+    this.#runLayerAction(action, selected)
+  }
+
+  /**
+   * 获取当前选区层级菜单的 Vue 渲染数据。
+   *
+   * @param {import('leafer-ui').UI[]} [selected] 当前选中元素。
+   * @returns {Array<{ key: string, label: string, shortcut: string, disabled: boolean }>}
+   */
+  getLayerMenuActions(selected = this.#innerEditor?.list ?? []) {
+    const layerState = this.#getLayerState(selected)
+
+    return this.#layerActions.map((action) => ({
+      ...action,
+      disabled: !layerState[action.key]
+    }))
   }
 
   /**
@@ -1878,6 +1873,9 @@ export class EditorActionButtons {
       this.#innerEditor.off_(EditorMoveEvent.MOVE, this.#syncTextHeightHandlesAfterTransform, this)
       this.#innerEditor.off_(EditorScaleEvent.BEFORE_SCALE, this.#syncTextHeightHandlesAfterTransform, this)
       this.#innerEditor.off_(EditorScaleEvent.SCALE, this.#syncTextHeightHandlesAfterTransform, this)
+      this.#innerEditor.off_(EditorMoveEvent.BEFORE_MOVE, this.closeLayerMenu, this)
+      this.#innerEditor.off_(EditorScaleEvent.BEFORE_SCALE, this.closeLayerMenu, this)
+      this.#innerEditor.off_(EditorRotateEvent.BEFORE_ROTATE, this.closeLayerMenu, this)
       this.#innerEditor.off_(EditorRotateEvent.ROTATE, this.#onRotate, this)
       this.#innerEditor = null
     }

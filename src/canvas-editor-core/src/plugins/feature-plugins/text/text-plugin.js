@@ -10,6 +10,15 @@ const RAW_TEXT_KEY = '__canvasEditorRawText'
 const MIN_TEXT_PIXEL = 1
 const VISUAL_ITALIC_KEY = '__canvasEditorVisualItalic'
 const VISUAL_ITALIC_SKEW_X = -12
+const DIMENSION_TEXT_KEYS = new Set([
+  'text',
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'italic',
+  'letterSpacing',
+  'writingMode'
+])
 
 /**
  * 文本插件 —— 基于 leafer-ui 原生 Text 节点提供文本添加与样式更新能力。
@@ -129,6 +138,7 @@ export class TextPlugin {
 
     const { renderOptions, rawText } = this._getRenderableTextOptions(normalizedOptions, text)
     this._applyTextEditConfig(renderOptions)
+    this._applyMeasuredUpdateWidth(text, renderOptions, rawText, normalizedOptions)
 
     text.set?.(renderOptions)
     this._setRawText(text, rawText)
@@ -138,6 +148,7 @@ export class TextPlugin {
     text.updateLayout?.()
     this._activeText = text
     this._context.innerEditor?.select(text)
+    this._refreshSelectedEditBox()
     applyTextEditorStyleLater(this.getStyle(text))
     this._context.eventBus.emit('text:updated', { text, options: normalizedOptions })
     this._emitSelected(text)
@@ -420,6 +431,50 @@ export class TextPlugin {
     return Math.max(0, charCount - 1) * Number(letterSpacing || 0)
   }
 
+  /**
+   * 文本尺寸相关样式变化时，同步更新文本节点宽度。
+   *
+   * 文本创建时会写入测量宽度来避免闪烁，后续字号、字重、字距等变化后，
+   * Leafer 不会自动清掉这个固定宽度，所以需要重新测量并写回。
+   *
+   * @param {LeaferText} text 当前文本节点。
+   * @param {Object} renderOptions 即将写入 Text 的渲染配置。
+   * @param {string} rawText 原始文本。
+   * @param {Object} normalizedOptions 本次更新配置。
+   * @returns {void}
+   * @private
+   */
+  _applyMeasuredUpdateWidth(text, renderOptions, rawText, normalizedOptions) {
+    if (Object.prototype.hasOwnProperty.call(normalizedOptions, 'width')) {
+      return
+    }
+
+    if (!this._hasDimensionTextChange(normalizedOptions)) {
+      return
+    }
+
+    const measureOptions = {
+      ...(this.getStyle(text) ?? {}),
+      ...renderOptions
+    }
+    const width = this._measureTextWidth(rawText, measureOptions)
+
+    if (width > 0) {
+      renderOptions.width = width
+    }
+  }
+
+  /**
+   * 判断本次更新是否会影响文本外框尺寸。
+   *
+   * @param {Object} options 本次更新配置。
+   * @returns {boolean} 是否影响文本尺寸。
+   * @private
+   */
+  _hasDimensionTextChange(options) {
+    return Object.keys(options ?? {}).some((key) => DIMENSION_TEXT_KEYS.has(key))
+  }
+
   _getRenderableTextOptions(options, target) {
     const renderOptions = { ...options }
     const hasText = Object.prototype.hasOwnProperty.call(renderOptions, 'text')
@@ -689,6 +744,46 @@ export class TextPlugin {
     text.set?.(nextStyle)
     text.forceUpdate?.()
     text.updateLayout?.()
+  }
+
+  /**
+   * 刷新官方选择框边界。
+   *
+   * 外部面板直接修改 fontSize / lineHeight 时，Text 节点尺寸会变化，
+   * 但当前选区目标没有变化，官方 Editor 不一定触发一次新的选区计算。
+   * 这里显式调用官方刷新方法，让选择框跟随文本尺寸同步更新。
+   *
+   * @returns {void}
+   * @private
+   */
+  _refreshSelectedEditBox() {
+    const innerEditor = this._context?.innerEditor
+
+    innerEditor?.update?.()
+    innerEditor?.updateEditBox?.()
+    this._refreshSelectedEditBoxLater()
+  }
+
+  /**
+   * 在 Leafer 完成文本布局后再次刷新选择框。
+   *
+   * fontSize / lineHeight 写入后，Text 的 worldBoxBounds 可能要到下一帧才更新。
+   * 立即刷新只能拿到旧边界，所以需要等待浏览器帧回调后再刷新一次。
+   *
+   * @returns {void}
+   * @private
+   */
+  _refreshSelectedEditBoxLater() {
+    const schedule = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (callback) => setTimeout(callback, 0)
+
+    schedule(() => {
+      const innerEditor = this._context?.innerEditor
+
+      innerEditor?.update?.()
+      innerEditor?.updateEditBox?.()
+    })
   }
 
   /**

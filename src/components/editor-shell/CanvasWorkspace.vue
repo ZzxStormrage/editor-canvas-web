@@ -6,30 +6,70 @@
       </v-chip>
       <div class="zoom-cluster">
         <v-btn
+          class="editor-icon-button"
           color="primary"
-          icon="mdi-minus"
           size="small"
           variant="tonal"
           aria-label="缩小"
           @click="editor.zoomOut"
-        />
+        >
+          <v-icon icon="mdi-minus" size="18" />
+          <v-tooltip
+            activator="parent"
+            location="top"
+          >
+            缩小
+          </v-tooltip>
+        </v-btn>
         <span>{{ editor.zoomPercent.value }}%</span>
         <v-btn
+          class="editor-icon-button"
           color="primary"
-          icon="mdi-plus"
           size="small"
           variant="tonal"
           aria-label="放大"
           @click="editor.zoomIn"
-        />
+        >
+          <v-icon icon="mdi-plus" size="18" />
+          <v-tooltip
+            activator="parent"
+            location="top"
+          >
+            放大
+          </v-tooltip>
+        </v-btn>
         <v-btn
+          class="editor-icon-button"
           color="primary"
-          icon="mdi-fit-to-page-outline"
           size="small"
           variant="tonal"
           aria-label="重置缩放"
           @click="editor.resetZoom"
-        />
+        >
+          <v-icon icon="mdi-fit-to-page-outline" size="18" />
+          <v-tooltip
+            activator="parent"
+            location="top"
+          >
+            重置缩放
+          </v-tooltip>
+        </v-btn>
+        <v-btn
+          class="editor-icon-button"
+          color="primary"
+          size="small"
+          variant="tonal"
+          aria-label="垂直居中"
+          @click="editor.centerArtboard"
+        >
+          <v-icon icon="mdi-crosshairs-gps" size="18" />
+          <v-tooltip
+            activator="parent"
+            location="top"
+          >
+            居中画板
+          </v-tooltip>
+        </v-btn>
       </div>
     </div>
 
@@ -38,14 +78,21 @@
         <div
           :ref="setCanvasRef"
           class="canvas-view"
+          @pointerdown.self="editor.closeLayerMenu"
           @dblclick="editor.handleCanvasDoubleClick"
         ></div>
+        <SelectionLayerMenu
+          :menu="editor.layerMenu.value"
+          @action="editor.runLayerAction"
+        />
       </div>
     </div>
   </main>
 </template>
 
 <script setup>
+import SelectionLayerMenu from './SelectionLayerMenu.vue';
+
 const props = defineProps({
   editor: {
     type: Object,

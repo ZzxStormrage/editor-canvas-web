@@ -145,8 +145,8 @@ export const DEFAULT_CANVAS_CONFIG = {
     min: 0.2,
     /** 最大缩放倍数。 */
     max: 4,
-    /** 单次缩放步进。 */
-    step: 0.1,
+    /** 顶部按钮单次缩放步进，0.01 表示每次变化 1%。 */
+    step: 0.01,
     /** 初始化缩放倍数。 */
     initial: 1
   },

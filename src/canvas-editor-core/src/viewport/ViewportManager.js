@@ -20,12 +20,14 @@ import { WheelZoomStrategy } from './strategies/WheelZoomStrategy.js';
 import { PinchZoomStrategy } from './strategies/PinchZoomStrategy.js';
 
 /**
- * @typedef {'wheel' | 'pinch' | 'api' | 'button'} ZoomSource
+ * @typedef {'wheel' | 'pinch' | 'api' | 'button' | 'fit'} ZoomSource
  */
 
 export class ViewportManager {
   /** @type {import('leafer-ui').Leafer} */
   #leafer;
+  /** @type {HTMLElement} */
+  #view;
   /** @type {import('leafer-ui').Group} */
   #stage;
   /** @type {Proxy} — EditorState proxy */
@@ -41,12 +43,14 @@ export class ViewportManager {
 
   /**
    * @param {import('leafer-ui').Leafer} leafer
+   * @param {HTMLElement} view
    * @param {import('leafer-ui').Group} stage
    * @param {Proxy} stateProxy
    * @param {import('../logic/event-bus.js').EventBus} bus
    */
-  constructor(leafer, stage, stateProxy, bus) {
+  constructor(leafer, view, stage, stateProxy, bus) {
     this.#leafer = leafer;
+    this.#view = view;
     this.#stage = stage;
     this.#state = stateProxy;
     this.#bus = bus;
@@ -96,7 +100,7 @@ export class ViewportManager {
     this.#bus.emit('viewport:zoom-source', { source, zoom: newZoom });
   }
 
-  // ═══════════════════ API 缩放（无锚点） ═══════════════════
+  // ═══════════════════ API 缩放 ═══════════════════
 
   /** @param {number} z */
   setZoom(z) {
@@ -106,17 +110,147 @@ export class ViewportManager {
 
   /** @param {number} [step] */
   zoomIn(step) {
-    this.setZoom(this.#state.zoom + (step ?? this.#state.zoomOptions.step));
+    this.#zoomToArtboardCenter(this.#state.zoom + (step ?? this.#state.zoomOptions.step));
   }
 
   /** @param {number} [step] */
   zoomOut(step) {
-    this.setZoom(this.#state.zoom - (step ?? this.#state.zoomOptions.step));
+    this.#zoomToArtboardCenter(this.#state.zoom - (step ?? this.#state.zoomOptions.step));
   }
 
   /** 重置到初始缩放 */
   resetZoom() {
-    this.setZoom(this.#state.zoomOptions.initial);
+    this.#zoomToArtboardCenter(this.#state.zoomOptions.initial);
+  }
+
+  /**
+   * 按当前 canvas-view 大小缩放画板并居中显示。
+   *
+   * @param {number} [padding=0] 可视区域内边距。
+   * @returns {void}
+   */
+  fitArtboardToView(padding = 0) {
+    const viewportBounds = this.#getViewportBounds(padding);
+    const artboardBounds = this.#getArtboardBounds();
+    const fitZoom = Math.min(
+      viewportBounds.width / artboardBounds.width,
+      viewportBounds.height / artboardBounds.height
+    );
+
+    this.#zoomToArtboardCenter(fitZoom, 'fit');
+  }
+
+  /**
+   * 不改变缩放，仅将画板中心对齐到当前可视区域中心。
+   *
+   * @returns {void}
+   */
+  centerArtboard() {
+    this.#stage.scale = this.#state.zoom;
+    this.#centerStageOnArtboard(this.#state.zoom);
+  }
+
+  /**
+   * 缩放并让白色画板中心对齐可视区域中心。
+   *
+   * @param {number} nextZoom 目标缩放倍数。
+   * @param {ZoomSource} [source='button'] 缩放来源。
+   * @returns {void}
+   */
+  #zoomToArtboardCenter(nextZoom, source = 'button') {
+    const curZoom = this.#state.zoom;
+    const targetZoom = MathHelper.within(
+      nextZoom,
+      this.#state.zoomOptions.min,
+      this.#state.zoomOptions.max
+    );
+
+    this.#stage.scale = targetZoom;
+    this.#centerStageOnArtboard(targetZoom);
+
+    if (targetZoom === curZoom) {
+      return;
+    }
+
+    this.#state.zoom = targetZoom;
+    this.#bus.emit('viewport:zoom-source', { source, zoom: targetZoom });
+  }
+
+  /**
+   * 按当前画板中心重新定位 stage，保证按钮缩放后画板居中。
+   *
+   * @param {number} zoom 当前缩放倍数。
+   * @returns {void}
+   */
+  #centerStageOnArtboard(zoom) {
+    const viewportCenter = this.#getViewportCenter();
+    const artboardCenter = this.#getArtboardCenter();
+
+    this.#stage.x = viewportCenter.x - artboardCenter.x * zoom;
+    this.#stage.y = viewportCenter.y - artboardCenter.y * zoom;
+  }
+
+  /**
+   * 获取当前画布容器的视觉中心点。
+   *
+   * @returns {{ x: number, y: number }} 可视区域中心点。
+   */
+  #getViewportCenter() {
+    const bounds = this.#getViewportBounds();
+
+    return {
+      x: bounds.width / 2,
+      y: bounds.height / 2
+    };
+  }
+
+  /**
+   * 获取当前画布容器可用尺寸。
+   *
+   * @param {number} [padding=0] 可视区域内边距。
+   * @returns {{ width: number, height: number }} 可用尺寸。
+   */
+  #getViewportBounds(padding = 0) {
+    const bounds = this.#view?.getBoundingClientRect?.();
+    const width = bounds?.width ?? this.#state.width;
+    const height = bounds?.height ?? this.#state.height;
+
+    return {
+      width: Math.max(1, width - padding * 2),
+      height: Math.max(1, height - padding * 2)
+    };
+  }
+
+  /**
+   * 获取白色画板在内容坐标系中的边界。
+   *
+   * @returns {{ x: number, y: number, width: number, height: number }} 画板边界。
+   */
+  #getArtboardBounds() {
+    const artboard = this.#state.artboard ?? {};
+
+    return {
+      x: Number(artboard.x ?? 0),
+      y: Number(artboard.y ?? 0),
+      width: Number(artboard.width ?? this.#state.width),
+      height: Number(artboard.height ?? this.#state.height)
+    };
+  }
+
+  /**
+   * 获取白色画板在内容坐标系中的中心点。
+   *
+   * @returns {{ x: number, y: number }} 画板中心点。
+   */
+  #getArtboardCenter() {
+    const artboard = this.#getArtboardBounds();
+    const x = Number(artboard.x ?? 0);
+    const y = Number(artboard.y ?? 0);
+
+    return {
+      x: x + artboard.width / 2,
+      y: y + artboard.height / 2
+    };
   }
 
   // ═══════════════════ 安装交互 ═══════════════════
