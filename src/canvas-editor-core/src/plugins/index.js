@@ -1,4 +1,5 @@
 import { ImagePlugin } from './feature-plugins/image/image-plugin.js'
+import { LayerPlugin } from './feature-plugins/layer/layer-plugin.js'
 import { TextPlugin } from './feature-plugins/text/text-plugin.js'
 
 /**
@@ -12,4 +13,5 @@ import { TextPlugin } from './feature-plugins/text/text-plugin.js'
 export function registerDefaultPlugins(pluginManager) {
   pluginManager.register(new ImagePlugin())
   pluginManager.register(new TextPlugin())
+  pluginManager.register(new LayerPlugin())
 }

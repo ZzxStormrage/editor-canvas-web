@@ -42,6 +42,7 @@ export { EditorError } from './errors/editor-error.js'
 export { DEFAULT_CANVAS_CONFIG } from './config/index.js'
 export { TextPlugin } from './plugins/feature-plugins/text/text-plugin.js'
 export { ImagePlugin } from './plugins/feature-plugins/image/image-plugin.js'
+export { LayerPlugin } from './plugins/feature-plugins/layer/layer-plugin.js'
 export { DEFAULT_PIXEL_DPI, formatMillimeter, pixelToMillimeter } from './utils/unit.js'
 
 // ────── 工厂函数（保持向后兼容的 init 接口） ──────

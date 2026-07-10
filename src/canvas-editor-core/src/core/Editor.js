@@ -86,6 +86,10 @@ export class Editor {
   get text() {
     return this.#pluginManager.get('text')
   }
+  /** @returns {import('../plugins/feature-plugins/layer/layer-plugin.js').LayerPlugin} 图层插件。 */
+  get layer() {
+    return this.#pluginManager.get('layer')
+  }
   /** @returns {import('@leafer-in/editor').Editor} 图形编辑器实例 */
   get editor() {
     return this.#innerEditor
