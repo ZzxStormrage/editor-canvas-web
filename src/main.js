@@ -2,11 +2,13 @@ import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
 import { createVuetifyPlugin } from './plugins/vuetify.js'
+import { router } from './router/index.js'
 
 const app = createApp(App)
 const vuetify = createVuetifyPlugin()
 
 app.use(vuetify)
+app.use(router)
 
 // 捕获未处理的 Promise 错误
 window.addEventListener('unhandledrejection', (event) => {

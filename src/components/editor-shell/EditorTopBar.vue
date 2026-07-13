@@ -12,7 +12,22 @@
 
       <div class="top-bar-actions">
         <span class="top-bar-status">本地编辑</span>
+        <v-btn
+          class="top-bar-preview-button"
+          color="surface"
+          density="compact"
+          prepend-icon="mdi-cellphone-eye"
+          size="small"
+          variant="flat"
+          @click="emit('preview')"
+        >
+          H5 预览
+        </v-btn>
       </div>
     </div>
   </v-app-bar>
 </template>
+
+<script setup>
+const emit = defineEmits(['preview']);
+</script>

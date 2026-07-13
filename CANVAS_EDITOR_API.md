@@ -717,3 +717,46 @@ editor.deselect()
 unsubscribe()
 editor.destroy()
 ```
+
+## 移动端 H5 文档协议
+
+编辑器页面位于 `#/editor`，移动端只读预览页面位于 `#/h5-preview`。
+点击编辑器顶部的“H5 预览”后，会将当前画板导出为普通 JSON 并交给 H5 页面渲染。
+
+```js
+{
+  version: 1,
+  canvas: {
+    width: 375,
+    height: 667,
+    background: '#ffffff'
+  },
+  elements: [
+    {
+      tag: 'Text',
+      x: 24,
+      y: 80,
+      width: 327,
+      text: '活动标题',
+      fontSize: 32,
+      elementId: 'stable-element-id',
+      attributes: {
+        textInput: {
+          enabled: true,
+          characterSet: 'any',
+          allowManualNewline: true,
+          allowSymbols: true,
+          maxCharactersPerLine: 20,
+          maxCharacters: 100,
+          maxLines: 4
+        }
+      }
+    }
+  ]
+}
+```
+
+- 元素坐标以画板左上角为原点，与编辑器工作区中的缩放和居中位置无关。
+- 图片 Blob URL 在导出时转成 Data URL，避免页面跳转后资源失效。
+- H5 页面也可以在“导入或查看 JSON”中接收后端返回的同结构数据。
+- `textInput.enabled=true` 的文字元素会渲染为 H5 输入控件，其余元素保持只读展示。

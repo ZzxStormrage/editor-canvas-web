@@ -36,7 +36,7 @@ export function useCanvasEditor() {
   }
 
   const textControls = useTextControls(getEditor)
-  const artboardControls = useArtboardControls(getEditor, syncZoom)
+  const artboardControls = useArtboardControls(getEditor)
   const assetControls = useAssetControls(getEditor, artboardControls.getArtboardBounds, textControls.fontFamily)
   const layerMenuControls = useLayerMenu(getEditor, canvasRef)
   const layerControls = useLayerControls(getEditor)
@@ -112,6 +112,7 @@ export function useCanvasEditor() {
   onBeforeUnmount(destroyCanvas)
 
   return {
+    getEditor,
     canvasRef,
     zoom,
     zoomPercent,
@@ -135,15 +136,11 @@ export function useCanvasEditor() {
     artboardHeight: artboardControls.artboardHeight,
     printAreaWidth: artboardControls.printAreaWidth,
     printAreaHeight: artboardControls.printAreaHeight,
-    maskConfirmDialog: artboardControls.maskConfirmDialog,
-    maskConfirmSizeText: artboardControls.maskConfirmSizeText,
     artboardMillimeterSize: artboardControls.artboardMillimeterSize,
     printAreaMillimeterSize: artboardControls.printAreaMillimeterSize,
     updateArtboardSize: artboardControls.updateArtboardSize,
     openMaskImagePicker: artboardControls.openMaskImagePicker,
     handleMaskImageChange: artboardControls.handleMaskImageChange,
-    confirmAddMaskImage: artboardControls.confirmAddMaskImage,
-    cancelAddMaskImage: artboardControls.cancelAddMaskImage,
     addPrintArea: artboardControls.addPrintArea,
     deletePrintArea: artboardControls.deletePrintArea,
     imageInputRef: assetControls.imageInputRef,

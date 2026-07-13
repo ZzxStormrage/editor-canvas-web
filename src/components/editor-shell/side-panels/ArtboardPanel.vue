@@ -122,23 +122,6 @@
       </div>
     </PanelGroup>
 
-    <v-dialog v-model="editor.maskConfirmDialog.value.visible" max-width="360">
-      <v-card class="mask-confirm-dialog">
-        <v-card-title>图片尺寸过大</v-card-title>
-        <v-card-text>
-          当前图片为 {{ editor.maskConfirmSizeText.value }}，继续添加会自动调整画布尺寸。
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="editor.cancelAddMaskImage">
-            取消
-          </v-btn>
-          <v-btn color="primary" variant="flat" @click="editor.confirmAddMaskImage">
-            确认
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
   </section>
 </template>
 

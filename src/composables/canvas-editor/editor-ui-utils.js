@@ -63,49 +63,6 @@ export function resolveTextDecoration({ underline, lineThrough }) {
 }
 
 /**
- * 格式化文件大小。
- *
- * @param {number} size 文件大小，单位 byte。
- * @returns {string} MB 文本。
- */
-export function formatFileSize(size) {
-  const megabyte = Number(size) / 1024 / 1024
-
-  if (!Number.isFinite(megabyte)) {
-    return '0 MB'
-  }
-
-  return `${megabyte.toFixed(2)} MB`
-}
-
-/**
- * 读取图片文件的真实像素尺寸。
- *
- * @param {File} file 图片文件。
- * @returns {Promise<{ width: number, height: number, size: number }>} 图片信息。
- */
-export function readImageFileInfo(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file)
-    const image = new Image()
-
-    image.onload = () => {
-      URL.revokeObjectURL(url)
-      resolve({
-        width: image.naturalWidth || image.width,
-        height: image.naturalHeight || image.height,
-        size: file.size
-      })
-    }
-    image.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('读取图片尺寸失败'))
-    }
-    image.src = url
-  })
-}
-
-/**
  * 判断世界坐标是否落在元素外框内。
  *
  * @param {Object} element Leafer 节点。

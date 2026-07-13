@@ -2,14 +2,12 @@ import { Rect } from 'leafer-ui'
 import { computed, ref, watch } from 'vue'
 
 import { formatMillimeter, pixelToMillimeter } from '../../canvas-editor-core/src/utils/unit.js'
-import { formatFileSize, normalizePixelForUI, readImageFileInfo } from './editor-ui-utils.js'
+import { normalizePixelForUI } from './editor-ui-utils.js'
 
 const MASK_NODE_KEY = '__eleEditorMask'
 const MASK_NODE_LABEL = '遮罩图'
 const PRINT_AREA_NODE_KEY = '__eleEditorPrintArea'
 const PRINT_AREA_NODE_LABEL = '打印区域'
-const MASK_MAX_PIXEL_SIZE = 2500
-const MASK_MAX_FILE_SIZE = 2 * 1024 * 1024
 
 /**
  * 管理画板尺寸、遮罩底图和打印区域。
@@ -18,25 +16,18 @@ const MASK_MAX_FILE_SIZE = 2 * 1024 * 1024
  * 不跨层引用底层插件实现。
  *
  * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor 获取编辑器实例。
- * @param {() => void} syncZoom 画板自适应后同步缩放值。
  * @returns {Object} 画板状态和操作。
  */
-export function useArtboardControls(getEditor, syncZoom) {
+export function useArtboardControls(getEditor) {
   const maskInputRef = ref(null)
   const artboardWidth = ref(375)
   const artboardHeight = ref(667)
   const printAreaWidth = ref(300)
   const printAreaHeight = ref(200)
-  const maskConfirmDialog = ref(createEmptyMaskDialog())
   let activePrintArea = null
 
   const artboardMillimeterSize = computed(() => formatMillimeterSize(artboardWidth.value, artboardHeight.value))
   const printAreaMillimeterSize = computed(() => formatMillimeterSize(printAreaWidth.value, printAreaHeight.value))
-  const maskConfirmSizeText = computed(() => {
-    const payload = maskConfirmDialog.value
-
-    return `${payload.width} x ${payload.height} px / ${formatFileSize(payload.size)}`
-  })
 
   /** @returns {{ x: number, y: number, width: number, height: number }} */
   function getArtboardBounds() {
@@ -91,52 +82,16 @@ export function useArtboardControls(getEditor, syncZoom) {
       return
     }
 
-    const imageInfo = await readImageFileInfo(file)
-
-    if (shouldConfirmMaskImage(imageInfo)) {
-      maskConfirmDialog.value = {
-        visible: true,
-        file,
-        ...imageInfo
-      }
-      return
-    }
-
-    await addMaskImage(file, imageInfo)
-  }
-
-  /** @returns {Promise<void>} */
-  async function confirmAddMaskImage() {
-    const payload = maskConfirmDialog.value
-
-    maskConfirmDialog.value = { ...payload, visible: false }
-
-    if (!payload.file) {
-      return
-    }
-
-    await addMaskImage(payload.file, payload)
-    clearMaskConfirmDialog()
-  }
-
-  /** @returns {void} */
-  function cancelAddMaskImage() {
-    clearMaskConfirmDialog()
-  }
-
-  /** @returns {void} */
-  function clearMaskConfirmDialog() {
-    maskConfirmDialog.value = createEmptyMaskDialog()
+    await addMaskImage(file)
   }
 
   /**
-   * 遮罩图属于画板背景业务节点：替换旧节点、同步画板尺寸、锁定并置底。
+   * 遮罩图属于画板背景业务节点：替换旧节点、铺满当前画板、锁定并置底。
    *
    * @param {File} file 图片文件。
-   * @param {{ width: number, height: number }} imageInfo 图片尺寸。
    * @returns {Promise<void>}
    */
-  async function addMaskImage(file, imageInfo) {
+  async function addMaskImage(file) {
     const editor = getEditor()
 
     if (!editor) {
@@ -144,9 +99,6 @@ export function useArtboardControls(getEditor, syncZoom) {
     }
 
     removeMaskImages(editor)
-    editor.setArtboardSize(imageInfo.width, imageInfo.height)
-    syncArtboardControls()
-
     const bounds = getArtboardBounds()
     const maskImage = await editor.image.add(file, {
       x: bounds.x,
@@ -160,8 +112,6 @@ export function useArtboardControls(getEditor, syncZoom) {
     moveElementToBottom(maskImage)
     editor.deselect()
     editor.artboard?.syncAllElements?.()
-    editor.fitArtboardToView()
-    syncZoom()
   }
 
   /** @returns {void} */
@@ -245,8 +195,6 @@ export function useArtboardControls(getEditor, syncZoom) {
     artboardHeight,
     printAreaWidth,
     printAreaHeight,
-    maskConfirmDialog,
-    maskConfirmSizeText,
     artboardMillimeterSize,
     printAreaMillimeterSize,
     getArtboardBounds,
@@ -254,31 +202,9 @@ export function useArtboardControls(getEditor, syncZoom) {
     updateArtboardSize,
     openMaskImagePicker,
     handleMaskImageChange,
-    confirmAddMaskImage,
-    cancelAddMaskImage,
     addPrintArea,
     deletePrintArea
   }
-}
-
-/** @returns {{ visible: boolean, file: null, width: number, height: number, size: number }} */
-function createEmptyMaskDialog() {
-  return {
-    visible: false,
-    file: null,
-    width: 0,
-    height: 0,
-    size: 0
-  }
-}
-
-/** @param {{ width: number, height: number, size: number }} imageInfo */
-function shouldConfirmMaskImage(imageInfo) {
-  return (
-    imageInfo.width > MASK_MAX_PIXEL_SIZE ||
-    imageInfo.height > MASK_MAX_PIXEL_SIZE ||
-    imageInfo.size > MASK_MAX_FILE_SIZE
-  )
 }
 
 /** @param {Object} maskImage Leafer 图片节点。 */
