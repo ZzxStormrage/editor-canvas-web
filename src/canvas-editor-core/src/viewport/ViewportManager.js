@@ -88,7 +88,7 @@ export class ViewportManager {
     const ratio = newZoom / curZoom;
 
     // 锚点缩放：调整 stage 位移，让锚点在视觉上不移动
-    if (anchorX != null && anchorY != null) {
+    if (anchorX !== null && anchorX !== undefined && anchorY !== null && anchorY !== undefined) {
       const sx = this.#stage.x;
       const sy = this.#stage.y;
       this.#stage.x = anchorX - (anchorX - sx) * ratio;
@@ -126,16 +126,29 @@ export class ViewportManager {
   /**
    * 按当前 canvas-view 大小缩放画板并居中显示。
    *
-   * @param {number} [padding=0] 可视区域内边距。
+   * 数字参数保持旧调用方式，等价于 `{ padding }`。`viewportRatio` 控制画板
+   * 最长边占可用视口的比例，例如 0.8 表示占据 80%。`expandZoomRange`
+   * 用于图片驱动画板尺寸等场景，确保极大或极小画板仍能精确适配。
+   *
+   * @param {number | { padding?: number, viewportRatio?: number, expandZoomRange?: boolean }} [options=0] 适配选项。
    * @returns {void}
    */
-  fitArtboardToView(padding = 0) {
+  fitArtboardToView(options = 0) {
+    const { padding, viewportRatio, expandZoomRange } = normalizeFitOptions(options);
     const viewportBounds = this.#getViewportBounds(padding);
     const artboardBounds = this.#getArtboardBounds();
     const fitZoom = Math.min(
       viewportBounds.width / artboardBounds.width,
       viewportBounds.height / artboardBounds.height
-    );
+    ) * viewportRatio;
+
+    if (expandZoomRange) {
+      this.#state.zoomOptions = {
+        ...this.#state.zoomOptions,
+        min: Math.min(this.#state.zoomOptions.min, fitZoom),
+        max: Math.max(this.#state.zoomOptions.max, fitZoom)
+      };
+    }
 
     this.#zoomToArtboardCenter(fitZoom, 'fit');
   }
@@ -299,4 +312,31 @@ export class ViewportManager {
     this.#cleanups.forEach(fn => fn());
     this.#cleanups = [];
   }
+}
+
+/**
+ * @param {number | { padding?: number, viewportRatio?: number, expandZoomRange?: boolean }} options
+ * @returns {{ padding: number, viewportRatio: number, expandZoomRange: boolean }}
+ */
+function normalizeFitOptions(options) {
+  if (typeof options === 'number') {
+    return {
+      padding: Math.max(0, Number.isFinite(options) ? options : 0),
+      viewportRatio: 1,
+      expandZoomRange: false
+    };
+  }
+
+  const padding = Number(options?.padding ?? 0);
+  const viewportRatio = Number(options?.viewportRatio ?? 1);
+
+  return {
+    padding: Math.max(0, Number.isFinite(padding) ? padding : 0),
+    viewportRatio: MathHelper.within(
+      Number.isFinite(viewportRatio) ? viewportRatio : 1,
+      0.05,
+      1
+    ),
+    expandZoomRange: options?.expandZoomRange === true
+  };
 }

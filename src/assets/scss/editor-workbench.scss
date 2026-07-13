@@ -79,12 +79,17 @@
   font-weight: 700;
 }
 
-.top-bar-preview-button {
+.top-bar-preview-button,
+.top-bar-docs-button {
   min-height: 28px;
   color: var(--editor-primary);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0;
+}
+
+.top-bar-docs-button {
+  color: rgba(var(--v-theme-on-primary), 0.94);
 }
 
 .editor-action-button {
@@ -483,7 +488,7 @@
 
 .layer-item {
   display: grid;
-  grid-template-columns: 16px 24px minmax(0, 1fr) 80px;
+  grid-template-columns: 16px 24px minmax(0, 1fr) 106px;
   align-items: center;
   min-height: 38px;
   padding: 3px 4px;
@@ -544,14 +549,51 @@
   background: rgba(var(--v-theme-primary), 0.09);
 }
 
+.layer-name-cell {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
 .layer-name {
   min-width: 0;
+  flex: 1;
   overflow: hidden;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.layer-image-role-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #4b5563;
+  background: #eef0f4;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.layer-image-role-badge--background {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.layer-image-role-badge--mask {
+  color: #9a3412;
+  background: #ffedd5;
+}
+
+.layer-image-role-badge--ai-variable {
+  color: #1d4ed8;
+  background: #dbeafe;
 }
 
 .layer-actions {
@@ -561,6 +603,10 @@
   gap: 2px;
   opacity: 0.72;
   transition: opacity 160ms ease;
+}
+
+.layer-actions--always-visible {
+  opacity: 1;
 }
 
 .layer-item:hover .layer-actions,

@@ -135,7 +135,7 @@ function truncateByWeightedLength(value, maxLength) {
   let result = '';
 
   for (const character of value) {
-    const characterLength = /[\u0000-\u00ff]/.test(character) ? 1 : 2;
+    const characterLength = getWeightedCharacterLength(character);
     if (length + characterLength > maxLength) break;
     length += characterLength;
     result += character;
@@ -168,7 +168,7 @@ function wrapByWeightedLength(value, maxLength) {
 }
 
 function getWeightedCharacterLength(character) {
-  return /[\u0000-\u00ff]/.test(character) ? 1 : 2;
+  return character.codePointAt(0) <= 0xff ? 1 : 2;
 }
 
 function estimateTextHeight(element) {

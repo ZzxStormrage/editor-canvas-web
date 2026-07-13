@@ -13,6 +13,17 @@
       <div class="top-bar-actions">
         <span class="top-bar-status">本地编辑</span>
         <v-btn
+          class="top-bar-docs-button"
+          color="surface"
+          density="compact"
+          prepend-icon="mdi-book-open-page-variant-outline"
+          size="small"
+          to="/docs"
+          variant="text"
+        >
+          API 文档
+        </v-btn>
+        <v-btn
           class="top-bar-preview-button"
           color="surface"
           density="compact"

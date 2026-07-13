@@ -9,7 +9,8 @@
     "build": "npm run prebuild && vite build --mode production",
     "build:test": "npm run prebuild && vite build --mode staging",
     "preview": "vite preview",
-    "lint": "eslint . --ext .vue,.js,.ts,.jsx,.tsx --fix",
+    "lint": "eslint . --ext .vue,.js,.ts,.jsx,.tsx",
+    "lint:fix": "eslint . --ext .vue,.js,.ts,.jsx,.tsx --fix",
     "lint:prettier": "prettier --write \"**/*.{js,ts,json,css,less,scss,vue,html,md}\""
   },
   "dependencies": {
@@ -31,6 +32,7 @@
     "browser-image-compression": "^2.0.2",
     "leafer-ui": "^2.1.4",
     "lodash": "^4.17.21",
+    "marked": "^18.0.6",
     "nanoid": "^4.0.1",
     "pinia": "^2.1.6",
     "pinia-plugin-persist": "^1.0.0",

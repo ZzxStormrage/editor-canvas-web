@@ -41,8 +41,12 @@ export function saveH5Document(document) {
 }
 
 export function readH5Document() {
-  const value = localStorage.getItem(H5_DOCUMENT_STORAGE_KEY);
-  return value ? parseH5Document(value) : createSampleH5Document();
+  try {
+    const value = localStorage.getItem(H5_DOCUMENT_STORAGE_KEY);
+    return value ? parseH5Document(value) : createSampleH5Document();
+  } catch {
+    return createSampleH5Document();
+  }
 }
 
 export function parseH5Document(value) {

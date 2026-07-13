@@ -15,6 +15,8 @@ export class ImagePlugin {
   constructor() {
     /** @private @type {Object | null} */
     this._context = null;
+    /** @private @type {Set<string>} */
+    this._ownedObjectUrls = new Set();
   }
 
   /**
@@ -68,10 +70,11 @@ export class ImagePlugin {
    */
   async add(source, options = {}) {
     this._assertReady();
+    let imageSource = null;
 
     try {
       const { contentLayer, eventBus, state } = this._context;
-      const imageSource = await this._normalizeSource(source);
+      imageSource = await this._normalizeSource(source);
       const imageSize = await this._loadImageSize(imageSource.url);
       const imageConfig = this._normalizePlacement(imageSize, options, state);
       const image = new LeaferImage({
@@ -84,6 +87,9 @@ export class ImagePlugin {
 
       getElementDataContainer(image, true);
       contentLayer.add(image);
+      if (imageSource.ownedObjectUrl) {
+        this._ownedObjectUrls.add(imageSource.url);
+      }
       // 延迟到下一帧 select，确保 contentLayer.add() 后 Leafer
       // 内部渲染管线稳定，避免 editTool 尚未加载时触发 update()
       await new Promise(resolve => requestAnimationFrame(resolve));
@@ -92,6 +98,9 @@ export class ImagePlugin {
 
       return image;
     } catch (error) {
+      if (imageSource?.ownedObjectUrl && !this._ownedObjectUrls.has(imageSource.url)) {
+        URL.revokeObjectURL(imageSource.url);
+      }
       if (error instanceof EditorError) {
         throw error;
       }
@@ -101,11 +110,43 @@ export class ImagePlugin {
   }
 
   /**
+   * 读取图片原始像素尺寸，不创建画布节点。
+   *
+   * 图片解析仍由 ImagePlugin 统一负责，避免 Vue composable 重复实现 URL、SVG、
+   * File 和 Blob 的兼容逻辑。
+   *
+   * @param {string | File | Blob} source 图片来源。
+   * @returns {Promise<{ width: number, height: number }>} 原始像素尺寸。
+   * @throws {EditorError} 当图片来源无效或尺寸读取失败时抛出。
+   */
+  async getSize(source) {
+    this._assertReady();
+    let imageSource = null;
+
+    try {
+      imageSource = await this._normalizeSource(source);
+      return await this._loadImageSize(imageSource.url);
+    } catch (error) {
+      if (error instanceof EditorError) {
+        throw error;
+      }
+
+      throw new EditorError(error.message || 'Read image size failed.', 'IMAGE_SIZE_READ_FAILED');
+    } finally {
+      if (imageSource?.ownedObjectUrl) {
+        URL.revokeObjectURL(imageSource.url);
+      }
+    }
+  }
+
+  /**
    * 销毁插件。
    *
    * @returns {void}
    */
   destroy() {
+    this._ownedObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+    this._ownedObjectUrls.clear();
     this._context = null;
   }
 
@@ -180,7 +221,8 @@ export class ImagePlugin {
    *
    * @private
    * @param {string | File | Blob} source 图片来源。
-   * @returns {Promise<{ url: string, format: 'svg' | 'image' }>} 可用于 leafer-ui Image.url 的资源。
+   * @returns {Promise<{ url: string, format: 'svg' | 'image', ownedObjectUrl: boolean }>}
+   * 可用于 leafer-ui Image.url 的资源。
    * @throws {EditorError} 当来源类型不支持时抛出。
    */
   async _normalizeSource(source) {
@@ -207,19 +249,22 @@ export class ImagePlugin {
    *
    * @private
    * @param {string} source SVG 字符串或图片 URL。
-   * @returns {{ url: string, format: 'svg' | 'image' }} 图片资源。
+   * @returns {{ url: string, format: 'svg' | 'image', ownedObjectUrl: boolean }}
+   * 图片资源。
    */
   _normalizeStringSource(source) {
     if (this._isSvgText(source)) {
       return {
         url: Platform.toURL(source, 'svg'),
-        format: 'svg'
+        format: 'svg',
+        ownedObjectUrl: false
       };
     }
 
     return {
       url: source,
-      format: this._isSvgUrl(source) ? 'svg' : 'image'
+      format: this._isSvgUrl(source) ? 'svg' : 'image',
+      ownedObjectUrl: false
     };
   }
 
@@ -230,21 +275,25 @@ export class ImagePlugin {
    *
    * @private
    * @param {File | Blob} source 图片文件。
-   * @returns {Promise<{ url: string, format: 'svg' | 'image' }>} 图片资源。
+   * @returns {Promise<{ url: string, format: 'svg' | 'image', ownedObjectUrl: boolean }>}
+   * 图片资源。
    */
   async _normalizeBlobSource(source) {
     if (this._isSvgBlob(source)) {
       const svg = await source.text();
+      const url = Platform.toURL(svg, 'svg');
 
       return {
-        url: Platform.toURL(svg, 'svg'),
-        format: 'svg'
+        url,
+        format: 'svg',
+        ownedObjectUrl: typeof url === 'string' && url.startsWith('blob:')
       };
     }
 
     return {
       url: URL.createObjectURL(source),
-      format: 'image'
+      format: 'image',
+      ownedObjectUrl: true
     };
   }
 

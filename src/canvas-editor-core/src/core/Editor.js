@@ -270,11 +270,11 @@ export class Editor {
   /**
    * 按当前画布可视区域缩放画板并居中。
    *
-   * @param {number} [padding] 可视区域内边距。
+   * @param {number | { padding?: number, viewportRatio?: number, expandZoomRange?: boolean }} [options] 适配选项。
    * @returns {Editor} 当前编辑器实例。
    */
-  fitArtboardToView(padding) {
-    this.#viewport.fitArtboardToView(padding)
+  fitArtboardToView(options) {
+    this.#viewport.fitArtboardToView(options)
     return this
   }
 

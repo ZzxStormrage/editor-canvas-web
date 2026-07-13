@@ -51,6 +51,11 @@ export function useLayerControls(getEditor) {
     getEditor()?.layer?.toggleLock(id)
   }
 
+  /** @param {string} id 图片图层 ID。 */
+  function toggleLayerPointerThrough(id) {
+    getEditor()?.layer?.togglePointerThrough(id)
+  }
+
   /** @param {string | null} id 图层 ID。 */
   function hoverLayer(id) {
     getEditor()?.layer?.hover(id)
@@ -66,6 +71,7 @@ export function useLayerControls(getEditor) {
     selectLayer,
     deleteLayer,
     toggleLayerLock,
+    toggleLayerPointerThrough,
     hoverLayer
   }
 }

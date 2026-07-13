@@ -1,11 +1,11 @@
 <template>
   <section class="panel-section">
     <input
-      :ref="setMaskInputRef"
+      :ref="setBackgroundInputRef"
       class="side-file-input"
       type="file"
       accept="image/*"
-      @change="editor.handleMaskImageChange"
+      @change="editor.handleBackgroundImageChange"
     />
 
     <div class="panel-heading">
@@ -62,9 +62,9 @@
           density="compact"
           prepend-icon="mdi-image-plus-outline"
           variant="tonal"
-          @click="editor.openMaskImagePicker"
+          @click="editor.openBackgroundImagePicker"
         >
-          上传遮罩图
+          上传背景图
         </v-btn>
       </div>
     </PanelGroup>
@@ -136,14 +136,14 @@ const props = defineProps({
 });
 
 /**
- * 把遮罩图上传 input 的 DOM 引用交回组合式逻辑。
+ * 把背景图上传 input 的 DOM 引用交回组合式逻辑。
  *
  * @param {HTMLInputElement | null} element 文件选择 input 元素。
  * @returns {void}
  */
-function setMaskInputRef(element) {
-  if (props.editor?.maskInputRef) {
-    props.editor.maskInputRef.value = element;
+function setBackgroundInputRef(element) {
+  if (props.editor?.backgroundInputRef) {
+    props.editor.backgroundInputRef.value = element;
   }
 }
 </script>

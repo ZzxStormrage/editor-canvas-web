@@ -11,7 +11,17 @@
     </div>
 
     <template v-if="layerType === 'image'">
-      <p class="layer-attribute-help">用于 H5 图片说明、无障碍读取和业务识别。</p>
+      <p class="layer-attribute-help">配置图片用途和描述，仅写入业务属性，不会改变图层顺序。</p>
+      <v-select
+        v-model="imageDraft.role"
+        :items="IMAGE_ROLE_OPTIONS"
+        item-title="label"
+        item-value="value"
+        density="compact"
+        hide-details="auto"
+        label="图片用途"
+        variant="outlined"
+      />
       <v-textarea
         v-model="imageDraft.description"
         auto-grow
@@ -105,6 +115,13 @@ const DEFAULT_TEXT_RULES = Object.freeze({
   maxCharacters: null,
   maxLines: null
 })
+const IMAGE_ROLE_OPTIONS = Object.freeze([
+  { label: '普通图片', value: '' },
+  { label: '背景图', value: 'background' },
+  { label: '遮罩图', value: 'mask' },
+  { label: 'AI 可变图', value: 'ai-variable' }
+])
+const IMAGE_ROLE_VALUES = new Set(IMAGE_ROLE_OPTIONS.map((item) => item.value).filter(Boolean))
 
 const props = defineProps({
   editor: { type: Object, required: true },
@@ -117,7 +134,8 @@ const emit = defineEmits(['close', 'saved'])
 const attributes = props.editor.getElementAttributesById(props.elementId) ?? {}
 const attributeError = ref('')
 const imageDraft = reactive({
-  description: typeof attributes.image?.description === 'string' ? attributes.image.description : ''
+  description: typeof attributes.image?.description === 'string' ? attributes.image.description : '',
+  role: IMAGE_ROLE_VALUES.has(attributes.image?.role) ? attributes.image.role : ''
 })
 const textDraft = reactive(createTextDraft(attributes.textInput))
 
@@ -146,7 +164,15 @@ function saveAttributes() {
 
   if (props.layerType === 'image') {
     const description = imageDraft.description.trim()
-    if (description) nextAttributes.image = { description }
+    const imageAttributes = isPlainObject(currentAttributes.image) ? { ...currentAttributes.image } : {}
+
+    if (description) imageAttributes.description = description
+    else delete imageAttributes.description
+
+    if (IMAGE_ROLE_VALUES.has(imageDraft.role)) imageAttributes.role = imageDraft.role
+    else delete imageAttributes.role
+
+    if (Object.keys(imageAttributes).length) nextAttributes.image = imageAttributes
     else delete nextAttributes.image
   } else if (props.layerType === 'text') {
     const textInput = buildTextInputPayload()
@@ -154,7 +180,6 @@ function saveAttributes() {
     nextAttributes.textInput = textInput
   }
 
-  delete nextAttributes.custom
   props.editor.setElementAttributesById(props.elementId, nextAttributes, { replace: true })
   emit('saved')
   emit('close')
@@ -196,6 +221,10 @@ function normalizeOptionalInteger(value) {
   if (value === null || value === '' || value === undefined) return null
   const number = Number(value)
   return Number.isInteger(number) && number > 0 ? number : null
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function createTextDraft(source = {}) {

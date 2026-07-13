@@ -29,7 +29,7 @@ export function setupZoomInteraction(editor) {
     const ratio = newZoom / curZoom;
 
     // 缩放以鼠标/触摸中心点为锚点
-    if (data.x != null && data.y != null) {
+    if (data.x !== null && data.x !== undefined && data.y !== null && data.y !== undefined) {
       // data.x / data.y 是画布坐标系下的坐标（由 Interaction.getLocal 产出）
       stage.x = data.x - (data.x - stage.x) * ratio;
       stage.y = data.y - (data.y - stage.y) * ratio;

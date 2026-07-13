@@ -1,11 +1,358 @@
 # canvas-editor-core 外部 API 文档
 
-本文档整理当前 `src/canvas-editor-core/src/index.js` 对外导出的模块，以及通过
-`createEditor()` / `init()` 创建出的编辑器实例可以调用的方法。
+本文档面向接入编辑器的前端开发者，说明如何初始化编辑器、调用图片和文字 API、
+维护图层和业务属性、监听事件，以及如何将编辑结果交给移动端 H5 页面渲染。
 
-## 运行示例
+> 在线阅读：启动项目后访问 `#/docs`。编辑器页面为 `#/editor`，H5 页面为 `#/h5-preview`。
 
-当前项目是 Vite + Vue，启动后可以直接在 `src/App.vue` 中按示例调用。
+## 阅读路线
+
+| 目标 | 建议阅读 |
+| --- | --- |
+| 第一次接入编辑器 | “10 分钟快速上手” → “调用边界” → “生命周期” |
+| 开发 Vue 面板 | “Vue 应用层调用” → “元素业务属性” → “事件” |
+| 添加文字或图片 | “图片” → “文本” → “选择” |
+| 开发图层功能 | “图层插件” → “选择” → “事件” |
+| 对接移动端 H5 | “移动端 H5 文档协议” → “元素业务属性” |
+| 排查问题 | “错误处理与调试” → 对应 API 章节 |
+
+## 10 分钟快速上手
+
+### 1. 准备挂载容器
+
+编辑器会占满传入的 DOM 容器。容器必须具有可计算的宽高。
+
+```vue
+<template>
+  <div ref="canvasRef" class="canvas-host"></div>
+</template>
+
+<style scoped>
+.canvas-host {
+  width: 100%;
+  height: 100%;
+  min-height: 600px;
+}
+</style>
+```
+
+### 2. 创建和销毁编辑器
+
+```vue
+<script setup>
+import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { createEditor } from '@/canvas-editor-core/src/index.js'
+
+const canvasRef = ref(null)
+let editor = null
+
+onMounted(() => {
+  editor = createEditor({
+    view: canvasRef.value,
+    autoResize: true,
+    artboard: {
+      width: 375,
+      height: 667,
+      fill: '#ffffff'
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  editor?.destroy()
+  editor = null
+})
+</script>
+```
+
+### 3. 添加内容
+
+```js
+const title = await editor.text.add('活动标题', {
+  fontSize: 32,
+  fontWeight: 700,
+  fill: '#1f2937',
+  textAlign: 'center'
+})
+
+const image = await editor.image.add('/images/product.png', {
+  width: 240,
+  lockRatio: true
+})
+```
+
+图片添加是异步操作，必须使用 `await` 或处理返回的 Promise。
+
+### 4. 修改当前元素
+
+```js
+editor.select(title)
+
+editor.text.update({
+  text: '新的活动标题',
+  fontSize: 40,
+  fill: '#7c3aed'
+})
+```
+
+### 5. 添加供 H5 使用的业务属性
+
+渲染属性和业务属性必须分开保存。不要把 `action`、埋点或输入规则直接写到
+Leafer 的 `x`、`fill` 等渲染数据中。
+
+```js
+editor.elementData.set(title, {
+  textInput: {
+    enabled: true,
+    characterSet: 'any',
+    allowManualNewline: true,
+    allowSymbols: true,
+    maxCharactersPerLine: 20,
+    maxCharacters: 100,
+    maxLines: 4
+  }
+})
+```
+
+## 调用边界
+
+项目分为三层。新增功能时应先确定代码属于哪一层。
+
+| 层级 | 主要目录 | 职责 | 不应该做的事 |
+| --- | --- | --- | --- |
+| 编辑器内核 | `src/canvas-editor-core` | Leafer 节点、插件、命令、选区、画板 | 引用 Vue 组件或页面状态 |
+| Vue 调用层 | `src/composables/canvas-editor` | 将内核 API 转为 `ref` 和业务方法 | 直接修改 Leafer 私有字段 |
+| 页面组件 | `src/components`、`src/views` | 表单、按钮、交互展示 | 在模板中操作 `contentLayer.children` |
+
+推荐原则：
+
+1. 页面组件只调用 composable 暴露的方法。
+2. composable 通过 `Editor` 外观或插件公开方法操作画布。
+3. 只有内核插件可以集中处理 Leafer 节点细节。
+4. 组件卸载时必须销毁编辑器和事件订阅。
+5. 跨页面传输的数据必须是普通、可 JSON 序列化的对象。
+
+## 模块总览
+
+编辑器对外 API 按职责划分为以下模块。业务代码应优先调用模块公开方法，不跨模块读取
+下划线字段、私有字段或 Leafer 内部状态。
+
+| 模块 | 主要入口 | 源码位置 | 负责内容 |
+| --- | --- | --- | --- |
+| Core | `createEditor()`、`Editor` | `canvas-editor-core/src/core` | 创建实例、统一外观、生命周期 |
+| Canvas / Artboard | `editor.resize()`、`editor.artboard` | `core/Editor.js`、`artboard.js` | 外层画布、白色画板、画板边界 |
+| Viewport | `editor.setZoom()` | `viewport` | 缩放、居中、适配视口 |
+| Selection | `editor.select()` | `core/Editor.js`、`@leafer-in/editor` | 单选、多选、取消选中 |
+| Layer | `editor.layer` | `plugins/feature-plugins/layer` | 图层 DTO、排序、锁定、删除、高亮 |
+| Image | `editor.image` | `plugins/feature-plugins/image` | URL、File、Blob、SVG 图片创建 |
+| Text | `editor.text` | `plugins/feature-plugins/text` | 文字创建、样式更新、原位编辑 |
+| EventBus | `editor.eventBus` | `logic/event-bus.js` | 内核向应用层发送状态变化 |
+| Command | `editor.commands` | `commands` | 命令执行及撤销重做历史 |
+| ElementData | `editor.elementData` | `plugins/feature-plugins/element-data` | 稳定元素 ID 和 H5 业务属性 |
+| Vue Adapter | `useCanvasEditor()` | `composables/canvas-editor` | 将内核状态转换为 Vue `ref` 和方法 |
+| H5 Document | `exportH5Document()` | `services/h5-document.js` | 导出跨页面、可持久化的 H5 JSON |
+
+### 模块调用关系
+
+```text
+Vue 页面 / 面板
+    ↓ 调用
+useCanvasEditor 与业务 composable
+    ↓ 调用
+Editor 外观
+    ├── Viewport / Command / EventBus
+    ├── Artboard / Selection
+    └── PluginManager
+          ├── ImagePlugin
+          ├── TextPlugin
+          ├── LayerPlugin
+          └── ElementDataPlugin
+
+Editor + ElementData
+    ↓ exportH5Document()
+移动端 H5 JSON
+```
+
+模块之间通过公开 API 和事件协作。比如图层面板删除元素时应调用
+`editor.layer.remove(id)`，由 Layer 模块同步选区、画板覆盖层和事件；组件不应只执行
+`node.remove()`。
+
+### 返回值约定
+
+| API 类型 | 返回值 | 使用方式 |
+| --- | --- | --- |
+| `Editor` 设置方法 | 当前 `Editor` 实例 | 可以链式调用，例如 `editor.setZoom(1.2).setShowGrid(false)` |
+| 图片新增 | `Promise<Image>` | 必须 `await editor.image.add(...)` |
+| 文字新增 | `Promise<Text>` | 必须 `await editor.text.add(...)` |
+| 文字更新 | `Text` 节点 | 可继续传给 `select()` 或业务属性插件 |
+| 图层查询 | 图层 DTO 数组 | 只用于 UI 展示和调用图层 API，不代表持久化数据 |
+| 业务属性查询 | 深拷贝普通对象 | 修改返回对象不会直接修改画布节点 |
+| `eventBus.on()` | 取消订阅函数 | 组件卸载时调用该函数 |
+| `destroy()` | `void` | 销毁后不要继续复用实例 |
+
+### 命名约定
+
+- `editor.*`：Editor 外观提供的跨模块高层操作。
+- `editor.image.*`、`editor.text.*`：具体内容插件。
+- `editor.layer.*`：图层面板所需的场景树操作。
+- `editor.elementData.*`：与渲染属性隔离的业务数据。
+- `editor.eventBus.*`：内核向 Vue 应用层发出的通知。
+- `useXxxControls()`：Vue 应用层适配器，不属于内核公开 API。
+- 以下划线或 `#` 开头的字段属于内部实现，不应从业务代码调用。
+
+## Vue 应用层调用
+
+当前完整编辑器页面使用 `useCanvasEditor()`。它负责创建编辑器、同步 Vue 状态和
+在组件卸载时销毁实例。
+
+```js
+import { useCanvasEditor } from '@/composables/useCanvasEditor.js'
+
+const editor = useCanvasEditor()
+```
+
+模板中使用组合后的状态和方法：
+
+```vue
+<CanvasWorkspace :editor="editor" />
+
+<v-btn @click="editor.addText">添加文字</v-btn>
+<v-btn @click="editor.openImagePicker">上传图片</v-btn>
+<v-btn @click="editor.zoomIn">放大</v-btn>
+```
+
+只有需要接入内核未封装能力时，才使用：
+
+```js
+const coreEditor = editor.getEditor()
+
+if (coreEditor) {
+  coreEditor.setShowGrid(false)
+}
+```
+
+`getEditor()` 在组件挂载前可能返回 `null`，调用前必须判断。
+
+## 常见业务流程
+
+### 上传背景图
+
+背景图以图片原始像素宽高同步画板尺寸。上传完成后画板自动缩放为当前
+`workspace-stage` 可用区域的 80%，并保持水平、垂直居中。
+
+```js
+const imageSize = await editor.image.getSize(file)
+const background = await editor.image.add(file, {
+  width: imageSize.width,
+  height: imageSize.height,
+  lockRatio: false
+})
+
+editor.setArtboardSize(imageSize.width, imageSize.height)
+editor.fitArtboardToView({
+  viewportRatio: 0.8,
+  expandZoomRange: true
+})
+```
+
+应用层已经通过 `editor.openBackgroundImagePicker()` 和
+`editor.handleBackgroundImageChange(event)` 封装完整流程。页面组件只负责触发文件
+选择，不需要读取图片尺寸、修改节点或计算工作区缩放。
+
+### 图层列表
+
+图层 UI 不应直接排序 `contentLayer.children`，应调用图层插件：
+
+```js
+const layers = editor.layer.getList()
+editor.layer.reorder(layers.map((item) => item.id))
+editor.layer.toggleLock(layers[0].id)
+editor.layer.remove(layers[0].id)
+```
+
+### H5 预览
+
+项目中的 `exportH5Document()` 会将画板内容转为稳定协议，并把坐标原点转换到画板
+左上角。不要直接把完整 Leafer 实例写入 `localStorage` 或发送给后端。
+
+```js
+import { exportH5Document } from '@/services/h5-document.js'
+
+const payload = await exportH5Document(editor.getEditor())
+await api.saveTemplate(payload)
+```
+
+## 错误处理与调试
+
+内核参数错误通常抛出 `EditorError`。业务代码应保留错误码，用户界面展示可理解的
+提示，控制台记录原始错误。
+
+```js
+import { EditorError } from '@/canvas-editor-core/src/index.js'
+
+try {
+  await editor.image.add(file)
+} catch (error) {
+  if (error instanceof EditorError) {
+    console.error(error.code, error.message)
+  }
+  throw error
+}
+```
+
+常见排查项：
+
+- 编辑器没有显示：检查挂载容器是否有宽高、`view` 是否存在。
+- API 没反应：确认组件已经挂载，`getEditor()` 不是 `null`。
+- 图片没有加载：检查 URL、跨域策略或 Blob 是否仍然有效。
+- H5 页面图片失效：使用 `exportH5Document()`，它会把 Blob URL 转为 Data URL。
+- Vue 状态没有更新：确认是否订阅了对应 `eventBus` 事件。
+- 选区行为异常：不要直接修改 `innerEditor.list`，使用 `select()` / `deselect()`。
+
+### 常用错误码
+
+| 模块 | 错误码 | 含义及处理建议 |
+| --- | --- | --- |
+| Core | `INIT_OPTIONS_REQUIRED` | 初始化参数不是对象，检查 `createEditor(options)` 调用。 |
+| Core | `VIEW_REQUIRED` | 未提供挂载容器。 |
+| Core | `VIEW_NOT_FOUND` | 字符串选择器没有找到 DOM。 |
+| Core | `EDITOR_DESTROYED` | 实例已销毁，需要重新创建，不能继续调用旧引用。 |
+| Canvas | `AREA_TYPE_INVALID` | `areaType` 只能是 `grid` 或 `blank`。 |
+| Canvas | `SHOW_GRID_INVALID` | `showGrid` 必须是布尔值。 |
+| Artboard | `ARTBOARD_SIZE_INVALID` | 画板宽高或最小宽高不是正数。 |
+| Viewport | `ZOOM_RANGE_INVALID` | `zoom.min` 大于 `zoom.max`。 |
+| Image | `IMAGE_SOURCE_INVALID` | 图片来源不是 URL、SVG 字符串、`File` 或 `Blob`。 |
+| Image | `IMAGE_ADD_FAILED` | 图片读取或节点创建失败，继续检查 URL、跨域和文件内容。 |
+| Text | `TEXT_VALUE_INVALID` | 文本内容不是字符串或数字。 |
+| Text | `TEXT_TARGET_INVALID` | `text.update()` 的目标不是 Text 节点。 |
+| Text | `TEXT_SELECTION_REQUIRED` | 调用省略目标的更新方法时，没有选中文字。 |
+| Text | `TEXT_ALIGN_INVALID` | 文本对齐值不在支持范围。 |
+| Text | `TEXT_WRITING_MODE_INVALID` | 文字方向不是 `x`、`y` 或 `y-reverse`。 |
+| ElementData | `ELEMENT_DATA_TARGET_REQUIRED` | 当前不是单选状态，且调用时没有传目标节点。 |
+| ElementData | `ELEMENT_DATA_TARGET_NOT_FOUND` | 指定 `elementId` 已不存在。 |
+| Plugin | `PLUGIN_DUPLICATED` | 相同 ID 的插件被重复注册。 |
+
+## API 速查
+
+| 任务 | 推荐 API |
+| --- | --- |
+| 创建编辑器 | `createEditor(options)` |
+| 调整画板 | `editor.setArtboardSize(width, height)` |
+| 适配画板到视口 | `editor.fitArtboardToView(options)` |
+| 添加图片 | `await editor.image.add(source, options)` |
+| 添加文字 | `await editor.text.add(content, options)` |
+| 更新文字 | `editor.text.update(target, options)` |
+| 选择/取消选择 | `editor.select(target)` / `editor.deselect()` |
+| 获取图层 | `editor.layer.getList()` |
+| 排序图层 | `editor.layer.reorder(ids)` |
+| 写入业务属性 | `editor.elementData.set(target, attributes)` |
+| 导出业务属性 | `editor.elementData.export()` |
+| 监听变化 | `editor.eventBus.on(eventName, handler)` |
+| 销毁编辑器 | `editor.destroy()` |
+
+## 核心层初始化示例
+
+当前项目是 Vite + Vue，运行后可在 `#/editor` 查看完整接入示例。
 
 ```bash
 npm run dev
@@ -37,6 +384,8 @@ onBeforeUnmount(() => {
 ```
 
 ## 入口 API
+
+> **Core 模块** · 入口：`createEditor()` / `init()` · 源码：`canvas-editor-core/src/index.js`
 
 ### `createEditor(options)`
 
@@ -83,6 +432,8 @@ const editor = init({ view: canvasRef.value })
 
 ## Editor 实例属性
 
+> **Core 模块** · 外观对象：`Editor` · 源码：`canvas-editor-core/src/core/Editor.js`
+
 ```js
 const editor = createEditor({ view: canvasRef.value })
 ```
@@ -98,6 +449,8 @@ const editor = createEditor({ view: canvasRef.value })
 | `editor.pluginManager` | 插件管理器。 |
 | `editor.image` | 图片插件实例。 |
 | `editor.text` | 文本插件实例。 |
+| `editor.layer` | 图层插件实例。 |
+| `editor.elementData` | 元素业务属性插件实例。 |
 | `editor.editor` | Leafer 官方 Editor 实例。 |
 | `editor.artboard` | 内层白色画板管理器。 |
 | `editor.commands` | 命令管理器。 |
@@ -107,6 +460,8 @@ const editor = createEditor({ view: canvasRef.value })
 | `editor.zoom` | 当前缩放值，兼容旧代码，推荐读 `editor.state.zoom`。 |
 
 ## 画布与画板
+
+> **Canvas / Artboard 模块** · 入口：`editor.*` / `editor.artboard` · 源码：`core/Editor.js`、`artboard.js`
 
 ### `editor.resize(width, height)`
 
@@ -181,6 +536,8 @@ const worldBounds = editor.artboard.getWorldBounds()
 
 ## 缩放
 
+> **Viewport 模块** · 入口：`editor.setZoom()` 等 · 源码：`canvas-editor-core/src/viewport`
+
 ### `editor.setZoom(zoom)`
 
 设置缩放值，会被 `zoom.min` / `zoom.max` 自动钳位。
@@ -214,11 +571,42 @@ editor.zoomOut()
 editor.resetZoom()
 ```
 
+### `editor.fitArtboardToView(options)`
+
+自动计算缩放和位移，使白色画板完整显示在当前编辑器容器中。
+
+```js
+editor.fitArtboardToView()
+editor.fitArtboardToView(32)
+editor.fitArtboardToView({ viewportRatio: 0.8 })
+```
+
+数字参数保持兼容，表示画板与视口边缘保留的像素间距。对象参数：
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `padding` | `number` | `0` | 可用视口四周预留的像素。 |
+| `viewportRatio` | `number` | `1` | 画板最长边占可用视口的比例，范围 `0.05-1`。 |
+| `expandZoomRange` | `boolean` | `false` | 是否扩展缩放上下限以精确达到目标比例。 |
+
+上传背景图使用 `{ viewportRatio: 0.8, expandZoomRange: true }`，确保任意图片尺寸都能
+以工作区 80% 的比例居中显示。
+
+### `editor.centerArtboard()`
+
+保持当前缩放不变，只将画板移动到视口中心。
+
+```js
+editor.centerArtboard()
+```
+
 ### `editor.zoomTo(zoom)`
 
 `setZoom(zoom)` 的兼容别名，新代码推荐使用 `setZoom()`。
 
 ## 选择
+
+> **Selection 模块** · 入口：`editor.select()` / `editor.deselect()` · 底层：`@leafer-in/editor`
 
 ### `editor.select(target)`
 
@@ -253,7 +641,93 @@ editor.addToSelection(node)
 editor.removeFromSelection(node)
 ```
 
+## 图层插件
+
+> **Layer 模块** · 命名空间：`editor.layer` · 源码：`plugins/feature-plugins/layer`
+
+图层能力通过 `editor.layer` 调用。图层 ID 是运行时图层标识；跨页面、跨保存周期的
+业务身份应使用元素业务属性插件维护的 `elementId`。
+
+### `editor.layer.getList()`
+
+返回从视觉最上层到最下层排列的图层 DTO，不直接暴露 Vue 组件需要修改的节点。
+
+```js
+const layers = editor.layer.getList()
+
+// [{
+//   id,
+//   elementId,
+//   name,
+//   type,
+//   imageRole,
+//   customAttributeCount,
+//   locked,
+//   pointerThrough,
+//   selected,
+//   order
+// }]
+```
+
+### `editor.layer.reorder(orderedIds)`
+
+按照面板中从上到下的 ID 顺序更新场景树层级。
+
+```js
+editor.layer.reorder(['top-layer-id', 'middle-layer-id', 'bottom-layer-id'])
+```
+
+拖拽过程中建议只更新 Vue 草稿数组，拖拽结束后调用一次 `reorder()`，避免频繁修改场景树。
+
+### `editor.layer.select(id)`
+
+通过图层 ID 选中画布元素。
+
+```js
+editor.layer.select(layer.id)
+```
+
+### `editor.layer.remove(id)`
+
+删除指定图层，并同步选区、画板覆盖层和图层事件。
+
+```js
+editor.layer.remove(layer.id)
+```
+
+不要在 Vue 组件中直接调用 `node.remove()`，否则容易遗漏选区和业务事件同步。
+
+### `editor.layer.toggleLock(id)`
+
+切换图层锁定状态。锁定当前选中元素时会自动退出选区。
+
+```js
+editor.layer.toggleLock(layer.id)
+```
+
+### `editor.layer.togglePointerThrough(id)`
+
+切换图片的点击穿透状态。开启后画布点击会命中图片下方的元素，但不会改变图片的
+图层顺序、锁定状态、坐标或尺寸。
+
+```js
+editor.layer.togglePointerThrough(imageLayer.id)
+```
+
+该方法只对图片图层生效。图层面板仍可通过 ID 操作该图片。
+
+### `editor.layer.hover(id)`
+
+使用 Leafer Editor 的原生 hover 轮廓高亮指定图层，不修改节点自身描边。
+
+```js
+editor.layer.hover(layer.id)
+editor.layer.hover(null) // 清除高亮
+```
+
 ## 图片
+
+> **Image 模块** · 命名空间：`editor.image` · 源码：`plugins/feature-plugins/image`
 
 图片能力通过 `editor.image` 调用。
 
@@ -285,6 +759,17 @@ await editor.image.add(file, {
 | `maxHeightRatio` | `number` | 未传宽高时，相对操作区域的最大高度占比。 |
 | `lockRatio` | `boolean` | 是否保持宽高比。 |
 
+### `editor.image.getSize(source)`
+
+读取 URL、SVG、`File` 或 `Blob` 的原始像素尺寸，不创建画布节点。
+
+```js
+const { width, height } = await editor.image.getSize(file)
+editor.setArtboardSize(width, height)
+```
+
+图片解析由 Image 模块统一完成。Vue 组件不应重复创建临时 `<img>` 或自行维护 Blob URL。
+
 ### `ImagePlugin.normalizeOptions(image, baseImage)`
 
 归一化图片插件配置。通常业务层不需要直接调用，做插件扩展或配置面板校验时可使用。
@@ -299,6 +784,8 @@ const imageOptions = ImagePlugin.normalizeOptions(
 ```
 
 ## 文本
+
+> **Text 模块** · 命名空间：`editor.text` · 源码：`plugins/feature-plugins/text`
 
 文本能力通过 `editor.text` 调用。
 
@@ -438,6 +925,8 @@ const textOptions = TextPlugin.normalizeOptions(
 
 ## 事件
 
+> **EventBus 模块** · 命名空间：`editor.eventBus` · 源码：`logic/event-bus.js`
+
 通过 `editor.eventBus` 订阅内部事件。
 
 ```js
@@ -457,6 +946,8 @@ unsubscribe()
 | `text:selected` | 选中文本或文本样式变化后 | `{ text, options }` |
 | `image:added` | 新增图片后 | `{ image }` |
 | `viewport:zoom-changed` | 缩放变化后 | `{ zoom, previous }` |
+| `viewport:zoom-source` | 记录缩放来源后 | `{ source, zoom }` |
+| `viewport:transform-end` | 手势缩放或变换结束后 | `{ zoom }` |
 | `canvas:resized` | 外层画布尺寸变化后 | `{ width, height }` |
 | `canvas:background-changed` | 背景色变化后 | `{ background }` |
 | `canvas:grid-visibility-changed` | 网格显隐变化后 | `{ showGrid }` |
@@ -464,8 +955,16 @@ unsubscribe()
 | `canvas:grid-changed` | 网格配置变化后 | `{ grid }` |
 | `artboard:resized` | 白色画板尺寸变化后 | `{ artboard }` |
 | `history:changed` | 命令历史变化后 | `{ canUndo, canRedo }` |
+| `layers:changed` | 图层增删、重排、锁定或属性变化后 | `{ layers }` |
+| `element-data:changed` | 元素业务属性写入、删除或清空后 | `{ element, elementId, attributes }` |
+| `selection:deleted` | 通过编辑器动作或图层面板删除元素后 | `{ targets }` |
+| `selection:layer-changed` | 选区或图层层级发生变化后 | `{ action, selected }` |
+| `selection:layer-menu-open` | 请求 Vue 打开层级菜单 | `{ x, y, actions }` |
+| `selection:layer-menu-close` | 请求关闭层级菜单 | `undefined` |
 
 ## 命令与历史
+
+> **Command 模块** · 命名空间：`editor.commands` · 源码：`canvas-editor-core/src/commands`
 
 ### `editor.execute(command)`
 
@@ -523,6 +1022,8 @@ editor.commands.clear()
 
 ## 元素业务属性
 
+> **ElementData 模块** · 命名空间：`editor.elementData` · 源码：`plugins/feature-plugins/element-data`
+
 元素业务属性用于保存 H5 运行时所需的数据，例如跳转链接、商品 ID、埋点标识、
 交互动作和业务组件配置。它与 Leafer 的 `x`、`fill`、`locked` 等渲染属性隔离，
 不会改变现有画布编辑流程。
@@ -536,7 +1037,8 @@ editor.commands.clear()
 // 图片元素
 {
   image: {
-    description: '红色礼盒正面展示图'
+    description: '红色礼盒正面展示图',
+    role: 'background'
   }
 }
 
@@ -553,6 +1055,17 @@ editor.commands.clear()
   }
 }
 ```
+
+图片 `role` 只允许以下值：
+
+| 值 | 图层标记 | 用途 |
+| --- | --- | --- |
+| `background` | 背景 | 生产背景图；通过上传背景图创建时自动写入。 |
+| `mask` | 遮罩 | 标记为生产遮罩图。 |
+| `ai-variable` | AI | 标记为 AI 可变图片。 |
+
+图片用途属于业务标记，不会自动改变图层层级。点击穿透属于 Leafer 命中属性，使用
+`editor.layer.togglePointerThrough(id)` 单独控制。
 
 `characterSet: 'latin'` 表示只允许英文字母、数字和空格；`'any'` 表示不限制
 中英文。自动换行由 `maxCharactersPerLine` 控制，`allowManualNewline` 只控制
@@ -645,6 +1158,8 @@ const unsubscribe = editor.eventBus.on('element-data:changed', (payload) => {
 
 ## 生命周期
 
+> **Core 生命周期** · 入口：`editor.destroy()` · 组件卸载时必须调用
+
 ### `editor.destroy()`
 
 销毁编辑器，组件卸载时必须调用。
@@ -656,6 +1171,8 @@ onBeforeUnmount(() => {
 ```
 
 ## 高级导出
+
+> **扩展 API** · 面向自定义插件、命令和测试；普通页面优先使用 `createEditor()` 返回的外观实例
 
 以下模块已从 `src/canvas-editor-core/src/index.js` 显式导出，通常用于高级扩展、
 测试或自定义插件，不建议普通业务直接改底层状态。
@@ -719,6 +1236,8 @@ editor.destroy()
 ```
 
 ## 移动端 H5 文档协议
+
+> **H5 Document 模块** · 入口：`exportH5Document()` · 源码：`src/services/h5-document.js`
 
 编辑器页面位于 `#/editor`，移动端只读预览页面位于 `#/h5-preview`。
 点击编辑器顶部的“H5 预览”后，会将当前画板导出为普通 JSON 并交给 H5 页面渲染。

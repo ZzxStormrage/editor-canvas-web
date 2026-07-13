@@ -4,13 +4,15 @@ import { computed, ref, watch } from 'vue'
 import { formatMillimeter, pixelToMillimeter } from '../../canvas-editor-core/src/utils/unit.js'
 import { normalizePixelForUI } from './editor-ui-utils.js'
 
-const MASK_NODE_KEY = '__eleEditorMask'
-const MASK_NODE_LABEL = '遮罩图'
+const BACKGROUND_NODE_KEY = '__eleEditorBackground'
+const LEGACY_MASK_NODE_KEY = '__eleEditorMask'
+const BACKGROUND_NODE_LABEL = '背景图'
+const BACKGROUND_VIEWPORT_RATIO = 0.8
 const PRINT_AREA_NODE_KEY = '__eleEditorPrintArea'
 const PRINT_AREA_NODE_LABEL = '打印区域'
 
 /**
- * 管理画板尺寸、遮罩底图和打印区域。
+ * 管理画板尺寸、背景图和打印区域。
  *
  * 业务节点仍通过 Editor 外观提供的 contentLayer、artboard 和 image API 创建，
  * 不跨层引用底层插件实现。
@@ -19,7 +21,7 @@ const PRINT_AREA_NODE_LABEL = '打印区域'
  * @returns {Object} 画板状态和操作。
  */
 export function useArtboardControls(getEditor) {
-  const maskInputRef = ref(null)
+  const backgroundInputRef = ref(null)
   const artboardWidth = ref(375)
   const artboardHeight = ref(667)
   const printAreaWidth = ref(300)
@@ -65,15 +67,15 @@ export function useArtboardControls(getEditor) {
   }
 
   /** @returns {void} */
-  function openMaskImagePicker() {
-    maskInputRef.value?.click()
+  function openBackgroundImagePicker() {
+    backgroundInputRef.value?.click()
   }
 
   /**
    * @param {Event} event 文件选择事件。
    * @returns {Promise<void>}
    */
-  async function handleMaskImageChange(event) {
+  async function handleBackgroundImageChange(event) {
     const [file] = event.target.files ?? []
 
     event.target.value = ''
@@ -82,36 +84,56 @@ export function useArtboardControls(getEditor) {
       return
     }
 
-    await addMaskImage(file)
+    await addBackgroundImage(file)
   }
 
   /**
-   * 遮罩图属于画板背景业务节点：替换旧节点、铺满当前画板、锁定并置底。
+   * 背景图使用图片原始像素作为画板尺寸，并占当前工作区可用区域的 80% 居中显示。
    *
    * @param {File} file 图片文件。
    * @returns {Promise<void>}
    */
-  async function addMaskImage(file) {
+  async function addBackgroundImage(file) {
     const editor = getEditor()
 
     if (!editor) {
       return
     }
 
-    removeMaskImages(editor)
-    const bounds = getArtboardBounds()
-    const maskImage = await editor.image.add(file, {
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height,
+    const imageSize = await editor.image.getSize(file)
+    const currentBounds = getArtboardBounds()
+    const backgroundImage = await editor.image.add(file, {
+      x: currentBounds.x,
+      y: currentBounds.y,
+      width: imageSize.width,
+      height: imageSize.height,
       lockRatio: false
     })
 
-    markMaskNode(maskImage)
-    moveElementToBottom(maskImage)
+    editor.setArtboardSize(imageSize.width, imageSize.height)
+    syncArtboardControls()
+
+    const backgroundBounds = getArtboardBounds()
+    backgroundImage.set?.({
+      x: backgroundBounds.x,
+      y: backgroundBounds.y,
+      width: backgroundBounds.width,
+      height: backgroundBounds.height,
+      lockRatio: false
+    })
+    backgroundImage.forceUpdate?.()
+    backgroundImage.updateLayout?.()
+
+    markBackgroundNode(editor, backgroundImage)
+    removeBackgroundImages(editor, backgroundImage)
+    moveElementToBottom(backgroundImage)
     editor.deselect()
     editor.artboard?.syncAllElements?.()
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    editor.fitArtboardToView({
+      viewportRatio: BACKGROUND_VIEWPORT_RATIO,
+      expandZoomRange: true
+    })
   }
 
   /** @returns {void} */
@@ -190,7 +212,7 @@ export function useArtboardControls(getEditor) {
   watch([printAreaWidth, printAreaHeight], updatePrintAreaSize)
 
   return {
-    maskInputRef,
+    backgroundInputRef,
     artboardWidth,
     artboardHeight,
     printAreaWidth,
@@ -200,33 +222,55 @@ export function useArtboardControls(getEditor) {
     getArtboardBounds,
     syncArtboardControls,
     updateArtboardSize,
-    openMaskImagePicker,
-    handleMaskImageChange,
+    openBackgroundImagePicker,
+    handleBackgroundImageChange,
     addPrintArea,
     deletePrintArea
   }
 }
 
-/** @param {Object} maskImage Leafer 图片节点。 */
-function markMaskNode(maskImage) {
-  maskImage[MASK_NODE_KEY] = true
-  maskImage.customType = MASK_NODE_LABEL
-  maskImage.name = MASK_NODE_LABEL
-  maskImage.set?.({
+/**
+ * @param {Object} editor Editor 外观实例。
+ * @param {Object} backgroundImage Leafer 图片节点。
+ */
+function markBackgroundNode(editor, backgroundImage) {
+  backgroundImage[BACKGROUND_NODE_KEY] = true
+  backgroundImage.customType = BACKGROUND_NODE_LABEL
+  backgroundImage.name = BACKGROUND_NODE_LABEL
+  backgroundImage.set?.({
     locked: true,
-    editable: false,
-    draggable: false,
     hittable: false,
     hitSelf: false,
     hitChildren: false
   })
+
+  const attributes = editor.elementData?.get(backgroundImage) ?? {}
+  editor.elementData?.set(backgroundImage, {
+    ...attributes,
+    image: {
+      ...(attributes.image ?? {}),
+      role: 'background'
+    }
+  }, { replace: true })
 }
 
-/** @param {Object} editor Editor 外观实例。 */
-function removeMaskImages(editor) {
-  const masks = (editor.contentLayer?.children ?? []).filter((child) => child?.[MASK_NODE_KEY])
+/**
+ * @param {Object} editor Editor 外观实例。
+ * @param {Object} [keep] 本次新建的背景图。
+ */
+function removeBackgroundImages(editor, keep) {
+  const backgrounds = (editor.contentLayer?.children ?? []).filter((child) => {
+    if (child === keep) {
+      return false
+    }
 
-  masks.forEach((mask) => mask.remove())
+    const attributes = editor.elementData?.get(child) ?? {}
+    return child?.[BACKGROUND_NODE_KEY]
+      || child?.[LEGACY_MASK_NODE_KEY]
+      || attributes.image?.role === 'background'
+  })
+
+  backgrounds.forEach((background) => background.remove())
 }
 
 /** @param {Object} element Leafer 元素。 */

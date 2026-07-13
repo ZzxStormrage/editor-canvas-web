@@ -45,47 +45,24 @@
             <span class="layer-type-icon">
               <v-icon :icon="resolveLayerIcon(element.type)" size="17" />
             </span>
-            <span class="layer-name" :title="element.name">{{ element.name }}</span>
-            <div class="layer-actions">
-              <button
-                v-if="supportsElementProperties(element.type)"
-                type="button"
-                class="layer-action-button layer-attribute-button"
-                :class="{
-                  'layer-action-button--active': editingElementId === element.elementId,
-                  'layer-attribute-button--configured': element.customAttributeCount > 0
-                }"
-                :aria-label="getAttributeButtonLabel(element)"
-                :title="getAttributeButtonTitle(element)"
-                @pointerdown.stop
-                @click.stop="toggleAttributeEditor(element)"
+            <div class="layer-name-cell">
+              <span class="layer-name" :title="element.name">{{ element.name }}</span>
+              <span
+                v-if="element.imageRole"
+                class="layer-image-role-badge"
+                :class="`layer-image-role-badge--${element.imageRole}`"
               >
-                <v-icon icon="mdi-tune-variant" size="16" />
-                <span v-if="element.customAttributeCount > 0" class="layer-attribute-count">
-                  {{ formatAttributeCount(element.customAttributeCount) }}
-                </span>
-              </button>
-              <button
-                type="button"
-                class="layer-action-button"
-                :aria-label="element.locked ? '解锁图层' : '锁定图层'"
-                :title="element.locked ? '解锁' : '锁定'"
-                @pointerdown.stop
-                @click.stop="editor.toggleLayerLock(element.id)"
-              >
-                <v-icon :icon="element.locked ? 'mdi-lock-outline' : 'mdi-lock-open-variant-outline'" size="16" />
-              </button>
-              <button
-                type="button"
-                class="layer-action-button layer-delete-button"
-                aria-label="删除图层"
-                title="删除"
-                @pointerdown.stop
-                @click.stop="editor.deleteLayer(element.id)"
-              >
-                <v-icon icon="mdi-delete-outline" size="16" />
-              </button>
+                {{ getImageRoleLabel(element.imageRole) }}
+              </span>
             </div>
+            <LayerActionButtons
+              :layer="element"
+              :attributes-active="editingElementId === element.elementId"
+              @edit-attributes="toggleAttributeEditor(element)"
+              @toggle-pointer-through="editor.toggleLayerPointerThrough(element.id)"
+              @toggle-lock="editor.toggleLayerLock(element.id)"
+              @delete="editor.deleteLayer(element.id)"
+            />
           </div>
 
           <transition name="layer-attribute-expand">
@@ -108,6 +85,8 @@
 import { ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import ElementAttributesEditor from '../layers/ElementAttributesEditor.vue';
+import LayerActionButtons from '../layers/LayerActionButtons.vue';
+import { getImageRoleLabel, resolveLayerIcon } from '../layers/layerDisplay.js';
 
 const props = defineProps({
   editor: {
@@ -133,34 +112,6 @@ function toggleAttributeEditor(layer) {
 
 function closeAttributeEditor() {
   editingElementId.value = null;
-}
-
-function supportsElementProperties(type) {
-  return type === 'text' || type === 'image';
-}
-
-function getAttributeButtonLabel(element) {
-  if (element.customAttributeCount > 0) return `编辑元素配置，已配置 ${element.customAttributeCount} 项`;
-  return element.type === 'image' ? '添加图片描述' : '添加 H5 文本规则';
-}
-
-function getAttributeButtonTitle(element) {
-  if (element.customAttributeCount > 0) return `已配置 ${element.customAttributeCount} 项`;
-  return element.type === 'image' ? '图片描述' : 'H5 文本规则';
-}
-
-function formatAttributeCount(count) {
-  return count > 9 ? '9+' : String(count);
-}
-
-function resolveLayerIcon(type) {
-  const icons = {
-    text: 'mdi-format-text',
-    image: 'mdi-image-outline',
-    rect: 'mdi-vector-square',
-    shape: 'mdi-shape-outline'
-  };
-  return icons[type] ?? icons.shape;
 }
 
 watch(

@@ -3,7 +3,8 @@ import { EditorEvent } from '@leafer-in/editor'
 import { getElementDataContainer } from '../../../utils/element-data.js'
 
 const LAYER_EVENT = 'layers:changed'
-const OBSERVED_PROPERTIES = new Set(['locked', 'name', 'customType', 'text'])
+const OBSERVED_PROPERTIES = new Set(['locked', 'hittable', 'hitSelf', 'hitChildren', 'name', 'customType', 'text'])
+const IMAGE_ROLES = new Set(['background', 'mask', 'ai-variable'])
 
 /**
  * 图层插件 —— 将 Leafer 场景树转换为稳定的图层列表 API。
@@ -159,6 +160,41 @@ export class LayerPlugin {
   }
 
   /**
+   * 切换图片节点的点击穿透状态，只修改命中能力，不改变锁定状态和图层顺序。
+   *
+   * @param {string} id 图层 ID。
+   * @returns {void}
+   */
+  togglePointerThrough(id) {
+    const node = this._nodes.get(String(id))
+    const innerEditor = this._context?.innerEditor
+
+    if (!node || this._getNodeType(node) !== 'image') {
+      return
+    }
+
+    const pointerThrough = this._isPointerThrough(node)
+    node.set?.({
+      hittable: pointerThrough,
+      hitSelf: pointerThrough,
+      hitChildren: pointerThrough
+    })
+
+    if (!node.hittable) {
+      if (innerEditor?.hoverTarget === node) {
+        innerEditor.hoverTarget = null
+      }
+      if (innerEditor?.hasItem?.(node)) {
+        innerEditor.cancel()
+      }
+    }
+
+    node.forceUpdate?.()
+    innerEditor?.update?.()
+    this._emitChanged()
+  }
+
+  /**
    * 使用 @leafer-in/editor 原生 hover 轮廓高亮图层，不修改节点自身样式。
    *
    * @param {string | null} id 图层 ID；null 表示清除高亮。
@@ -168,7 +204,7 @@ export class LayerPlugin {
     const innerEditor = this._context?.innerEditor
 
     if (innerEditor) {
-      innerEditor.hoverTarget = id == null ? null : this._nodes.get(String(id)) ?? null
+      innerEditor.hoverTarget = id === null || id === undefined ? null : this._nodes.get(String(id)) ?? null
     }
   }
 
@@ -229,7 +265,7 @@ export class LayerPlugin {
   _getNodeId(node) {
     const publicId = node.innerId ?? node.id
 
-    if (publicId != null) {
+    if (publicId !== null && publicId !== undefined) {
       return String(publicId)
     }
 
@@ -245,14 +281,17 @@ export class LayerPlugin {
   _toLayerItem(node, index, selected) {
     const elementData = getElementDataContainer(node, true)
     const customAttributeCount = this._getConfiguredAttributeCount(elementData.attributes)
+    const type = this._getNodeType(node)
 
     return {
       id: this._getNodeId(node),
       elementId: elementData.elementId,
       name: this._getNodeName(node),
-      type: this._getNodeType(node),
+      type,
+      imageRole: type === 'image' ? this._getImageRole(elementData.attributes) : null,
       customAttributeCount,
       locked: Boolean(node.locked),
+      pointerThrough: type === 'image' && this._isPointerThrough(node),
       selected,
       order: index
     }
@@ -263,6 +302,10 @@ export class LayerPlugin {
     let count = 0
 
     if (typeof attributes.image?.description === 'string' && attributes.image.description.trim()) {
+      count += 1
+    }
+
+    if (this._getImageRole(attributes)) {
       count += 1
     }
 
@@ -281,6 +324,16 @@ export class LayerPlugin {
   /** @private */
   _isPlainObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
+  }
+
+  /** @private */
+  _getImageRole(attributes = {}) {
+    return IMAGE_ROLES.has(attributes.image?.role) ? attributes.image.role : null
+  }
+
+  /** @private */
+  _isPointerThrough(node) {
+    return node.hittable === false || node.hitSelf === false || node.hitChildren === false
   }
 
   /** @private */

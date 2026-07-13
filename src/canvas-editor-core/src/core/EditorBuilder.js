@@ -1,5 +1,4 @@
-import { Group } from 'leafer-ui'
-import { App } from '@leafer-ui/app'
+import { App, Group } from 'leafer-ui'
 import '@leafer-in/editor'
 
 import { EventBus } from '../logic/event-bus.js'

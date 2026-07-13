@@ -1,5 +1,4 @@
 import { DEFAULT_CANVAS_CONFIG } from '../config/index.js';
-import { EditorError } from '../errors/editor-error.js';
 import { normalizePositiveNumber } from './number.js';
 
 /**

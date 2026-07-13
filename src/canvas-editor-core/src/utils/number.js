@@ -1,4 +1,4 @@
-import { MathHelper, isNumber, isUndefined } from 'leafer-ui';
+import { MathHelper, isUndefined } from 'leafer-ui';
 
 import { EditorError } from '../errors/editor-error.js';
 
