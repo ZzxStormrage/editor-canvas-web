@@ -227,7 +227,7 @@ export const DEFAULT_CANVAS_CONFIG = {
     /** 画板阴影。 */
     shadow: ARTBOARD_SHADOW,
     /** 内容元素超过画板时的透明度；选择框和编辑按钮始终保持正常不透明。 */
-    overflowOpacity: 0.2
+    overflowOpacity: 0.05
   },
   /** Leafer 官方 Editor 和自定义编辑控件的配置。 */
   editor: {
