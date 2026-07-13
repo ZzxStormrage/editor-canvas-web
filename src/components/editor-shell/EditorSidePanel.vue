@@ -12,7 +12,6 @@ import ImagePanel from './side-panels/ImagePanel.vue';
 import LayersPanel from './side-panels/LayersPanel.vue';
 import TextPanel from './side-panels/TextPanel.vue';
 import ToolsPanel from './side-panels/ToolsPanel.vue';
-import WatermarkPanel from './side-panels/WatermarkPanel.vue';
 
 const props = defineProps({
   activePanel: {
@@ -29,7 +28,6 @@ const props = defineProps({
 const panelComponents = {
   image: ImagePanel,
   text: TextPanel,
-  watermark: WatermarkPanel,
   layers: LayersPanel,
   artboard: ArtboardPanel,
   tools: ToolsPanel

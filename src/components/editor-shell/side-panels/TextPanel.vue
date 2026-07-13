@@ -30,25 +30,7 @@
     </PanelGroup>
 
     <PanelGroup>
-      <div class="slider-field">
-        <label>字号</label>
-        <div class="slider-row">
-          <v-slider
-            v-model.number="editor.fontSize.value"
-            :max="240"
-            :min="8"
-            :step="1"
-          />
-          <v-number-input
-            v-model.number="editor.fontSize.value"
-            class="value-field"
-            label=""
-            :max="240"
-            :min="8"
-            :step="1"
-          />
-        </div>
-      </div>
+      <PanelSliderField v-model="editor.fontSize.value" label="字号" :max="240" :min="8" />
 
       <PanelSegmentedControl
         v-model="editor.fontWeight.value"
@@ -102,45 +84,8 @@
     </PanelGroup>
 
     <PanelGroup>
-      <div class="slider-field">
-        <label>字距</label>
-        <div class="slider-row">
-          <v-slider
-            v-model.number="editor.letterSpacing.value"
-            :max="120"
-            :min="0"
-            :step="1"
-          />
-          <v-number-input
-            v-model.number="editor.letterSpacing.value"
-            class="value-field"
-            label=""
-            :max="120"
-            :min="0"
-            :step="1"
-          />
-        </div>
-      </div>
-
-      <div class="slider-field">
-        <label>行高</label>
-        <div class="slider-row">
-          <v-slider
-            v-model.number="editor.lineHeight.value"
-            :max="300"
-            :min="8"
-            :step="1"
-          />
-          <v-number-input
-            v-model.number="editor.lineHeight.value"
-            class="value-field"
-            label=""
-            :max="300"
-            :min="8"
-            :step="1"
-          />
-        </div>
-      </div>
+      <PanelSliderField v-model="editor.letterSpacing.value" label="字距" :max="120" :min="0" />
+      <PanelSliderField v-model="editor.lineHeight.value" label="行高" :max="300" :min="8" />
     </PanelGroup>
   </section>
 </template>
@@ -150,6 +95,7 @@ import { computed } from 'vue';
 
 import PanelGroup from '../PanelGroup.vue';
 import PanelSegmentedControl from '../PanelSegmentedControl.vue';
+import PanelSliderField from '../PanelSliderField.vue';
 
 const props = defineProps({
   editor: {

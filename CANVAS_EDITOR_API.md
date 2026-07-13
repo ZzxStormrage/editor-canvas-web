@@ -533,20 +533,30 @@ editor.commands.clear()
 ### 推荐数据结构
 
 ```js
+// 图片元素
 {
-  action: {
-    type: 'navigate',
-    url: '/pages/product/detail?id=1001'
-  },
-  tracking: {
-    eventName: 'banner_click',
-    position: 'home_top'
-  },
-  business: {
-    productId: '1001'
+  image: {
+    description: '红色礼盒正面展示图'
+  }
+}
+
+// 文本元素
+{
+  textInput: {
+    enabled: true,
+    characterSet: 'latin',
+    allowManualNewline: true,
+    allowSymbols: true,
+    maxCharactersPerLine: 20,
+    maxCharacters: 100,
+    maxLines: 5
   }
 }
 ```
+
+`characterSet: 'latin'` 表示只允许英文字母、数字和空格；`'any'` 表示不限制
+中英文。自动换行由 `maxCharactersPerLine` 控制，`allowManualNewline` 只控制
+用户是否可以主动输入换行。
 
 不要把元素位置、颜色、字号等画布渲染属性重复写入业务属性。这些仍由 Leafer
 节点和对应插件负责，避免形成两份互相冲突的数据源。

@@ -318,9 +318,6 @@
 
 .value-field {
   min-width: 0;
-}
-
-.value-field {
   width: 104px;
 }
 
@@ -713,8 +710,7 @@
   white-space: nowrap;
 }
 
-.layer-attribute-close,
-.layer-attribute-remove {
+.layer-attribute-close {
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
@@ -742,56 +738,131 @@
   line-height: 1.5;
 }
 
-.layer-attribute-list {
+.text-rule-master,
+.text-rule-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.text-rule-master {
+  min-height: 44px;
+  padding: 6px 9px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.16);
+  border-radius: 7px;
+  background: rgba(var(--v-theme-primary), 0.05);
+}
+
+.text-rule-master > div,
+.text-rule-toggle > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.text-rule-master strong,
+.text-rule-toggle strong {
+  color: var(--editor-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.text-rule-master span,
+.text-rule-toggle small {
+  color: var(--editor-muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.text-rule-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.text-rule-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.text-rule-section + .text-rule-section {
+  padding-top: 10px;
+  border-top: 1px solid rgba(var(--v-theme-outline), 0.12);
+}
+
+.text-rule-section-title {
+  color: var(--editor-text);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.text-rule-toggle {
+  min-height: 34px;
+}
+
+.text-rule-number-grid {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.layer-attribute-row {
-  display: grid;
-  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr) 26px;
-  align-items: start;
-  gap: 6px;
-}
-
-.layer-attribute-key,
-.layer-attribute-value {
+.text-rule-number-field {
+  display: flex;
   min-width: 0;
+  flex-direction: column;
+  gap: 5px;
 }
 
-.layer-attribute-remove {
-  margin-top: 4px;
-}
-
-.layer-attribute-remove:hover,
-.layer-attribute-remove:focus-visible {
-  color: rgb(var(--v-theme-error));
-  background: rgba(var(--v-theme-error), 0.1);
-  outline: none;
-}
-
-.layer-attribute-add {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 4px;
-  min-height: 28px;
-  padding: 0 7px;
-  border: 1px dashed rgba(var(--v-theme-primary), 0.28);
-  border-radius: 6px;
-  color: var(--editor-primary);
-  background: rgba(var(--v-theme-primary), 0.05);
-  font-size: 11px;
+.text-rule-number-field > span {
+  color: var(--editor-text);
+  font-size: 10px;
   font-weight: 700;
-  cursor: pointer;
+  line-height: 1.2;
 }
 
-.layer-attribute-add:hover,
-.layer-attribute-add:focus-visible {
-  border-style: solid;
-  background: rgba(var(--v-theme-primary), 0.1);
-  outline: none;
+.text-rule-master .v-switch,
+.text-rule-toggle .v-switch {
+  flex: 0 0 auto;
+  transform: scale(0.82);
+  transform-origin: right center;
+}
+
+.text-rule-summary {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 5px;
+  color: var(--editor-muted);
+  background: rgba(var(--v-theme-muted), 0.08);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.text-rule-reveal-enter-active,
+.text-rule-reveal-leave-active {
+  overflow: hidden;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    max-height 220ms ease;
+}
+
+.text-rule-reveal-enter-from,
+.text-rule-reveal-leave-to {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.text-rule-reveal-enter-to,
+.text-rule-reveal-leave-from {
+  max-height: 560px;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .layer-attribute-error {
@@ -808,6 +879,13 @@
   justify-content: flex-end;
   gap: 4px;
   padding-top: 2px;
+}
+
+.layer-attribute-footer-button {
+  min-width: 48px;
+  height: 28px;
+  padding-inline: 9px;
+  font-size: 12px;
 }
 
 .layers-empty {
@@ -843,6 +921,8 @@
   .layer-attribute-editor,
   .layer-attribute-expand-enter-active,
   .layer-attribute-expand-leave-active,
+  .text-rule-reveal-enter-active,
+  .text-rule-reveal-leave-active,
   .selection-layer-menu-enter-active,
   .selection-layer-menu-leave-active {
     transition: none;

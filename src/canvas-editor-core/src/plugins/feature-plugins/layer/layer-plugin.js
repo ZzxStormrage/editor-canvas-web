@@ -244,8 +244,7 @@ export class LayerPlugin {
   /** @private */
   _toLayerItem(node, index, selected) {
     const elementData = getElementDataContainer(node, true)
-    const customAttributes = elementData.attributes?.custom
-    const customAttributeCount = this._isPlainObject(customAttributes) ? Object.keys(customAttributes).length : 0
+    const customAttributeCount = this._getConfiguredAttributeCount(elementData.attributes)
 
     return {
       id: this._getNodeId(node),
@@ -257,6 +256,26 @@ export class LayerPlugin {
       selected,
       order: index
     }
+  }
+
+  /** @private */
+  _getConfiguredAttributeCount(attributes = {}) {
+    let count = 0
+
+    if (typeof attributes.image?.description === 'string' && attributes.image.description.trim()) {
+      count += 1
+    }
+
+    // 文本规则可以暂存但关闭；只有 H5 实际启用时才向运维展示“已配置”标记。
+    if (this._isPlainObject(attributes.textInput) && attributes.textInput.enabled === true) {
+      count += 1
+    }
+
+    if (this._isPlainObject(attributes.custom)) {
+      count += Object.keys(attributes.custom).length
+    }
+
+    return count
   }
 
   /** @private */

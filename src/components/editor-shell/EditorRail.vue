@@ -34,7 +34,6 @@ const emit = defineEmits(['update:modelValue']);
 const railItems = [
   { label: '图片', value: 'image', icon: 'mdi-image-outline' },
   { label: '文字', value: 'text', icon: 'mdi-format-text' },
-  { label: '水印', value: 'watermark', icon: 'mdi-water-percent' },
   { label: '图层', value: 'layers', icon: 'mdi-layers-outline' },
   { label: '画布', value: 'artboard', icon: 'mdi-artboard' },
   { label: '工具', value: 'tools', icon: 'mdi-tools' }
