@@ -191,6 +191,7 @@ export function useArtboardControls(getEditor, syncZoom) {
     printArea[PRINT_AREA_NODE_KEY] = true
     printArea.customType = PRINT_AREA_NODE_LABEL
     printArea.name = PRINT_AREA_NODE_LABEL
+    editor.elementData?.set(printArea, {})
     editor.contentLayer?.add(printArea)
     activePrintArea = printArea
     syncPrintAreaControls(printArea)

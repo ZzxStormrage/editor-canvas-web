@@ -1,5 +1,6 @@
 import { ChildEvent, PropertyEvent } from 'leafer-ui'
 import { EditorEvent } from '@leafer-in/editor'
+import { getElementDataContainer } from '../../../utils/element-data.js'
 
 const LAYER_EVENT = 'layers:changed'
 const OBSERVED_PROPERTIES = new Set(['locked', 'name', 'customType', 'text'])
@@ -24,6 +25,8 @@ export class LayerPlugin {
     this._propertyEventIds = new Map()
     /** @private @type {Array<{ target: Object, eventId: string | string[] }>} */
     this._eventBindings = []
+    /** @private @type {Function | null} */
+    this._unsubscribeElementDataChanged = null
   }
 
   /** @returns {string} 插件 ID。 */
@@ -64,6 +67,7 @@ export class LayerPlugin {
         eventId: context.innerEditor?.on_(EditorEvent.SELECT, this._emitChanged, this)
       }
     ].filter((binding) => binding.target && binding.eventId)
+    this._unsubscribeElementDataChanged = context.eventBus.on('element-data:changed', this._emitChanged.bind(this))
     this._emitChanged()
   }
 
@@ -112,26 +116,45 @@ export class LayerPlugin {
   /** @param {string} id 图层 ID。 */
   remove(id) {
     const node = this._nodes.get(String(id))
+    const innerEditor = this._context?.innerEditor
 
     if (!node) {
       return
     }
 
-    this._context?.innerEditor?.removeItem?.(node)
+    if (innerEditor?.hoverTarget === node) {
+      innerEditor.hoverTarget = null
+    }
+
+    if (innerEditor?.hasItem?.(node)) {
+      innerEditor.cancel()
+    } else {
+      innerEditor?.removeItem?.(node)
+    }
+
     node.remove()
     this._context?.artboard?.syncAllElements?.()
+    this._context?.eventBus.emit('selection:deleted', { targets: [node] })
+    this._syncNodeListeners()
+    this._emitChanged()
   }
 
   /** @param {string} id 图层 ID。 */
   toggleLock(id) {
     const node = this._nodes.get(String(id))
+    const innerEditor = this._context?.innerEditor
 
     if (!node) {
       return
     }
 
     node.locked = !node.locked
-    this._context?.innerEditor?.update?.()
+
+    if (node.locked && innerEditor?.hasItem?.(node)) {
+      innerEditor.cancel()
+    }
+
+    innerEditor?.update?.()
     this._emitChanged()
   }
 
@@ -155,6 +178,8 @@ export class LayerPlugin {
     this._eventBindings = []
     this._propertyEventIds.forEach((eventId, node) => node.off_(eventId))
     this._propertyEventIds.clear()
+    this._unsubscribeElementDataChanged?.()
+    this._unsubscribeElementDataChanged = null
     this._nodes.clear()
     this._context = null
   }
@@ -218,14 +243,25 @@ export class LayerPlugin {
 
   /** @private */
   _toLayerItem(node, index, selected) {
+    const elementData = getElementDataContainer(node, true)
+    const customAttributes = elementData.attributes?.custom
+    const customAttributeCount = this._isPlainObject(customAttributes) ? Object.keys(customAttributes).length : 0
+
     return {
       id: this._getNodeId(node),
+      elementId: elementData.elementId,
       name: this._getNodeName(node),
       type: this._getNodeType(node),
+      customAttributeCount,
       locked: Boolean(node.locked),
       selected,
       order: index
     }
+  }
+
+  /** @private */
+  _isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
   }
 
   /** @private */

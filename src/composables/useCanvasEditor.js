@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { createEditor } from '../canvas-editor-core/src/index.js'
 import { useArtboardControls } from './canvas-editor/useArtboardControls.js'
 import { useAssetControls } from './canvas-editor/useAssetControls.js'
+import { useElementDataControls } from './canvas-editor/useElementDataControls.js'
 import { useLayerMenu } from './canvas-editor/useLayerMenu.js'
 import { useLayerControls } from './canvas-editor/useLayerControls.js'
 import { useTextControls } from './canvas-editor/useTextControls.js'
@@ -39,6 +40,7 @@ export function useCanvasEditor() {
   const assetControls = useAssetControls(getEditor, artboardControls.getArtboardBounds, textControls.fontFamily)
   const layerMenuControls = useLayerMenu(getEditor, canvasRef)
   const layerControls = useLayerControls(getEditor)
+  const elementDataControls = useElementDataControls(getEditor)
 
   /**
    * 初始化编辑器并建立应用层事件桥接。
@@ -161,6 +163,14 @@ export function useCanvasEditor() {
     deleteLayer: layerControls.deleteLayer,
     toggleLayerLock: layerControls.toggleLayerLock,
     hoverLayer: layerControls.hoverLayer,
+    getSelectedElementAttributes: elementDataControls.getSelectedElementAttributes,
+    setSelectedElementAttributes: elementDataControls.setSelectedElementAttributes,
+    removeSelectedElementAttributes: elementDataControls.removeSelectedElementAttributes,
+    clearSelectedElementAttributes: elementDataControls.clearSelectedElementAttributes,
+    exportElementAttributes: elementDataControls.exportElementAttributes,
+    getElementAttributesById: elementDataControls.getElementAttributesById,
+    setElementAttributesById: elementDataControls.setElementAttributesById,
+    removeElementAttributesById: elementDataControls.removeElementAttributesById,
     zoomIn,
     zoomOut,
     resetZoom,

@@ -521,6 +521,118 @@ if (editor.commands.canRedo) {
 editor.commands.clear()
 ```
 
+## 元素业务属性
+
+元素业务属性用于保存 H5 运行时所需的数据，例如跳转链接、商品 ID、埋点标识、
+交互动作和业务组件配置。它与 Leafer 的 `x`、`fill`、`locked` 等渲染属性隔离，
+不会改变现有画布编辑流程。
+
+每个通过文字或图片插件创建的元素都会自动获得稳定 `elementId`。业务属性必须是
+可 JSON 序列化的普通对象，不允许函数、DOM、Date、Map、循环引用等运行时对象。
+
+### 推荐数据结构
+
+```js
+{
+  action: {
+    type: 'navigate',
+    url: '/pages/product/detail?id=1001'
+  },
+  tracking: {
+    eventName: 'banner_click',
+    position: 'home_top'
+  },
+  business: {
+    productId: '1001'
+  }
+}
+```
+
+不要把元素位置、颜色、字号等画布渲染属性重复写入业务属性。这些仍由 Leafer
+节点和对应插件负责，避免形成两份互相冲突的数据源。
+
+### `editor.elementData.setSelected(attributes, options)`
+
+给当前单选元素写入业务属性。默认浅合并顶层字段，`replace: true` 时整体替换。
+
+```js
+editor.elementData.setSelected({
+  action: { type: 'navigate', url: '/pages/activity/index' },
+  tracking: { eventName: 'activity_click' }
+})
+```
+
+### `editor.elementData.getSelected()`
+
+获取当前单选元素的业务属性副本。未配置时返回 `null`。
+
+```js
+const attributes = editor.elementData.getSelected()
+```
+
+### `editor.elementData.removeSelected(keys)`
+
+删除当前单选元素的一个或多个顶层字段。
+
+```js
+editor.elementData.removeSelected(['tracking', 'business'])
+```
+
+### `editor.elementData.clearSelected()`
+
+清空当前单选元素的业务属性，但保留稳定 `elementId`。
+
+### `editor.elementData.getById(elementId)` / `setById(elementId, attributes)`
+
+适合图层面板、批量属性配置等不依赖当前选区的业务场景。
+
+### `editor.elementData.export(options)`
+
+导出供 H5 消费的元素业务属性列表。默认忽略未配置属性的元素。
+
+```js
+const h5ElementData = editor.elementData.export()
+
+// [
+//   {
+//     elementId: 'V1StGXR8_Z5jdHi6B-myT',
+//     type: 'Text',
+//     attributes: {
+//       action: { type: 'navigate', url: '/pages/activity/index' }
+//     }
+//   }
+// ]
+```
+
+如需导出空属性元素：
+
+```js
+editor.elementData.export({ includeEmpty: true })
+```
+
+### Vue 组件调用
+
+`useCanvasEditor()` 已提供不暴露 Leafer 节点的应用层方法：
+
+```js
+editor.setSelectedElementAttributes({
+  action: { type: 'navigate', url: '/pages/product/detail?id=1001' }
+})
+
+const current = editor.getSelectedElementAttributes()
+const payload = editor.exportElementAttributes()
+```
+
+插件会发送 `element-data:changed` 事件，属性面板需要响应外部变化时可以订阅：
+
+```js
+const unsubscribe = editor.eventBus.on('element-data:changed', (payload) => {
+  console.log(payload.elementId, payload.attributes)
+})
+```
+
+复制元素时会复制业务属性，但会生成新的 `elementId`，避免 H5 页面出现重复身份。
+
 ## 生命周期
 
 ### `editor.destroy()`
@@ -551,6 +663,8 @@ onBeforeUnmount(() => {
 | `EventBus` | 事件总线。 |
 | `EditorError` | 编辑器错误类型。 |
 | `DEFAULT_CANVAS_CONFIG` | 默认配置。 |
+| `ElementDataPlugin` | 元素业务属性插件。 |
+| `ELEMENT_DATA_KEY` | 元素业务数据内部存储键；普通业务不应直接使用。 |
 | `TextPlugin` | 文本插件类。 |
 | `ImagePlugin` | 图片插件类。 |
 

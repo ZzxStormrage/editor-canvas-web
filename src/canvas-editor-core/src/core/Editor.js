@@ -90,6 +90,10 @@ export class Editor {
   get layer() {
     return this.#pluginManager.get('layer')
   }
+  /** @returns {import('../plugins/feature-plugins/element-data/element-data-plugin.js').ElementDataPlugin} 元素业务属性插件。 */
+  get elementData() {
+    return this.#pluginManager.get('elementData')
+  }
   /** @returns {import('@leafer-in/editor').Editor} 图形编辑器实例 */
   get editor() {
     return this.#innerEditor

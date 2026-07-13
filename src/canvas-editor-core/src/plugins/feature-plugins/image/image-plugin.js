@@ -1,6 +1,7 @@
 import { Image as LeaferImage, Platform, Resource, isString } from 'leafer-ui';
 
 import { EditorError } from '../../../errors/editor-error.js';
+import { getElementDataContainer } from '../../../utils/element-data.js';
 import { normalizeOptionalPositiveNumber } from '../../../utils/number.js';
 import { normalizeImageOptions } from '../../../utils/image.js';
 
@@ -81,6 +82,7 @@ export class ImagePlugin {
         ...imageConfig
       });
 
+      getElementDataContainer(image, true);
       contentLayer.add(image);
       // 延迟到下一帧 select，确保 contentLayer.add() 后 Leafer
       // 内部渲染管线稳定，避免 editTool 尚未加载时触发 update()

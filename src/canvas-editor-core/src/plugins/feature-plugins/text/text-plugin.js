@@ -2,6 +2,7 @@ import { Text as LeaferText } from 'leafer-ui'
 import { EditorEvent, EditorScaleEvent, InnerEditorEvent } from '@leafer-in/editor'
 
 import { EditorError } from '../../../errors/editor-error.js'
+import { getElementDataContainer } from '../../../utils/element-data.js'
 import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
 import { applyTextEditorStyleLater } from '../../../utils/dom.js'
 import { installTextEditorAdapter } from './text-editor-adapter.js'
@@ -99,6 +100,7 @@ export class TextPlugin {
         ...renderOptions
       })
 
+      getElementDataContainer(text, true)
       this._setRawText(text, rawText)
       this._applyVisualItalic(text, renderOptions)
       text.forceUpdate?.()

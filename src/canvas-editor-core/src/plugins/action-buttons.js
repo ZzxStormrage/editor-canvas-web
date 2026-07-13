@@ -7,6 +7,7 @@ import layerIconSvg from '../assets/icons/layers.svg?raw'
 import lockIconSvg from '../assets/icons/lock.svg?raw'
 import rotateIconSvg from '../assets/icons/rotate.svg?raw'
 import unlockIconSvg from '../assets/icons/unlock.svg?raw'
+import { cloneElementData } from '../utils/element-data.js'
 import { isTextElement } from '../utils/text.js'
 
 /**
@@ -1649,6 +1650,7 @@ export class EditorActionButtons {
         draggable: true,
         locked: false
       })
+      cloneElementData(item, clone)
       toAdd.push(clone)
     }
 
