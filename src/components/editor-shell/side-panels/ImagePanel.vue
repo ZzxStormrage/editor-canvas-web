@@ -30,10 +30,12 @@
       </div>
     </PanelGroup>
 
+    <ImagePropertiesEditor :editor="editor" />
   </section>
 </template>
 
 <script setup>
+import ImagePropertiesEditor from '../images/ImagePropertiesEditor.vue';
 import PanelGroup from '../PanelGroup.vue';
 
 const props = defineProps({

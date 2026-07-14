@@ -8,6 +8,7 @@ const LAYER_TYPE_ICONS = Object.freeze({
   text: 'mdi-format-text',
   image: 'mdi-image-outline',
   rect: 'mdi-vector-square',
+  group: 'mdi-group',
   shape: 'mdi-shape-outline'
 });
 

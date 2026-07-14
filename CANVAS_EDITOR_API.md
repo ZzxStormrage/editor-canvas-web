@@ -210,6 +210,7 @@ const editor = createEditor({
 | `editor.text` | 文本插件。 |
 | `editor.layer` | 图层插件。 |
 | `editor.elementData` | 元素业务属性插件。 |
+| `editor.production` | 遮罩识别、打印区域和区域截图插件。 |
 | `editor.artboard` | 白色画板管理器。 |
 | `editor.eventBus` | 编辑器事件总线。 |
 | `editor.commands` | 命令历史管理器。 |
@@ -328,6 +329,139 @@ const { width, height } = await editor.image.getSize(file)
 
 图片解析和 Blob URL 生命周期由图片插件负责，Vue 组件不应重复创建临时 `<img>`。
 
+### 编辑当前图片属性
+
+Vue 图片属性面板应通过 `Editor` 外观 API 读写，不直接访问 Leafer 图片节点：
+
+```js
+const properties = editor.getSelectedImageProperties()
+
+editor.updateSelectedImageProperties({
+  x: 24,
+  y: 36,
+  width: 240,
+  rotation: 15,
+  opacity: 80
+})
+
+editor.resetSelectedImageSize()
+```
+
+仅在严格单选图片时返回属性；未选中图片、多选或选中其他类型时返回 `null`。
+位置以画板左上角为原点，缩放比例以图片原始像素尺寸为 `100%`。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `x` / `y` | `number` | 图片相对画板的位置，可为负数。 |
+| `width` / `height` | `number` | 当前显示尺寸，最小值为 `1`。 |
+| `originalWidth` / `originalHeight` | `number` | 图片原始像素尺寸，只读。 |
+| `scalePercentX` / `scalePercentY` | `number` | 相对原图的水平、垂直缩放百分比。 |
+| `rotation` | `number` | 旋转角度。 |
+| `opacity` | `number` | 不透明度百分比，范围 `0-100`。 |
+| `lockRatio` | `boolean` | 调整单边尺寸或缩放时是否同步另一边。 |
+| `flippedX` / `flippedY` | `boolean` | 水平、垂直翻转状态。 |
+| `locked` | `boolean` | 图片是否锁定，只读；锁定后属性写入会被忽略。 |
+
+画布拖动、缩放、旋转以及面板写入都会触发 `image:selection-changed`，可用同一个
+监听器刷新属性面板。
+
+## 生产遮罩与打印区域
+
+### 标记遮罩图
+
+文件上传仍属于应用层。图片节点创建完成后，通过 Editor 外观 API 写入遮罩角色：
+
+```js
+const imageUrl = await pictureApi.upload(file)
+const mask = await editor.image.add(imageUrl, {
+  x: artboard.x,
+  y: artboard.y,
+  width: artboard.width,
+  height: artboard.height,
+  lockRatio: false
+})
+
+editor.markImageAsMask(mask, file)
+```
+
+该方法自动写入 `attributes.image.role = 'mask'`，并保留本地 `File` 供透明像素识别。
+同一画布只保留一个遮罩图，上传新遮罩会替换旧遮罩，但不会改变画板尺寸。
+
+### 管理打印区域
+
+打印区域的位置以画板左上角为原点，可以通过画布控制点或 API 调整：
+
+```js
+editor.createPrintArea({ x: 20, y: 30, width: 300, height: 200 })
+
+const properties = editor.getPrintAreaProperties()
+
+editor.updatePrintArea({
+  x: properties.x + 10,
+  y: properties.y,
+  width: 320,
+  height: 220
+})
+
+editor.removePrintArea()
+```
+
+### 自动识别遮罩透明区域
+
+```js
+const printArea = await editor.detectPrintAreaFromMask({
+  alphaThreshold: 10,
+  maxAnalysisSize: 2048
+})
+```
+
+识别过程优先选择不接触图片边缘的最大透明连通区域；没有内部区域时回退到最大的透明
+区域。识别结果会按照遮罩图当前的位置、缩放和旋转映射到画板，并自动创建或更新打印框。
+
+### 截图、转 File 并上传
+
+核心 API 默认返回 `File`：
+
+```js
+const file = await editor.capturePrintArea({
+  includeBackground: false,
+  includeMask: false,
+  type: 'image/png',
+  quality: 1,
+  pixelRatio: 1
+})
+```
+
+传入上传方法后，Promise 直接返回接口结果：
+
+```js
+const result = await editor.capturePrintArea({
+  includeBackground: false,
+  upload: (file) => pictureApi.upload(file)
+})
+```
+
+通过 `useCanvasEditor()` 暴露的 `capturePrintArea(options)` 已默认注入 `pictureApi.upload`，
+因此 Vue 组件直接调用即可得到上传结果：
+
+```js
+const imageUrl = await editor.capturePrintArea()
+```
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `includeBackground` | `false` | 是否包含标记为背景图的图片。 |
+| `includeMask` | `false` | 是否包含遮罩图。 |
+| `type` | `image/png` | 支持 PNG、JPEG 和 WebP。 |
+| `quality` | `1` | JPEG/WebP 图片质量，范围 `0-1`。 |
+| `pixelRatio` | `1` | 输出像素倍率。 |
+| `fileName` | 自动生成 | 上传文件名。 |
+| `fill` | `undefined` | 输出底色；PNG 默认透明。 |
+| `upload` | 无 | 接收 `File` 的上传函数；传入后返回其 Promise 结果。 |
+
+截图始终排除打印区域边框和吸附辅助线。截图使用离屏克隆场景，不会隐藏当前画布元素或
+产生闪烁。
+
 ## 文本
 
 ### 添加文本
@@ -403,6 +537,35 @@ editor.isMultipleSelect
 editor.isEditing
 ```
 
+### 选区工具条
+
+选区工具条由 Vue 渲染，内核只提供可序列化状态和操作 API。组件不要读取
+`editor.editor.editBox` 或创建 Leafer 按钮节点。
+
+```js
+const toolbar = editor.getSelectionToolbarState()
+
+// toolbar.bounds 是选区在画布宿主中的世界坐标边界
+if (toolbar.visible) {
+  console.log(toolbar.bounds, toolbar.locked, toolbar.disabled)
+}
+
+editor.toggleSelectionLock()
+editor.duplicateSelection()
+editor.deleteSelection()
+editor.groupSelection()
+editor.ungroupSelection()
+
+const layerActions = editor.getSelectionLayerActions()
+editor.runLayerAction('forward')
+```
+
+多选节点时 `toolbar.canGroup` 表示是否可以组合；选中组合节点时
+`toolbar.canUngroup` 为 `true`。组合仅支持同一父级且未锁定的节点。
+
+移动、缩放、旋转选区时，监听 `selection:toolbar-changed` 更新 Vue 组件位置。组件只负责
+定位、展示和调用上述 API，锁定、复制、删除、组合及层级规则始终保留在内核。
+
 跨模块写操作不要直接修改 `editor.editor.list`，统一调用选区公开方法。
 
 ## 图层
@@ -434,8 +597,8 @@ editor.layer.reorder(orderedLayerIds)
 
 ## 元素业务属性
 
-业务属性用于保存与渲染无关的数据，例如图片描述、图片角色、商品 ID、埋点标识或文本
-输入规则。不要把这些字段混入 `x`、`fill`、`fontSize` 等 Leafer 渲染属性。
+业务属性用于保存与渲染无关的数据，例如图片描述、图片角色、文字描述、商品 ID、埋点标识
+或文本输入规则。不要把这些字段混入 `x`、`fill`、`fontSize` 等 Leafer 渲染属性。
 
 每个图片和文本元素都会获得稳定 `elementId`。属性值必须是可以 JSON 序列化的普通对象。
 
@@ -446,6 +609,12 @@ editor.elementData.set(image, {
   image: {
     description: '商品正面展示图',
     role: 'ai-variable'
+  }
+})
+
+editor.elementData.set(text, {
+  text: {
+    description: '用户姓名'
   }
 })
 
@@ -531,7 +700,14 @@ unsubscribe()
 | `text:updated` | `{ text, options }` | 文本内容或样式更新。 |
 | `text:selected` | `{ text, options }` | 同步文本属性面板。 |
 | `image:added` | `{ image }` | 图片创建完成。 |
+| `image:updated` | `{ image, properties }` | 图片属性通过 Editor API 更新。 |
+| `image:selection-changed` | `{ image, properties }` | 同步当前单选图片属性；非图片时 `properties` 为 `null`。 |
+| `production:mask-changed` | `{ image }` | 遮罩图片完成标记。 |
+| `production:mask-detected` | `{ mask, transparentBounds, printArea, properties }` | 透明区域识别完成。 |
+| `production:print-area-changed` | `{ printArea, properties }` | 同步打印区域位置和尺寸。 |
 | `layers:changed` | `{ layers }` | 刷新图层列表。 |
+| `selection:toolbar-changed` | `{ visible, bounds, locked, disabled }` | 刷新 Vue 选区工具条。 |
+| `selection:group-changed` | `{ action, group, children }` | 同步组合或解组后的场景状态。 |
 | `element-data:changed` | `{ elementId, attributes }` | 同步业务属性面板。 |
 | `artboard:resized` | `{ artboard }` | 同步画板尺寸。 |
 | `viewport:zoom-changed` | `{ zoom, previous }` | 同步缩放显示。 |
@@ -682,6 +858,11 @@ try {
 | `TEXT_SELECTION_REQUIRED` | 没有可更新的选中文本。 |
 | `ELEMENT_DATA_TARGET_REQUIRED` | 当前没有唯一目标元素。 |
 | `ELEMENT_DATA_TARGET_NOT_FOUND` | 指定的元素 ID 不存在。 |
+| `MASK_IMAGE_REQUIRED` | 尚未上传或指定遮罩图片。 |
+| `MASK_DETECTION_FAILED` | 遮罩透明像素读取或识别失败。 |
+| `MASK_AREA_OUTSIDE_ARTBOARD` | 识别区域不在画板范围内。 |
+| `PRINT_AREA_REQUIRED` | 截图前没有打印区域。 |
+| `PRINT_AREA_CAPTURE_FAILED` | 打印区域导出或文件生成失败。 |
 
 ## API 速查
 
@@ -692,10 +873,24 @@ try {
 | 适配画板到视口 | `editor.fitArtboardToView(options)` |
 | 添加图片 | `await editor.image.add(source, options)` |
 | 读取图片尺寸 | `await editor.image.getSize(source)` |
+| 获取选中图片属性 | `editor.getSelectedImageProperties()` |
+| 更新选中图片属性 | `editor.updateSelectedImageProperties(properties)` |
+| 恢复图片原始尺寸 | `editor.resetSelectedImageSize()` |
+| 标记遮罩图 | `editor.markImageAsMask(image, source)` |
+| 创建打印区域 | `editor.createPrintArea(options)` |
+| 更新打印区域 | `editor.updatePrintArea(properties)` |
+| 识别遮罩透明区域 | `await editor.detectPrintAreaFromMask(options)` |
+| 截图并上传打印区域 | `await editor.capturePrintArea(options)` |
 | 添加文字 | `await editor.text.add(content, options)` |
 | 更新文字 | `editor.text.update(target, options)` |
 | 选择元素 | `editor.select(target)` |
 | 取消选择 | `editor.deselect()` |
+| 获取选区工具条状态 | `editor.getSelectionToolbarState()` |
+| 锁定/解锁选区 | `editor.toggleSelectionLock()` |
+| 复制选区 | `editor.duplicateSelection()` |
+| 删除选区 | `editor.deleteSelection()` |
+| 组合选区 | `editor.groupSelection()` |
+| 解散组合 | `editor.ungroupSelection()` |
 | 获取图层 | `editor.layer.getList()` |
 | 排序图层 | `editor.layer.reorder(ids)` |
 | 删除图层 | `editor.layer.remove(id)` |

@@ -186,7 +186,7 @@ export class ElementDataPlugin {
    * @returns {Array<{ elementId: string, type: string, attributes: Object }>} 导出记录。
    */
   export(options = {}) {
-    return (this._context?.contentLayer?.children ?? []).flatMap((element) => {
+    return this._getAllElements().flatMap((element) => {
       const container = getElementDataContainer(element)
 
       if (!container || (!options.includeEmpty && Object.keys(container.attributes).length === 0)) {
@@ -231,9 +231,26 @@ export class ElementDataPlugin {
 
   /** @private */
   _findById(elementId) {
-    return (this._context?.contentLayer?.children ?? []).find((element) => {
+    return this._getAllElements().find((element) => {
       return getElementDataContainer(element)?.elementId === elementId
     })
+  }
+
+  /**
+   * 递归读取内容层元素，确保组合内子节点仍可按 elementId 访问和导出。
+   *
+   * @private
+   * @returns {Object[]} 内容层全部元素。
+   */
+  _getAllElements() {
+    const result = []
+    const visit = (element) => {
+      result.push(element)
+      ;(element.children ?? []).forEach(visit)
+    }
+
+    ;(this._context?.contentLayer?.children ?? []).forEach(visit)
+    return result
   }
 
   /** @private */

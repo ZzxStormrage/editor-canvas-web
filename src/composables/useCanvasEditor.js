@@ -4,8 +4,10 @@ import { createEditor } from '../canvas-editor-core/src/index.js'
 import { useArtboardControls } from './canvas-editor/useArtboardControls.js'
 import { useAssetControls } from './canvas-editor/useAssetControls.js'
 import { useElementDataControls } from './canvas-editor/useElementDataControls.js'
+import { useImageControls } from './canvas-editor/useImageControls.js'
 import { useLayerMenu } from './canvas-editor/useLayerMenu.js'
 import { useLayerControls } from './canvas-editor/useLayerControls.js'
+import { useSelectionToolbar } from './canvas-editor/useSelectionToolbar.js'
 import { useTextControls } from './canvas-editor/useTextControls.js'
 
 /**
@@ -48,8 +50,10 @@ export function useCanvasEditor(options = {}) {
     notify
   )
   const layerMenuControls = useLayerMenu(getEditor, canvasRef)
+  const selectionToolbarControls = useSelectionToolbar(getEditor, canvasRef)
   const layerControls = useLayerControls(getEditor)
   const elementDataControls = useElementDataControls(getEditor)
+  const imageControls = useImageControls(getEditor)
 
   /**
    * 初始化编辑器并建立应用层事件桥接。
@@ -73,23 +77,55 @@ export function useCanvasEditor(options = {}) {
           textControls.applyTextOptionsToUI(options)
         }
       }),
-      editor.eventBus.on('selection:layer-menu-open', layerMenuControls.showLayerMenu),
+      editor.eventBus.on('selection:toolbar-changed', (state) => {
+        selectionToolbarControls.syncSelectionToolbar(state)
+        if (!state?.visible) {
+          layerMenuControls.hideLayerMenu()
+        }
+      }),
       editor.eventBus.on('selection:layer-menu-close', layerMenuControls.hideLayerMenu),
+      editor.eventBus.on('image:selection-changed', ({ properties }) => {
+        imageControls.syncImageProperties(properties)
+        selectionToolbarControls.syncSelectionToolbar()
+      }),
+      editor.eventBus.on('production:print-area-changed', ({ properties }) => {
+        artboardControls.syncPrintAreaControls(properties)
+      }),
       editor.eventBus.on('viewport:zoom-changed', ({ zoom: nextZoom }) => {
         zoom.value = nextZoom
+        selectionToolbarControls.syncSelectionToolbar()
       }),
-      editor.eventBus.on('layers:changed', ({ layers }) => layerControls.setLayers(layers))
+      editor.eventBus.on('viewport:transform-end', () => {
+        selectionToolbarControls.syncSelectionToolbar()
+      }),
+      editor.eventBus.on('canvas:resized', () => {
+        selectionToolbarControls.syncSelectionToolbar()
+      }),
+      editor.eventBus.on('artboard:resized', () => {
+        artboardControls.syncArtboardControls()
+        artboardControls.syncPrintAreaControls()
+        imageControls.syncImageProperties()
+      }),
+      editor.eventBus.on('layers:changed', ({ layers }) => {
+        layerControls.setLayers(layers)
+        imageControls.syncImageProperties()
+        selectionToolbarControls.syncSelectionToolbar()
+      })
     ]
 
+    selectionToolbarControls.startSelectionToolbar()
     syncZoom()
     artboardControls.syncArtboardControls()
+    artboardControls.syncPrintAreaControls()
     layerControls.refreshLayers()
+    imageControls.syncImageProperties()
   }
 
   /** 销毁事件桥接及 Editor 管理的全部 Leafer 资源。 */
   function destroyCanvas() {
     unsubscribeEvents.forEach((unsubscribe) => unsubscribe())
     unsubscribeEvents = []
+    selectionToolbarControls.stopSelectionToolbar()
     editor?.destroy()
     editor = null
   }
@@ -142,8 +178,13 @@ export function useCanvasEditor(options = {}) {
     handleCanvasDoubleClick: textControls.handleCanvasDoubleClick,
     backgroundInputRef: artboardControls.backgroundInputRef,
     backgroundUploading: artboardControls.backgroundUploading,
+    maskInputRef: artboardControls.maskInputRef,
+    maskUploading: artboardControls.maskUploading,
+    printAreaDetecting: artboardControls.printAreaDetecting,
     artboardWidth: artboardControls.artboardWidth,
     artboardHeight: artboardControls.artboardHeight,
+    printAreaX: artboardControls.printAreaX,
+    printAreaY: artboardControls.printAreaY,
     printAreaWidth: artboardControls.printAreaWidth,
     printAreaHeight: artboardControls.printAreaHeight,
     artboardMillimeterSize: artboardControls.artboardMillimeterSize,
@@ -151,16 +192,30 @@ export function useCanvasEditor(options = {}) {
     updateArtboardSize: artboardControls.updateArtboardSize,
     openBackgroundImagePicker: artboardControls.openBackgroundImagePicker,
     handleBackgroundImageChange: artboardControls.handleBackgroundImageChange,
+    openMaskImagePicker: artboardControls.openMaskImagePicker,
+    handleMaskImageChange: artboardControls.handleMaskImageChange,
     addPrintArea: artboardControls.addPrintArea,
     deletePrintArea: artboardControls.deletePrintArea,
+    detectPrintAreaFromMask: artboardControls.detectPrintAreaFromMask,
+    capturePrintArea: artboardControls.capturePrintArea,
     imageInputRef: assetControls.imageInputRef,
     imageUploading: assetControls.imageUploading,
+    imageProperties: imageControls.imageProperties,
     watermarkValue: assetControls.watermarkValue,
     openImagePicker: assetControls.openImagePicker,
     handleImageChange: assetControls.handleImageChange,
+    updateSelectedImageProperties: imageControls.updateSelectedImageProperties,
+    resetSelectedImageSize: imageControls.resetSelectedImageSize,
     addWatermark: assetControls.addWatermark,
     deleteWatermark: assetControls.deleteWatermark,
     layerMenu: layerMenuControls.layerMenu,
+    selectionToolbar: selectionToolbarControls.selectionToolbar,
+    toggleSelectionLock: selectionToolbarControls.toggleSelectionLock,
+    duplicateSelection: selectionToolbarControls.duplicateSelection,
+    deleteSelection: selectionToolbarControls.deleteSelection,
+    groupSelection: selectionToolbarControls.groupSelection,
+    ungroupSelection: selectionToolbarControls.ungroupSelection,
+    toggleSelectionLayerMenu: layerMenuControls.toggleLayerMenu,
     runLayerAction: layerMenuControls.runLayerAction,
     closeLayerMenu: layerMenuControls.closeLayerMenu,
     layers: layerControls.layers,

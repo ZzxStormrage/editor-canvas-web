@@ -4,10 +4,21 @@ import App from './App.vue'
 import { configureApiClient } from './api/index.js'
 import { createVuetifyPlugin } from './plugins/vuetify.js'
 import { router } from './router/index.js'
-import { getAccessToken, installAuthTokenBridge } from './services/auth-token.js'
+import {
+  clearAccessToken,
+  getAccessToken,
+  installAuthTokenBridge,
+  notifyAuthExpired
+} from './services/auth-token.js'
 import { MESSAGE_TYPES, postBridgeMessage, startMessageBridge } from './services/message-bridge.js'
 
-configureApiClient({ getAccessToken })
+configureApiClient({
+  getAccessToken,
+  onUnauthorized(error) {
+    clearAccessToken()
+    notifyAuthExpired(error)
+  }
+})
 installAuthTokenBridge()
 startMessageBridge()
 postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {

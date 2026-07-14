@@ -11,7 +11,8 @@
         v-if="isEditableText(element)"
         :value="inputValues[element.elementId]"
         class="h5-element h5-text-input"
-        :aria-label="element.name || '文本输入'"
+        :aria-label="element.attributes?.text?.description || element.name || '文本输入'"
+        :data-description="element.attributes?.text?.description || undefined"
         :style="resolveElementStyle(element)"
         :wrap="element.attributes.textInput.maxCharactersPerLine ? 'hard' : 'soft'"
         @input="updateTextInput(element, $event)"
@@ -19,6 +20,7 @@
       <div
         v-else-if="resolveElementType(element) === 'text'"
         class="h5-element h5-text"
+        :data-description="element.attributes?.text?.description || undefined"
         :style="resolveElementStyle(element)"
       >
         {{ element.text }}
@@ -83,6 +85,9 @@ function resolveElementStyle(element) {
   if (Number(element.rotation)) transforms.push(`rotate(${Number(element.rotation)}deg)`);
   if (Number(element.skewX)) transforms.push(`skewX(${Number(element.skewX)}deg)`);
   if (Number(element.skewY)) transforms.push(`skewY(${Number(element.skewY)}deg)`);
+  if (Number(element.scaleX ?? 1) !== 1 || Number(element.scaleY ?? 1) !== 1) {
+    transforms.push(`scale(${Number(element.scaleX ?? 1)}, ${Number(element.scaleY ?? 1)})`);
+  }
 
   return {
     left: toPercent(element.x, canvas.width),

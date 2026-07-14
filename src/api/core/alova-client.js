@@ -165,6 +165,10 @@ async function notifyUnauthorized(error) {
  * @returns {string} 错误信息。
  */
 function resolveHttpErrorMessage(response) {
+  if (response.status === 401) {
+    return '登录已过期，请重新登录。';
+  }
+
   if (typeof response.data === 'string' && response.data.trim()) {
     return response.data;
   }

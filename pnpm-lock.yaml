@@ -20,6 +20,9 @@ importers:
       '@leafer-in/editor':
         specifier: ^2.1.4
         version: 2.1.10(@leafer-in/interface@2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10))(@leafer-in/resize@2.1.10(@leafer-in/interface@2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10))(@leafer-ui/draw@2.1.10)(@leafer-ui/interface@2.1.10))(@leafer-ui/core@2.1.10)(@leafer-ui/draw@2.1.10)(@leafer-ui/interface@2.1.10)
+      '@leafer-in/export':
+        specifier: 2.1.4
+        version: 2.1.4(@leafer-in/interface@2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10))(@leafer-ui/draw@2.1.10)(@leafer-ui/interface@2.1.10)
       '@leafer-in/resize':
         specifier: ^2.1.4
         version: 2.1.10(@leafer-in/interface@2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10))(@leafer-ui/draw@2.1.10)(@leafer-ui/interface@2.1.10)
@@ -463,6 +466,13 @@ packages:
       '@leafer-ui/core': ^2.1.10
       '@leafer-ui/draw': ^2.1.10
       '@leafer-ui/interface': ^2.1.10
+
+  '@leafer-in/export@2.1.4':
+    resolution: {integrity: sha512-cWPSI8JskcS4/KrlzfhhdTgJA0sl0UrcgTOHq9XP3sfyOBW3JDeCAnrXDvJWSqLBwzdhL88U1eA67sf+jSOfBA==}
+    peerDependencies:
+      '@leafer-in/interface': ^2.1.4
+      '@leafer-ui/draw': ^2.1.4
+      '@leafer-ui/interface': ^2.1.4
 
   '@leafer-in/interface@2.1.10':
     resolution: {integrity: sha512-KbxB2ddsXDfCCxrZoTtzi3dTvAoAUeygLtci7CkeY6l5ih6phcKrrjs6/F1TanKslk3UnJEtipBU728geMqarg==}
@@ -2574,6 +2584,12 @@ snapshots:
       '@leafer-in/interface': 2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10)
       '@leafer-in/resize': 2.1.10(@leafer-in/interface@2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10))(@leafer-ui/draw@2.1.10)(@leafer-ui/interface@2.1.10)
       '@leafer-ui/core': 2.1.10
+      '@leafer-ui/draw': 2.1.10
+      '@leafer-ui/interface': 2.1.10
+
+  '@leafer-in/export@2.1.4(@leafer-in/interface@2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10))(@leafer-ui/draw@2.1.10)(@leafer-ui/interface@2.1.10)':
+    dependencies:
+      '@leafer-in/interface': 2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10)
       '@leafer-ui/draw': 2.1.10
       '@leafer-ui/interface': 2.1.10
 

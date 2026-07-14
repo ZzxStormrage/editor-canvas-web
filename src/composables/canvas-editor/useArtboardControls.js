@@ -1,4 +1,3 @@
-import { Rect } from 'leafer-ui'
 import { computed, ref, watch } from 'vue'
 
 import { pictureApi } from '../../api/index.js'
@@ -9,8 +8,6 @@ const BACKGROUND_NODE_KEY = '__eleEditorBackground'
 const LEGACY_MASK_NODE_KEY = '__eleEditorMask'
 const BACKGROUND_NODE_LABEL = '背景图'
 const BACKGROUND_VIEWPORT_RATIO = 0.8
-const PRINT_AREA_NODE_KEY = '__eleEditorPrintArea'
-const PRINT_AREA_NODE_LABEL = '打印区域'
 
 /**
  * 管理画板尺寸、背景图和打印区域。
@@ -26,11 +23,16 @@ const PRINT_AREA_NODE_LABEL = '打印区域'
 export function useArtboardControls(getEditor, notify = null) {
   const backgroundInputRef = ref(null)
   const backgroundUploading = ref(false)
+  const maskInputRef = ref(null)
+  const maskUploading = ref(false)
+  const printAreaDetecting = ref(false)
   const artboardWidth = ref(375)
   const artboardHeight = ref(667)
+  const printAreaX = ref(38)
+  const printAreaY = ref(234)
   const printAreaWidth = ref(300)
   const printAreaHeight = ref(200)
-  let activePrintArea = null
+  let isSyncingPrintArea = false
 
   const artboardMillimeterSize = computed(() => formatMillimeterSize(artboardWidth.value, artboardHeight.value))
   const printAreaMillimeterSize = computed(() => formatMillimeterSize(printAreaWidth.value, printAreaHeight.value))
@@ -158,6 +160,72 @@ export function useArtboardControls(getEditor, notify = null) {
   }
 
   /** @returns {void} */
+  function openMaskImagePicker() {
+    if (!maskUploading.value) {
+      maskInputRef.value?.click()
+    }
+  }
+
+  /**
+   * 上传遮罩图并自动写入 image.role = mask 自定义属性。
+   *
+   * @param {Event} event 文件选择事件。
+   * @returns {Promise<void>}
+   */
+  async function handleMaskImageChange(event) {
+    const [file] = event.target.files ?? []
+
+    event.target.value = ''
+    if (!file || maskUploading.value || !getEditor()) {
+      return
+    }
+
+    maskUploading.value = true
+    try {
+      await addMaskImage(file)
+      notify?.('遮罩图上传成功', 'success')
+    } catch (error) {
+      console.error('Mask image upload failed.', error)
+      notify?.(error.message || '遮罩图上传失败。', 'error')
+    } finally {
+      maskUploading.value = false
+    }
+  }
+
+  /**
+   * 遮罩图铺满当前画板，不改变画板尺寸。
+   *
+   * @param {File} file 遮罩图片文件。
+   * @returns {Promise<void>}
+   */
+  async function addMaskImage(file) {
+    const editor = getEditor()
+
+    if (!editor) {
+      return
+    }
+
+    const imageUrl = await pictureApi.upload(file)
+    const bounds = getArtboardBounds()
+    const maskImage = await editor.image.add(imageUrl, {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      lockRatio: false,
+      visible: false,
+      select: false
+    })
+
+    editor.markImageAsMask(maskImage, file)
+    maskImage.visible = true
+    maskImage.forceUpdate?.()
+    maskImage.updateLayout?.()
+    editor.select(maskImage)
+    editor.artboard?.syncAllElements?.()
+  }
+
+  /** @returns {void} */
   function addPrintArea() {
     const editor = getEditor()
 
@@ -165,31 +233,13 @@ export function useArtboardControls(getEditor, notify = null) {
       return
     }
 
-    const bounds = getArtboardBounds()
-    const width = Math.min(normalizePixelForUI(printAreaWidth.value, 1), bounds.width)
-    const height = Math.min(normalizePixelForUI(printAreaHeight.value, 1), bounds.height)
-    const printArea = new Rect({
-      x: bounds.x + (bounds.width - width) / 2,
-      y: bounds.y + (bounds.height - height) / 2,
-      width,
-      height,
-      fill: 'rgba(124, 58, 237, 0.16)',
-      stroke: '#7c3aed',
-      strokeWidth: 2,
-      editable: true,
-      draggable: true,
-      lockRatio: false
+    editor.createPrintArea({
+      x: normalizeFiniteForUI(printAreaX.value, 0),
+      y: normalizeFiniteForUI(printAreaY.value, 0),
+      width: normalizePixelForUI(printAreaWidth.value, 1),
+      height: normalizePixelForUI(printAreaHeight.value, 1)
     })
-
-    printArea[PRINT_AREA_NODE_KEY] = true
-    printArea.customType = PRINT_AREA_NODE_LABEL
-    printArea.name = PRINT_AREA_NODE_LABEL
-    editor.elementData?.set(printArea, {})
-    editor.contentLayer?.add(printArea)
-    activePrintArea = printArea
-    syncPrintAreaControls(printArea)
-    editor.select(printArea)
-    editor.artboard?.syncAllElements?.()
+    syncPrintAreaControls()
   }
 
   /** @returns {void} */
@@ -200,43 +250,109 @@ export function useArtboardControls(getEditor, notify = null) {
       return
     }
 
-    const printAreas = (editor.contentLayer?.children ?? []).filter((child) => child?.[PRINT_AREA_NODE_KEY])
-
-    printAreas.forEach((printArea) => printArea.remove())
-    activePrintArea = null
-    editor.deselect()
-    editor.artboard?.syncAllElements?.()
+    editor.removePrintArea()
   }
 
-  /** @returns {void} */
-  function updatePrintAreaSize() {
-    if (!activePrintArea?.parent) {
+  /**
+   * 根据遮罩透明区域自动创建或更新打印区域。
+   *
+   * @returns {Promise<void>}
+   */
+  async function detectPrintAreaFromMask() {
+    const editor = getEditor()
+
+    if (!editor || printAreaDetecting.value) {
       return
     }
 
-    activePrintArea.set?.({
+    printAreaDetecting.value = true
+    try {
+      const properties = await editor.detectPrintAreaFromMask({ alphaThreshold: 10 })
+      syncPrintAreaControls(properties)
+      notify?.('打印区域识别完成', 'success')
+    } catch (error) {
+      console.error('Mask detection failed.', error)
+      notify?.(error.message || '打印区域识别失败。', 'error')
+    } finally {
+      printAreaDetecting.value = false
+    }
+  }
+
+  /**
+   * 截取打印区域，转成 File，通过图片接口上传并返回接口结果。
+   *
+   * @param {Object} [options={}] 截图选项，默认排除背景图和遮罩图。
+   * @returns {Promise<*>} 图片上传接口结果。
+   */
+  async function capturePrintArea(options = {}) {
+    const editor = getEditor()
+
+    if (!editor) {
+      throw new Error('编辑器尚未初始化。')
+    }
+
+    return editor.capturePrintArea({
+      includeBackground: false,
+      includeMask: false,
+      type: 'image/png',
+      quality: 1,
+      ...options,
+      upload: options.upload ?? pictureApi.upload
+    })
+  }
+
+  /** @returns {void} */
+  function updatePrintArea() {
+    const editor = getEditor()
+
+    if (!editor || isSyncingPrintArea || !editor.getPrintAreaProperties()) {
+      return
+    }
+
+    editor.updatePrintArea({
+      x: normalizeFiniteForUI(printAreaX.value, 0),
+      y: normalizeFiniteForUI(printAreaY.value, 0),
       width: normalizePixelForUI(printAreaWidth.value, 1),
       height: normalizePixelForUI(printAreaHeight.value, 1)
     })
-    activePrintArea.forceUpdate?.()
-    activePrintArea.updateLayout?.()
-    getEditor()?.select(activePrintArea)
-    getEditor()?.artboard?.syncAllElements?.()
   }
 
-  /** @param {Object} printArea 打印区域节点。 */
-  function syncPrintAreaControls(printArea) {
-    printAreaWidth.value = normalizePixelForUI(printArea.width ?? printArea.__?.width, 1)
-    printAreaHeight.value = normalizePixelForUI(printArea.height ?? printArea.__?.height, 1)
+  /**
+   * 同步打印区域表单。
+   *
+   * @param {{ x: number, y: number, width: number, height: number } | null} [properties]
+   * 打印区域属性。
+   * @returns {void}
+   */
+  function syncPrintAreaControls(properties = getEditor()?.getPrintAreaProperties?.() ?? null) {
+    if (!properties) {
+      return
+    }
+
+    isSyncingPrintArea = true
+    printAreaX.value = normalizeFiniteForUI(properties.x, 0)
+    printAreaY.value = normalizeFiniteForUI(properties.y, 0)
+    printAreaWidth.value = normalizePixelForUI(properties.width, 1)
+    printAreaHeight.value = normalizePixelForUI(properties.height, 1)
+    isSyncingPrintArea = false
   }
 
-  watch([printAreaWidth, printAreaHeight], updatePrintAreaSize)
+  watch(
+    [printAreaX, printAreaY, printAreaWidth, printAreaHeight],
+    updatePrintArea,
+    { flush: 'sync' }
+  )
 
   return {
     backgroundInputRef,
     backgroundUploading,
+    maskInputRef,
+    maskUploading,
+    printAreaDetecting,
     artboardWidth,
     artboardHeight,
+    printAreaX,
+    printAreaY,
     printAreaWidth,
     printAreaHeight,
     artboardMillimeterSize,
@@ -246,8 +362,13 @@ export function useArtboardControls(getEditor, notify = null) {
     updateArtboardSize,
     openBackgroundImagePicker,
     handleBackgroundImageChange,
+    openMaskImagePicker,
+    handleMaskImageChange,
     addPrintArea,
-    deletePrintArea
+    deletePrintArea,
+    detectPrintAreaFromMask,
+    capturePrintArea,
+    syncPrintAreaControls
   }
 }
 
@@ -303,4 +424,10 @@ function moveElementToBottom(element) {
 /** @returns {string} */
 function formatMillimeterSize(width, height) {
   return `${formatMillimeter(pixelToMillimeter(width))} x ${formatMillimeter(pixelToMillimeter(height))} mm`
+}
+
+/** @returns {number} */
+function normalizeFiniteForUI(value, fallback) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Number(number.toFixed(2)) : fallback
 }

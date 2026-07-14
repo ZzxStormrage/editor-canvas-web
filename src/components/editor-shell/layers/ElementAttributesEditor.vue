@@ -37,7 +37,18 @@
     </template>
 
     <template v-else-if="layerType === 'text'">
-      <p class="layer-attribute-help">仅定义 H5 用户输入规则，不会修改当前画布文字。</p>
+      <p class="layer-attribute-help">配置文字描述和 H5 用户输入规则，不会修改当前画布文字。</p>
+
+      <v-text-field
+        v-model="textDescription"
+        clearable
+        density="compact"
+        hide-details="auto"
+        label="文字描述"
+        maxlength="200"
+        placeholder="例如：用户姓名"
+        variant="outlined"
+      />
 
       <div class="text-rule-master">
         <div>
@@ -137,9 +148,10 @@ const imageDraft = reactive({
   description: typeof attributes.image?.description === 'string' ? attributes.image.description : '',
   role: IMAGE_ROLE_VALUES.has(attributes.image?.role) ? attributes.image.role : ''
 })
+const textDescription = ref(typeof attributes.text?.description === 'string' ? attributes.text.description : '')
 const textDraft = reactive(createTextDraft(attributes.textInput))
 
-const editorTitle = computed(() => (props.layerType === 'image' ? '图片属性' : 'H5 文本规则'))
+const editorTitle = computed(() => (props.layerType === 'image' ? '图片属性' : '文字属性'))
 const textRuleSummary = computed(() => {
   const perLine = normalizeOptionalInteger(textDraft.maxCharactersPerLine)
   const maxLines = normalizeOptionalInteger(textDraft.maxLines)
@@ -175,6 +187,15 @@ function saveAttributes() {
     if (Object.keys(imageAttributes).length) nextAttributes.image = imageAttributes
     else delete nextAttributes.image
   } else if (props.layerType === 'text') {
+    const description = textDescription.value?.trim() ?? ''
+    const textAttributes = isPlainObject(currentAttributes.text) ? { ...currentAttributes.text } : {}
+
+    if (description) textAttributes.description = description
+    else delete textAttributes.description
+
+    if (Object.keys(textAttributes).length) nextAttributes.text = textAttributes
+    else delete nextAttributes.text
+
     const textInput = buildTextInputPayload()
     if (!textInput) return
     nextAttributes.textInput = textInput

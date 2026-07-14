@@ -424,6 +424,79 @@
   background: rgba(var(--v-theme-canvas), 0.58);
 }
 
+.selection-action-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--selection-toolbar-width, 154px);
+  height: 40px;
+  gap: 2px;
+  box-sizing: border-box;
+  border: 1px solid rgba(var(--v-theme-outline), 0.2);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-surface), 0.98);
+  box-shadow: 0 8px 20px rgba(var(--v-theme-shadow), 0.16);
+  transform: translate3d(
+    var(--selection-toolbar-x),
+    var(--selection-toolbar-y),
+    0
+  );
+  transform-origin: center bottom;
+  will-change: transform;
+}
+
+.selection-action-toolbar__button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  color: var(--editor-muted);
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms ease;
+}
+
+.selection-action-toolbar__button .v-btn__overlay {
+  opacity: 0;
+}
+
+.selection-action-toolbar__button:not(.v-btn--disabled):hover,
+.selection-action-toolbar__button:not(.v-btn--disabled):focus-visible {
+  color: var(--editor-primary);
+  background: var(--editor-primary-soft);
+}
+
+.selection-action-toolbar__button:not(.v-btn--disabled):active {
+  transform: scale(0.94);
+}
+
+.selection-action-toolbar__button.is-delete:not(.v-btn--disabled):hover,
+.selection-action-toolbar__button.is-delete:not(.v-btn--disabled):focus-visible {
+  color: rgb(var(--v-theme-error));
+  background: rgba(var(--v-theme-error), 0.1);
+}
+
+.selection-toolbar-enter-active,
+.selection-toolbar-leave-active {
+  transition:
+    opacity 160ms cubic-bezier(0.25, 1, 0.5, 1),
+    transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.selection-toolbar-enter-from,
+.selection-toolbar-leave-to {
+  opacity: 0;
+  transform: translate3d(
+    var(--selection-toolbar-x),
+    calc(var(--selection-toolbar-y) + 4px),
+    0
+  ) scale(0.96);
+}
+
 .selection-layer-menu {
   position: absolute;
   z-index: 5;
@@ -1013,6 +1086,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .selection-action-toolbar,
+  .selection-action-toolbar__button,
+  .selection-toolbar-enter-active,
+  .selection-toolbar-leave-active,
   .selection-layer-menu,
   .selection-layer-menu__item,
   .layer-item,

@@ -309,6 +309,10 @@ export class LayerPlugin {
       count += 1
     }
 
+    if (typeof attributes.text?.description === 'string' && attributes.text.description.trim()) {
+      count += 1
+    }
+
     // 文本规则可以暂存但关闭；只有 H5 实际启用时才向运维展示“已配置”标记。
     if (this._isPlainObject(attributes.textInput) && attributes.textInput.enabled === true) {
       count += 1
@@ -355,6 +359,7 @@ export class LayerPlugin {
   _getNodeType(node) {
     const tag = String(node.tag ?? node.constructor?.name ?? '').toLowerCase()
 
+    if (node.isBranch || tag.includes('group')) return 'group'
     if (tag.includes('text')) return 'text'
     if (tag.includes('image')) return 'image'
     if (tag.includes('rect')) return 'rect'
