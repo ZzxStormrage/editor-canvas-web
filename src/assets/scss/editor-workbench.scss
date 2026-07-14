@@ -80,7 +80,8 @@
 }
 
 .top-bar-preview-button,
-.top-bar-docs-button {
+.top-bar-docs-button,
+.top-bar-save-button {
   min-height: 28px;
   color: var(--editor-primary);
   font-size: 11px;
@@ -90,6 +91,10 @@
 
 .top-bar-docs-button {
   color: rgba(var(--v-theme-on-primary), 0.94);
+}
+
+.top-bar-save-button {
+  color: rgba(var(--v-theme-on-primary), 0.96);
 }
 
 .editor-action-button {
@@ -488,10 +493,10 @@
 
 .layer-item {
   display: grid;
-  grid-template-columns: 16px 24px minmax(0, 1fr) 106px;
+  grid-template-columns: 36px 24px minmax(0, 1fr) 118px;
   align-items: center;
-  min-height: 38px;
-  padding: 3px 4px;
+  min-height: 50px;
+  padding: 4px 3px;
   border: 1px solid transparent;
   border-radius: 6px;
   color: var(--editor-text);
@@ -530,9 +535,26 @@
 }
 
 .layer-drag-handle {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 42px;
+  border-radius: 6px;
   color: var(--editor-subtle);
   cursor: grab;
   opacity: 0.7;
+  touch-action: none;
+  user-select: none;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    opacity 140ms ease;
+}
+
+.layer-drag-handle:hover {
+  color: var(--editor-primary);
+  background: rgba(var(--v-theme-primary), 0.08);
+  opacity: 1;
 }
 
 .layer-drag-handle:active {
@@ -618,13 +640,13 @@
 .layer-action-button {
   display: inline-grid;
   place-items: center;
-  flex: 0 0 24px;
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--editor-muted);
   background: transparent;
   cursor: pointer;

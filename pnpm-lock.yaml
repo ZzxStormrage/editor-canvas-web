@@ -44,6 +44,9 @@ importers:
       '@vant/touch-emulator':
         specifier: ^1.4.0
         version: 1.5.0
+      alova:
+        specifier: 2.20.3
+        version: 2.20.3
       animate.css:
         specifier: ^4.1.1
         version: 4.1.1

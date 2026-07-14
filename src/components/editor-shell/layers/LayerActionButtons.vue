@@ -12,7 +12,7 @@
       @pointerdown.stop
       @click.stop="emit('edit-attributes')"
     >
-      <v-icon icon="mdi-tune-variant" size="16" />
+      <v-icon icon="mdi-tune-variant" size="17" />
       <span v-if="layer.customAttributeCount > 0" class="layer-attribute-count">
         {{ formattedAttributeCount }}
       </span>
@@ -28,7 +28,7 @@
       @pointerdown.stop
       @click.stop="emit('toggle-pointer-through')"
     >
-      <v-icon :icon="layer.pointerThrough ? 'mdi-mouse-off' : 'mdi-cursor-default-click-outline'" size="16" />
+      <v-icon :icon="layer.pointerThrough ? 'mdi-mouse-off' : 'mdi-cursor-default-click-outline'" size="17" />
       <v-tooltip activator="parent" location="top" open-delay="350">
         {{ layer.pointerThrough ? '取消穿透' : '穿透' }}
       </v-tooltip>
@@ -42,7 +42,7 @@
       @pointerdown.stop
       @click.stop="emit('toggle-lock')"
     >
-      <v-icon :icon="layer.locked ? 'mdi-lock-outline' : 'mdi-lock-open-variant-outline'" size="16" />
+      <v-icon :icon="layer.locked ? 'mdi-lock-outline' : 'mdi-lock-open-variant-outline'" size="17" />
       <v-tooltip activator="parent" location="top" open-delay="350">
         {{ layer.locked ? '解锁' : '锁定' }}
       </v-tooltip>
@@ -55,7 +55,7 @@
       @pointerdown.stop
       @click.stop="emit('delete')"
     >
-      <v-icon icon="mdi-delete-outline" size="16" />
+      <v-icon icon="mdi-delete-outline" size="17" />
       <v-tooltip activator="parent" location="top" open-delay="350">删除</v-tooltip>
     </button>
   </div>

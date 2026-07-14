@@ -41,7 +41,7 @@
             @mouseenter="editor.hoverLayer(element.id)"
             @mouseleave="editor.hoverLayer(null)"
           >
-            <v-icon class="layer-drag-handle" icon="mdi-drag-vertical" size="18" />
+            <v-icon class="layer-drag-handle" icon="mdi-drag-vertical" size="20" />
             <span class="layer-type-icon">
               <v-icon :icon="resolveLayerIcon(element.type)" size="17" />
             </span>

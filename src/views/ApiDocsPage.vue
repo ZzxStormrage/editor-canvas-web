@@ -184,6 +184,13 @@ const MODULE_DEFINITIONS = [
     headings: ['元素业务属性']
   },
   {
+    key: 'request',
+    label: '网络请求',
+    namespace: 'alova / editorDocumentApi',
+    icon: 'mdi-api',
+    headings: ['Alova API 请求层']
+  },
+  {
     key: 'h5',
     label: 'H5 协议',
     namespace: 'exportH5Document',

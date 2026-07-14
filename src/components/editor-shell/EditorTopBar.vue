@@ -24,6 +24,19 @@
           API 文档
         </v-btn>
         <v-btn
+          class="top-bar-save-button"
+          color="surface"
+          density="compact"
+          prepend-icon="mdi-content-save-outline"
+          size="small"
+          variant="tonal"
+          :loading="saving"
+          :disabled="saving"
+          @click="emit('save')"
+        >
+          保存
+        </v-btn>
+        <v-btn
           class="top-bar-preview-button"
           color="surface"
           density="compact"
@@ -40,5 +53,12 @@
 </template>
 
 <script setup>
-const emit = defineEmits(['preview']);
+defineProps({
+  saving: {
+    type: Boolean,
+    default: false
+  }
+});
+
+const emit = defineEmits(['save', 'preview']);
 </script>

@@ -233,6 +233,145 @@ if (coreEditor) {
 
 `getEditor()` 在组件挂载前可能返回 `null`，调用前必须判断。
 
+## Alova API 请求层
+
+> **Request 模块** · 统一客户端：`alovaClient` · 业务接口：`editorDocumentApi`
+
+请求层与编辑器内核保持隔离。Vue 组件负责收集用户操作和展示请求状态，接口模块负责描述
+URL、请求方法与参数，Alova 核心层统一处理基础地址、超时、鉴权和错误。
+
+### 目录职责
+
+| 文件 | 职责 |
+| --- | --- |
+| `src/api/core/alova-client.js` | 创建 Alova 单例，处理 Token、HTTP 状态和网络错误。 |
+| `src/api/core/api-error.js` | 提供统一的 `ApiError`。 |
+| `src/api/modules/editor-document.js` | 编辑器文档接口示例，包含列表、详情、新建、更新和删除。 |
+| `src/api/index.js` | 统一导出，业务代码只从该入口引用。 |
+
+新增业务接口时，在 `src/api/modules/` 下按业务域创建文件，例如
+`material.js`、`template.js`，不要把所有接口堆放到 `alova-client.js`。
+
+### 环境配置
+
+客户端从 Vite 环境变量读取基础地址：
+
+```dotenv
+VITE_BASE_URL_API = https://pceditor.ele007.com/
+```
+
+编辑器文档示例默认请求 `/editor/documents`。后端路径不一致时，可以增加：
+
+```dotenv
+VITE_EDITOR_DOCUMENT_API_PATH = /实际接口路径
+```
+
+修改环境变量后需要重启 Vite 开发服务。
+
+### 应用初始化
+
+鉴权配置是可选的，不会假定项目使用哪个 `localStorage` Key。需要鉴权时，在应用入口调用
+一次 `configureApiClient()`：
+
+```js
+import { configureApiClient } from '@/api/index.js'
+import { router } from '@/router/index.js'
+
+configureApiClient({
+  getAccessToken: () => localStorage.getItem('access_token'),
+  onUnauthorized: () => {
+    localStorage.removeItem('access_token')
+    router.push('/login')
+  }
+})
+```
+
+调用方已显式传入 `Authorization` 时，请求层不会覆盖。公开接口可以在 Method 配置中设置
+`meta: { skipAuth: true }` 跳过 Token。
+
+### 直接调用
+
+模块方法返回 Alova `Method`，它是可等待对象，适合普通异步流程：
+
+```js
+import { editorDocumentApi } from '@/api/index.js'
+
+const result = await editorDocumentApi.create({
+  name: '活动首页',
+  document: editorJson
+})
+
+console.log('保存结果', result)
+```
+
+### Vue Composition API 调用
+
+页面需要 `loading`、`data` 和 `error` 状态时，使用 Alova 的 `useRequest`：
+
+```js
+import { useRequest } from 'alova'
+
+import { editorDocumentApi } from '@/api/index.js'
+
+const {
+  loading: saving,
+  data: savedDocument,
+  error: saveError,
+  send: saveDocument
+} = useRequest(editorDocumentApi.create, {
+  immediate: false
+})
+
+async function handleSave(editorJson) {
+  return saveDocument({
+    name: '活动首页',
+    document: editorJson
+  })
+}
+```
+
+组件不应直接引用 `alovaClient.Post()` 拼装业务接口。这样接口路径变化时只修改对应的
+`src/api/modules/` 文件，不会影响页面交互和编辑器核心逻辑。
+
+### 保存编辑器 JSON 示例
+
+```js
+import { editorDocumentApi } from '@/api/index.js'
+import { exportH5Document } from '@/services/h5-document.js'
+
+async function saveCurrentDocument(editor) {
+  const document = await exportH5Document(editor.getEditor())
+
+  return editorDocumentApi.create({
+    name: '未命名页面',
+    document
+  })
+}
+```
+
+当前 `editorDocumentApi` 是接入结构示例。正式联调时只需要按后端契约调整接口路径、字段
+和请求方法，不要把 Leafer 节点或 Editor 实例直接发送到后端。
+
+### 错误处理
+
+HTTP 非 2xx、网络异常、超时和主动取消都会转换为 `ApiError`：
+
+```js
+import { ApiError, editorDocumentApi } from '@/api/index.js'
+
+try {
+  await editorDocumentApi.detail(documentId)
+} catch (error) {
+  if (error instanceof ApiError) {
+    console.error(error.code, error.status, error.request)
+  }
+  throw error
+}
+```
+
+默认返回服务端响应体。如果某个接口需要读取状态码或响应头，在 Method 配置中设置
+`meta: { responseMode: 'raw' }`，该接口会返回完整 XHR 响应。
+
 ## 常见业务流程
 
 ### 上传背景图
