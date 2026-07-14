@@ -27,10 +27,10 @@ import { exportH5Document, saveH5Document } from '../services/h5-document.js';
 import '../assets/scss/editor-workbench.scss';
 
 const router = useRouter();
-const editor = useCanvasEditor();
 const activePanel = ref('text');
 const saving = ref(false);
 const message = reactive({ visible: false, text: '', color: 'error' });
+const editor = useCanvasEditor({ onMessage: showMessage });
 
 /** @returns {Promise<Object>} 当前编辑器的 H5 JSON 数据。 */
 function getEditorJson() {

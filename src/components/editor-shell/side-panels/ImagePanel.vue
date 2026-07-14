@@ -5,6 +5,7 @@
       class="side-file-input"
       type="file"
       accept="image/*"
+      :disabled="editor.imageUploading.value"
       @change="editor.handleImageChange"
     />
 
@@ -20,6 +21,8 @@
           density="compact"
           prepend-icon="mdi-image-plus-outline"
           variant="outlined"
+          :disabled="editor.imageUploading.value"
+          :loading="editor.imageUploading.value"
           @click="editor.openImagePicker"
         >
           上传图片

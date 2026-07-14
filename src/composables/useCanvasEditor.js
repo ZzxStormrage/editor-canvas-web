@@ -14,9 +14,12 @@ import { useTextControls } from './canvas-editor/useTextControls.js'
  * 本模块只负责三件事：创建 Editor 外观实例、连接 EventBus、组合各业务
  * composable。文字、素材、画板等具体业务不再堆积在生命周期控制器中。
  *
+ * @param {Object} [options={}] 应用层配置。
+ * @param {((message: string, type: 'success' | 'error') => void) | null} [options.onMessage]
+ * 消息通知方法。
  * @returns {Object} 编辑器状态、DOM 引用和操作方法。
  */
-export function useCanvasEditor() {
+export function useCanvasEditor(options = {}) {
   const canvasRef = ref(null)
   const zoom = ref(1)
   const zoomPercent = computed(() => Math.round(zoom.value * 100))
@@ -37,7 +40,12 @@ export function useCanvasEditor() {
 
   const textControls = useTextControls(getEditor)
   const artboardControls = useArtboardControls(getEditor)
-  const assetControls = useAssetControls(getEditor, artboardControls.getArtboardBounds, textControls.fontFamily)
+  const assetControls = useAssetControls(
+    getEditor,
+    artboardControls.getArtboardBounds,
+    textControls.fontFamily,
+    typeof options.onMessage === 'function' ? options.onMessage : null
+  )
   const layerMenuControls = useLayerMenu(getEditor, canvasRef)
   const layerControls = useLayerControls(getEditor)
   const elementDataControls = useElementDataControls(getEditor)
@@ -144,6 +152,7 @@ export function useCanvasEditor() {
     addPrintArea: artboardControls.addPrintArea,
     deletePrintArea: artboardControls.deletePrintArea,
     imageInputRef: assetControls.imageInputRef,
+    imageUploading: assetControls.imageUploading,
     watermarkValue: assetControls.watermarkValue,
     openImagePicker: assetControls.openImagePicker,
     handleImageChange: assetControls.handleImageChange,

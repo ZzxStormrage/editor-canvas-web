@@ -246,7 +246,9 @@ URL、请求方法与参数，Alova 核心层统一处理基础地址、超时�
 | --- | --- |
 | `src/api/core/alova-client.js` | 创建 Alova 单例，处理 Token、HTTP 状态和网络错误。 |
 | `src/api/core/api-error.js` | 提供统一的 `ApiError`。 |
+| `src/api/clients/xiaoxiang-client.js` | 只配置小象后台服务域名，供该域名下的模块复用。 |
 | `src/api/modules/editor-document.js` | 编辑器文档接口示例，包含列表、详情、新建、更新和删除。 |
+| `src/api/modules/picture.js` | 图片上传接口，负责 `FormData` 和服务端图片地址解析。 |
 | `src/api/index.js` | 统一导出，业务代码只从该入口引用。 |
 
 新增业务接口时，在 `src/api/modules/` 下按业务域创建文件，例如
@@ -258,7 +260,12 @@ URL、请求方法与参数，Alova 核心层统一处理基础地址、超时�
 
 ```dotenv
 VITE_BASE_URL_API = https://pceditor.ele007.com/
+VITE_XIAOXIANG_API_BASE_URL = https://xiaoxiang.ele007.com
 ```
+
+每个后端域名单独创建 `clients/*-client.js`，业务模块只保存接口路径。例如图片服务使用
+`https://xiaoxiang.ele007.com` 作为基础地址，上传路径单独保存为
+`/admin/api/localStorage/pictures`。不要在组件中拼接完整接口 URL。
 
 编辑器文档示例默认请求 `/editor/documents`。后端路径不一致时，可以增加：
 
@@ -329,6 +336,24 @@ async function handleSave(editorJson) {
   })
 }
 ```
+
+### 图片上传调用
+
+`pictureApi.upload(file)` 会创建 `FormData`，以 `file` 字段上传图片，并直接返回服务端图片
+地址。服务端返回相对路径时，请求层会自动补全小象后台域名。
+
+```js
+import { pictureApi } from '@/api/index.js'
+
+async function uploadImage(file) {
+  const imageUrl = await pictureApi.upload(file)
+  await editor.image.add(imageUrl)
+}
+```
+
+图片 Tab 已使用该流程，上传期间按钮进入加载状态，成功后才会把远程图片添加到画布。
+当前接口 Token 按联调要求暂时固定在 `src/api/modules/picture.js`，它会随前端代码发布，
+正式接入登录态后必须改为运行时 Token。
 
 组件不应直接引用 `alovaClient.Post()` 拼装业务接口。这样接口路径变化时只修改对应的
 `src/api/modules/` 文件，不会影响页面交互和编辑器核心逻辑。
