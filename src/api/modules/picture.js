@@ -3,10 +3,6 @@ import { ApiError } from '../core/api-error.js';
 
 const PICTURE_UPLOAD_PATH = '/admin/api/localStorage/pictures';
 
-// 临时联调 Token 会进入前端产物，正式接入登录态后必须移除。
-const TEMPORARY_AUTHORIZATION =
-  'Bearer eyJhbGciOiJIUzUxMiJ9.eyJqdGkiOiIwM2U1Y2NjNDg2Mzk0YzhjYjgyMGViOTAxOTM3MWVjYiIsInN1YiI6ImFkbWluIn0.HFmhv32UtPfXLooZUZABBdkTSzPzwZW2DnLqf0FcSFDhW9u4lJ3k35gHwJnu3Otou4CfTfqYOWszmHbV0_2KBA';
-
 /**
  * 图片存储接口模块。
  */
@@ -23,10 +19,6 @@ export const pictureApi = Object.freeze({
 
     return xiaoxiangClient.Post(PICTURE_UPLOAD_PATH, formData, {
       name: 'picture.upload',
-      headers: {
-        Authorization: TEMPORARY_AUTHORIZATION
-      },
-      meta: { skipAuth: true },
       transformData: resolveUploadedPictureUrl
     });
   }

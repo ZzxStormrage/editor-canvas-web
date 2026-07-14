@@ -66,7 +66,7 @@ export function createAlovaClient(options = {}) {
  * 默认返回服务端响应体；Method 的 meta.responseMode 设为 raw 时返回完整 XHR 响应。
  */
 export const alovaClient = createAlovaClient({
-  baseURL: import.meta.env.VITE_BASE_URL_API
+  baseURL: import.meta.env?.VITE_BASE_URL_API
 });
 
 /**

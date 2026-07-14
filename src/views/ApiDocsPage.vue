@@ -188,7 +188,7 @@ const MODULE_DEFINITIONS = [
     label: '网络请求',
     namespace: 'alova / editorDocumentApi',
     icon: 'mdi-api',
-    headings: ['Alova API 请求层']
+    headings: ['Alova API 请求层', '跨端消息桥']
   },
   {
     key: 'h5',

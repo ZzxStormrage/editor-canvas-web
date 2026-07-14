@@ -352,8 +352,8 @@ async function uploadImage(file) {
 ```
 
 图片 Tab 已使用该流程，上传期间按钮进入加载状态，成功后才会把远程图片添加到画布。
-当前接口 Token 按联调要求暂时固定在 `src/api/modules/picture.js`，它会随前端代码发布，
-正式接入登录态后必须改为运行时 Token。
+请求头会动态读取消息桥收到的 Token；宿主尚未发送时，使用 `src/services/auth-token.js` 中的
+临时 Token 保持独立运行能力。
 
 组件不应直接引用 `alovaClient.Post()` 拼装业务接口。这样接口路径变化时只修改对应的
 `src/api/modules/` 文件，不会影响页面交互和编辑器核心逻辑。
@@ -396,6 +396,140 @@ try {
 
 默认返回服务端响应体。如果某个接口需要读取状态码或响应头，在 Method 配置中设置
 `meta: { responseMode: 'raw' }`，该接口会返回完整 XHR 响应。
+
+## 跨端消息桥
+
+> **Bridge 模块** · 发送：`postBridgeMessage()` · 接收：`subscribeBridgeMessage()`
+
+消息桥用于编辑器与后台 iframe、浏览器 opener、uni-app 和各类小程序 WebView 通信。
+业务消息统一使用以下结构，后续新增保存结果、页面状态等消息时只需要增加 `type`：
+
+```js
+{
+  channel: 'ele-editor',
+  version: 1,
+  id: '消息唯一 ID',
+  type: 'auth:token',
+  sender: 'admin',
+  timestamp: Date.now(),
+  payload: {
+    token: 'Bearer ...'
+  }
+}
+```
+
+### 编辑器发送消息
+
+```js
+import { postBridgeMessage } from '@/services/message-bridge.js'
+
+postBridgeMessage('editor:saved', {
+  documentId: 'document-id'
+})
+```
+
+默认目标为 `auto`：小程序环境优先调用 `uni.postMessage`，否则发送给 iframe 的
+`window.parent`，没有 parent 时再发送给 `window.opener`。指定目标和来源：
+
+```js
+postBridgeMessage('editor:saved', payload, {
+  target: 'parent',
+  targetOrigin: 'https://admin.example.com'
+})
+```
+
+不要使用 `'*'` 发送 Token 等敏感数据。没有显式传入 `targetOrigin` 时，消息桥优先使用
+`document.referrer` 的 origin，其次使用编辑器当前 origin。
+
+### 后台向编辑器传 Token
+
+编辑器启动后会先发送 `editor:ready`，后台收到 ready 后再传 Token，避免消息早于编辑器
+监听器初始化：
+
+```js
+window.addEventListener('message', (event) => {
+  const message = event.data
+
+  if (
+    message?.channel === 'ele-editor' &&
+    message?.version === 1 &&
+    message?.type === 'editor:ready'
+  ) {
+    event.source.postMessage({
+      channel: 'ele-editor',
+      version: 1,
+      type: 'auth:token',
+      sender: 'admin',
+      timestamp: Date.now(),
+      payload: {
+        token: 'Bearer 后台登录 Token'
+      }
+    }, event.origin)
+  }
+})
+```
+
+收到的 Token 会去除可选的 `Bearer` 前缀并只保存在内存中，不写入 URL 或
+`localStorage`。Alova 在每次请求发送前读取最新 Token，因此不需要重建 API 客户端。
+
+### 编辑器内监听消息
+
+```js
+import { subscribeBridgeMessage } from '@/services/message-bridge.js'
+
+const unsubscribe = subscribeBridgeMessage('product:selected', ({ payload, context }) => {
+  console.log(payload.productId, context.origin)
+})
+
+unsubscribe()
+```
+
+### 小程序和原生 WebView
+
+编辑器向小程序发送消息仍调用 `postBridgeMessage()`。`uni.webview` 会适配微信、QQ、
+支付宝、抖音、百度、京东等容器：
+
+```js
+postBridgeMessage('editor:ready', {
+  capabilities: ['auth:token']
+})
+```
+
+支持执行 WebView JavaScript 的原生或 uni 容器，可以调用编辑器暴露的全局接收方法：
+
+```js
+window.EleEditorBridge.receiveMessage({
+  channel: 'ele-editor',
+  version: 1,
+  type: 'auth:token',
+  sender: 'mini-program',
+  timestamp: Date.now(),
+  payload: {
+    token: 'Bearer 小程序 Token'
+  }
+})
+```
+
+标准微信小程序 `web-view` 的 `postMessage` 主要支持 H5 向小程序发送；如果容器不支持向
+H5 执行 JavaScript，需要在打开 WebView 前通过服务端会话完成身份交换，不建议把 Token
+直接拼到 URL。
+
+### 来源白名单
+
+消息桥默认允许当前页面 origin 和 `document.referrer` origin。一个部署包需要被多个后台
+域名嵌入时，通过环境变量增加白名单：
+
+```dotenv
+VITE_MESSAGE_ALLOWED_ORIGINS = https://admin-a.example.com,https://admin-b.example.com
+```
+
+应用启动入口已经完成以下初始化，页面组件不需要重复监听 Token：
+
+```js
+configureApiClient({ getAccessToken })
+installAuthTokenBridge()
+startMessageBridge()
+```
 
 ## 常见业务流程
 

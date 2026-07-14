@@ -1,8 +1,18 @@
 import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
+import { configureApiClient } from './api/index.js'
 import { createVuetifyPlugin } from './plugins/vuetify.js'
 import { router } from './router/index.js'
+import { getAccessToken, installAuthTokenBridge } from './services/auth-token.js'
+import { MESSAGE_TYPES, postBridgeMessage, startMessageBridge } from './services/message-bridge.js'
+
+configureApiClient({ getAccessToken })
+installAuthTokenBridge()
+startMessageBridge()
+postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
+  capabilities: [MESSAGE_TYPES.AUTH_TOKEN]
+})
 
 const app = createApp(App)
 const vuetify = createVuetifyPlugin()
