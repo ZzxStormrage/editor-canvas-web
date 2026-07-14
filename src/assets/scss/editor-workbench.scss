@@ -14,6 +14,8 @@
   --editor-line: rgb(var(--v-theme-line));
   --editor-outline: rgb(var(--v-theme-outline));
   --editor-control: rgb(var(--v-theme-control));
+  --editor-input-font-size: 13px;
+  --editor-text-field-height: 36px;
   --editor-control-shadow: 0 1px 5px rgba(var(--v-theme-shadow), 0.14);
   --editor-workspace-shadow: 0 6px 16px rgba(var(--v-theme-shadow), 0.1);
   width: 100vw;
@@ -149,6 +151,27 @@
   overflow-y: auto;
   border-right: 1px solid rgba(var(--v-theme-outline), 0.16);
   background: rgb(var(--v-theme-background));
+}
+
+.editor-side-panel .v-field__input,
+.editor-side-panel .v-select__selection-text {
+  font-size: var(--editor-input-font-size);
+  letter-spacing: 0;
+}
+
+.editor-side-panel .v-field__input input,
+.editor-side-panel .v-field__input textarea {
+  font-size: inherit;
+  letter-spacing: inherit;
+}
+
+.editor-side-panel .v-text-field {
+  --v-input-control-height: var(--editor-text-field-height);
+  --v-input-padding-top: 6px;
+}
+
+.editor-side-panel .v-text-field .v-field--variant-outlined {
+  --v-field-padding-bottom: 6px;
 }
 
 .side-file-input {

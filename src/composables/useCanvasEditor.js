@@ -38,13 +38,14 @@ export function useCanvasEditor(options = {}) {
     }
   }
 
+  const notify = typeof options.onMessage === 'function' ? options.onMessage : null
   const textControls = useTextControls(getEditor)
-  const artboardControls = useArtboardControls(getEditor)
+  const artboardControls = useArtboardControls(getEditor, notify)
   const assetControls = useAssetControls(
     getEditor,
     artboardControls.getArtboardBounds,
     textControls.fontFamily,
-    typeof options.onMessage === 'function' ? options.onMessage : null
+    notify
   )
   const layerMenuControls = useLayerMenu(getEditor, canvasRef)
   const layerControls = useLayerControls(getEditor)
@@ -140,6 +141,7 @@ export function useCanvasEditor(options = {}) {
     addText: textControls.addText,
     handleCanvasDoubleClick: textControls.handleCanvasDoubleClick,
     backgroundInputRef: artboardControls.backgroundInputRef,
+    backgroundUploading: artboardControls.backgroundUploading,
     artboardWidth: artboardControls.artboardWidth,
     artboardHeight: artboardControls.artboardHeight,
     printAreaWidth: artboardControls.printAreaWidth,

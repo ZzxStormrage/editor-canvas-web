@@ -5,6 +5,7 @@
       class="side-file-input"
       type="file"
       accept="image/*"
+      :disabled="editor.backgroundUploading.value"
       @change="editor.handleBackgroundImageChange"
     />
 
@@ -60,6 +61,8 @@
           class="editor-action-button canvas-action-button"
           color="primary"
           density="compact"
+          :disabled="editor.backgroundUploading.value"
+          :loading="editor.backgroundUploading.value"
           prepend-icon="mdi-image-plus-outline"
           variant="tonal"
           @click="editor.openBackgroundImagePicker"

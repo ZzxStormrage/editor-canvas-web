@@ -74,6 +74,7 @@ export class ImagePlugin {
 
     try {
       const { contentLayer, eventBus, state } = this._context;
+      const shouldSelect = options.select !== false;
       imageSource = await this._normalizeSource(source);
       const imageSize = await this._loadImageSize(imageSource.url);
       const imageConfig = this._normalizePlacement(imageSize, options, state);
@@ -90,10 +91,11 @@ export class ImagePlugin {
       if (imageSource.ownedObjectUrl) {
         this._ownedObjectUrls.add(imageSource.url);
       }
-      // 延迟到下一帧 select，确保 contentLayer.add() 后 Leafer
-      // 内部渲染管线稳定，避免 editTool 尚未加载时触发 update()
-      await new Promise(resolve => requestAnimationFrame(resolve));
-      this._context.innerEditor?.select(image);
+      if (shouldSelect) {
+        // 等待节点进入 Leafer 渲染管线后再创建选框。
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        this._context.innerEditor?.select(image);
+      }
       eventBus.emit('image:added', { image });
 
       return image;
@@ -168,7 +170,8 @@ export class ImagePlugin {
    * @param {{ width: number, height: number }} imageSize 图片原始尺寸。
    * @param {Object} options 外部放置配置。
    * @param {Object} state 编辑器状态。
-   * @returns {{ x: number, y: number, width: number, height: number, lockRatio: boolean }} 图片节点配置。
+   * @returns {{ x: number, y: number, width: number, height: number, lockRatio: boolean,
+   * visible: boolean }} 图片节点配置。
    */
   _normalizePlacement(imageSize, options, state) {
     const bounds = this._getOperationBounds(state);
@@ -191,7 +194,8 @@ export class ImagePlugin {
       y: mergedOptions.y ?? bounds.y + (bounds.height - height) / 2,
       width,
       height,
-      lockRatio: mergedOptions.lockRatio ?? true
+      lockRatio: mergedOptions.lockRatio ?? true,
+      visible: mergedOptions.visible ?? true
     };
   }
 

@@ -1,6 +1,7 @@
 import { Rect } from 'leafer-ui'
 import { computed, ref, watch } from 'vue'
 
+import { pictureApi } from '../../api/index.js'
 import { formatMillimeter, pixelToMillimeter } from '../../canvas-editor-core/src/utils/unit.js'
 import { normalizePixelForUI } from './editor-ui-utils.js'
 
@@ -18,10 +19,13 @@ const PRINT_AREA_NODE_LABEL = '打印区域'
  * 不跨层引用底层插件实现。
  *
  * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor 获取编辑器实例。
+ * @param {((message: string, type: 'success' | 'error') => void) | null} notify
+ * 消息通知方法。
  * @returns {Object} 画板状态和操作。
  */
-export function useArtboardControls(getEditor) {
+export function useArtboardControls(getEditor, notify = null) {
   const backgroundInputRef = ref(null)
+  const backgroundUploading = ref(false)
   const artboardWidth = ref(375)
   const artboardHeight = ref(667)
   const printAreaWidth = ref(300)
@@ -68,7 +72,9 @@ export function useArtboardControls(getEditor) {
 
   /** @returns {void} */
   function openBackgroundImagePicker() {
-    backgroundInputRef.value?.click()
+    if (!backgroundUploading.value) {
+      backgroundInputRef.value?.click()
+    }
   }
 
   /**
@@ -77,14 +83,25 @@ export function useArtboardControls(getEditor) {
    */
   async function handleBackgroundImageChange(event) {
     const [file] = event.target.files ?? []
+    const editor = getEditor()
 
     event.target.value = ''
 
-    if (!file || !getEditor()) {
+    if (!file || !editor || backgroundUploading.value) {
       return
     }
 
-    await addBackgroundImage(file)
+    backgroundUploading.value = true
+
+    try {
+      await addBackgroundImage(file)
+      notify?.('背景图上传成功', 'success')
+    } catch (error) {
+      console.error('Background image upload failed.', error)
+      notify?.(error.message || '背景图上传失败。', 'error')
+    } finally {
+      backgroundUploading.value = false
+    }
   }
 
   /**
@@ -101,13 +118,16 @@ export function useArtboardControls(getEditor) {
     }
 
     const imageSize = await editor.image.getSize(file)
+    const imageUrl = await pictureApi.upload(file)
     const currentBounds = getArtboardBounds()
-    const backgroundImage = await editor.image.add(file, {
+    const backgroundImage = await editor.image.add(imageUrl, {
       x: currentBounds.x,
       y: currentBounds.y,
       width: imageSize.width,
       height: imageSize.height,
-      lockRatio: false
+      lockRatio: false,
+      visible: false,
+      select: false
     })
 
     editor.setArtboardSize(imageSize.width, imageSize.height)
@@ -119,21 +139,22 @@ export function useArtboardControls(getEditor) {
       y: backgroundBounds.y,
       width: backgroundBounds.width,
       height: backgroundBounds.height,
-      lockRatio: false
+      lockRatio: false,
+      visible: false
     })
-    backgroundImage.forceUpdate?.()
-    backgroundImage.updateLayout?.()
 
     markBackgroundNode(editor, backgroundImage)
-    removeBackgroundImages(editor, backgroundImage)
     moveElementToBottom(backgroundImage)
     editor.deselect()
-    editor.artboard?.syncAllElements?.()
-    await new Promise((resolve) => requestAnimationFrame(resolve))
     editor.fitArtboardToView({
       viewportRatio: BACKGROUND_VIEWPORT_RATIO,
       expandZoomRange: true
     })
+    removeBackgroundImages(editor, backgroundImage)
+    backgroundImage.visible = true
+    backgroundImage.forceUpdate?.()
+    backgroundImage.updateLayout?.()
+    editor.artboard?.syncAllElements?.()
   }
 
   /** @returns {void} */
@@ -213,6 +234,7 @@ export function useArtboardControls(getEditor) {
 
   return {
     backgroundInputRef,
+    backgroundUploading,
     artboardWidth,
     artboardHeight,
     printAreaWidth,

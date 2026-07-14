@@ -82,8 +82,6 @@ export const EDITOR_COMPONENT_DEFAULTS = {
     bgColor: 'surface',
     color: 'primary',
     hideDetails: true,
-    hideSpinButtons: true,
-    flat: true,
     rounded: 'md'
   },
   VColorInput: {

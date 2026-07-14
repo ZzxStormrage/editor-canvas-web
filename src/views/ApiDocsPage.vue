@@ -11,7 +11,6 @@
 
       <nav class="api-docs-actions" aria-label="文档页面导航">
         <router-link to="/editor">编辑器</router-link>
-        <router-link to="/h5-preview">H5 预览</router-link>
       </nav>
     </header>
 
@@ -111,14 +110,22 @@ const MODULE_DEFINITIONS = [
     label: '接入指南',
     namespace: 'Application',
     icon: 'mdi-map-outline',
-    headings: ['阅读路线', '10 分钟快速上手', '调用边界', '模块总览', 'Vue 应用层调用', '常见业务流程', '错误处理与调试', 'API 速查']
+    headings: [
+      '阅读路线',
+      '快速开始',
+      '调用边界',
+      'Vue 应用层',
+      '常见业务流程',
+      '错误处理',
+      'API 速查'
+    ]
   },
   {
     key: 'core',
     label: 'Core 核心',
     namespace: 'createEditor / Editor',
     icon: 'mdi-cube-outline',
-    headings: ['核心层初始化示例', '入口 API', 'Editor 实例属性', '生命周期', '高级导出', '完整业务示例']
+    headings: ['创建编辑器', 'Editor 实例', '生命周期']
   },
   {
     key: 'canvas',
@@ -132,7 +139,7 @@ const MODULE_DEFINITIONS = [
     label: '视口缩放',
     namespace: 'editor.setZoom',
     icon: 'mdi-magnify-scan',
-    headings: ['缩放']
+    headings: ['视口缩放']
   },
   {
     key: 'selection',
@@ -146,7 +153,7 @@ const MODULE_DEFINITIONS = [
     label: '图层',
     namespace: 'editor.layer',
     icon: 'mdi-layers-outline',
-    headings: ['图层插件']
+    headings: ['图层']
   },
   {
     key: 'image',
@@ -182,20 +189,6 @@ const MODULE_DEFINITIONS = [
     namespace: 'editor.elementData',
     icon: 'mdi-database-outline',
     headings: ['元素业务属性']
-  },
-  {
-    key: 'request',
-    label: '网络请求',
-    namespace: 'alova / editorDocumentApi',
-    icon: 'mdi-api',
-    headings: ['Alova API 请求层', '跨端消息桥']
-  },
-  {
-    key: 'h5',
-    label: 'H5 协议',
-    namespace: 'exportH5Document',
-    icon: 'mdi-cellphone-link',
-    headings: ['移动端 H5 文档协议']
   }
 ];
 
