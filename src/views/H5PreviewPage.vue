@@ -29,7 +29,7 @@
 import { ref } from 'vue';
 
 import H5CanvasRenderer from '../components/h5-preview/H5CanvasRenderer.vue';
-import { parseH5Document, readH5Document, saveH5Document } from '../services/h5-document.js';
+import { applyH5Document, readH5Document } from '../services/h5-document.js';
 import '../assets/scss/h5-preview.scss';
 
 const documentData = ref(readH5Document());
@@ -38,9 +38,8 @@ const errorMessage = ref('');
 
 function applyJson() {
   try {
-    const nextDocument = parseH5Document(jsonText.value);
+    const nextDocument = applyH5Document(jsonText.value);
     documentData.value = nextDocument;
-    saveH5Document(nextDocument);
     jsonText.value = JSON.stringify(nextDocument, null, 2);
     errorMessage.value = '';
   } catch (error) {
