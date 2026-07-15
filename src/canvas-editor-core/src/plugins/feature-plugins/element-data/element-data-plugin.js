@@ -75,6 +75,54 @@ export class ElementDataPlugin {
   }
 
   /**
+   * 获取画布中的全部元素，递归包含组合内子元素。
+   *
+   * @returns {Object[]} Leafer 元素数组。
+   */
+  getAllElements() {
+    return this._getAllElements()
+  }
+
+  /**
+   * 根据自定义属性中的 role 获取元素。
+   *
+   * 支持 attributes.role，也支持 attributes.image.role 等任意层级的 role 字段。
+   *
+   * @param {string} role 需要匹配的角色值。
+   * @returns {Object[]} 匹配的 Leafer 元素数组。
+   */
+  getElementsByRole(role) {
+    const expectedRole = typeof role === 'string' ? role.trim() : ''
+
+    if (!expectedRole) {
+      return []
+    }
+
+    return this._getAllElements().filter((element) => {
+      const attributes = getElementDataContainer(element)?.attributes
+      return this._hasRoleValue(attributes, expectedRole)
+    })
+  }
+
+  /**
+   * 根据元素类型获取元素，匹配 customType、tag 和构造函数名称。
+   *
+   * @param {string} type 元素类型，例如 image、text、group 或 rect。
+   * @returns {Object[]} 匹配的 Leafer 元素数组。
+   */
+  getElementsByType(type) {
+    const expectedType = typeof type === 'string' ? type.trim().toLowerCase() : ''
+
+    if (!expectedType) {
+      return []
+    }
+
+    return this._getAllElements().filter((element) => {
+      return this._getElementTypeCandidates(element).includes(expectedType)
+    })
+  }
+
+  /**
    * 写入元素业务属性。
    *
    * 默认合并一层字段；replace=true 时整体替换。所有数据必须可以 JSON 序列化。
@@ -276,6 +324,39 @@ export class ElementDataPlugin {
   /** @private */
   _getElementType(element) {
     return String(element?.customType ?? element?.tag ?? element?.constructor?.name ?? 'element')
+  }
+
+  /**
+   * 递归检查自定义属性对象中的 role 字段。
+   *
+   * @private
+   * @param {*} value 当前属性值。
+   * @param {string} expectedRole 目标角色。
+   * @returns {boolean} 是否包含目标角色。
+   */
+  _hasRoleValue(value, expectedRole) {
+    if (!value || typeof value !== 'object') {
+      return false
+    }
+
+    if (value.role === expectedRole) {
+      return true
+    }
+
+    return Object.values(value).some((child) => this._hasRoleValue(child, expectedRole))
+  }
+
+  /**
+   * 获取元素可用于类型查询的名称集合。
+   *
+   * @private
+   * @param {Object} element Leafer 元素。
+   * @returns {string[]} 小写类型名称集合。
+   */
+  _getElementTypeCandidates(element) {
+    return [element?.customType, element?.tag, element?.constructor?.name]
+      .filter((value) => typeof value === 'string' && value.trim())
+      .map((value) => value.trim().toLowerCase())
   }
 }
 

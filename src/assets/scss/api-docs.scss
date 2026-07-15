@@ -192,8 +192,12 @@
 }
 
 .api-docs-toc-module-items > button {
+  display: flex;
+  align-items: flex-start;
   width: 100%;
   min-height: 30px;
+  flex-direction: column;
+  gap: 2px;
   padding: 5px 8px;
   border: 0;
   border-radius: 5px;
@@ -203,6 +207,21 @@
   line-height: 1.35;
   text-align: left;
   cursor: pointer;
+}
+
+.api-docs-toc-module-items > button > span {
+  font: inherit;
+}
+
+.api-docs-toc-module-items > button > small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #8a91a2;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .api-docs-toc-module-items > button:hover,

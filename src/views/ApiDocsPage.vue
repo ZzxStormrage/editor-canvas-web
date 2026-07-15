@@ -18,7 +18,13 @@
       <aside class="api-docs-sidebar">
         <label class="api-docs-search">
           <v-icon icon="mdi-magnify" size="17" />
-          <input v-model.trim="searchQuery" type="search" placeholder="搜索章节" aria-label="搜索 API 文档章节" />
+          <input
+            v-model.trim="searchQuery"
+            type="search"
+            placeholder="搜索标题、正文或 API"
+            aria-label="搜索 API 文档"
+            @keydown.enter.prevent="openFirstSearchResult"
+          />
           <button v-if="searchQuery" type="button" aria-label="清空搜索" @click="searchQuery = ''">
             <v-icon icon="mdi-close" size="15" />
           </button>
@@ -53,11 +59,12 @@
                 :class="[`api-docs-toc-level-${item.level}`, { 'api-docs-toc-active': activeHeadingId === item.id }]"
                 @click="scrollToHeading(item.id)"
               >
-                {{ item.title }}
+                <span>{{ item.title }}</span>
+                <small v-if="item.matchSummary">{{ item.matchSummary }}</small>
               </button>
             </div>
           </section>
-          <p v-if="filteredTocModules.length === 0">没有匹配的模块或章节</p>
+          <p v-if="filteredTocModules.length === 0">没有找到“{{ searchQuery }}”相关内容</p>
         </nav>
       </aside>
 
@@ -103,6 +110,7 @@ import { marked } from 'marked';
 
 import markdownSource from '../../CANVAS_EDITOR_API.md?raw';
 import '../assets/scss/api-docs.scss';
+import { buildHeadingSearchIndex, createSearchSummary, normalizeSearchText } from './api-doc-search.js';
 
 const MODULE_DEFINITIONS = [
   {
@@ -203,15 +211,19 @@ const tocModules = createTocModules(toc);
 let observer = null;
 
 const filteredTocModules = computed(() => {
-  const keyword = searchQuery.value.toLowerCase();
+  const terms = normalizeSearchText(searchQuery.value).split(' ').filter(Boolean);
 
-  if (!keyword) return tocModules;
+  if (terms.length === 0) return tocModules;
 
   return tocModules.flatMap((module) => {
-    const moduleMatched = `${module.label} ${module.namespace}`.toLowerCase().includes(keyword);
+    const moduleSearchText = normalizeSearchText(`${module.label} ${module.namespace}`);
+    const moduleMatched = terms.every((term) => moduleSearchText.includes(term));
     const items = moduleMatched
       ? module.items
-      : module.items.filter((item) => item.title.toLowerCase().includes(keyword));
+      : module.items.flatMap((item) => {
+        if (!terms.every((term) => item.searchText.includes(term))) return [];
+        return [{ ...item, matchSummary: createSearchSummary(item.searchContent, terms) }];
+      });
 
     return items.length ? [{ ...module, items }] : [];
   });
@@ -246,11 +258,13 @@ onBeforeUnmount(() => {
 
 function createTableOfContents(markdown) {
   const slugCount = new Map();
+  const lines = markdown.split('\n');
+  const headings = [];
   let currentModule = MODULE_DEFINITIONS[0];
 
-  return markdown.split('\n').flatMap((line) => {
+  lines.forEach((line, lineIndex) => {
     const match = /^(#{2,4})\s+(.+)$/.exec(line);
-    if (!match) return [];
+    if (!match) return;
 
     const title = stripMarkdown(match[2]);
     if (match[1].length === 2) currentModule = resolveModule(title);
@@ -258,13 +272,16 @@ function createTableOfContents(markdown) {
     const count = slugCount.get(baseId) ?? 0;
     slugCount.set(baseId, count + 1);
 
-    return [{
+    headings.push({
       level: match[1].length,
       title,
       id: count ? `${baseId}-${count + 1}` : baseId,
-      moduleKey: currentModule.key
-    }];
+      moduleKey: currentModule.key,
+      lineIndex
+    });
   });
+
+  return buildHeadingSearchIndex(markdown, headings);
 }
 
 function createTocModules(items) {
@@ -330,6 +347,12 @@ function scrollToHeading(id) {
     + container.scrollTop
     - 68;
   container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+}
+
+/** @returns {void} 定位当前第一条搜索结果。 */
+function openFirstSearchResult() {
+  const firstItem = filteredTocModules.value[0]?.items[0];
+  if (firstItem) scrollToHeading(firstItem.id);
 }
 
 function isModuleExpanded(moduleKey) {

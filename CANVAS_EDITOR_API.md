@@ -13,6 +13,7 @@
 | 开发 Vue 面板 | “Vue 应用层” → 对应功能模块 → “事件” |
 | 添加图片或文字 | “图片” → “文本” → “选择” |
 | 开发图层面板 | “图层” → “选择” → “元素业务属性” |
+| 查询元素或截图 | “元素业务属性” → “生产遮罩与打印区域” |
 | 排查问题 | “错误处理” → 对应模块 |
 
 ## 快速开始
@@ -418,7 +419,10 @@ const printArea = await editor.detectPrintAreaFromMask({
 识别过程优先选择不接触图片边缘的最大透明连通区域；没有内部区域时回退到最大的透明
 区域。识别结果会按照遮罩图当前的位置、缩放和旋转映射到画板，并自动创建或更新打印框。
 
-### 截图、转 File 并上传
+### `editor.capturePrintArea(options)`
+
+该 API 文档位于“生产遮罩与打印区域”模块。它按照当前打印区域截图，返回一个
+`Promise`；未传上传函数时解析为 `File`，传入 `upload` 后解析为上传接口结果。
 
 核心 API 默认返回 `File`：
 
@@ -643,6 +647,37 @@ editor.elementData.clearSelected()
 editor.elementData.getById(elementId)
 editor.elementData.setById(elementId, { productId: '1001' })
 ```
+
+### 获取和查询元素
+
+推荐通过 Editor 外观 API 查询。三个方法始终返回数组，没有匹配结果时返回 `[]`：
+
+```js
+const allElements = editor.getAllElements()
+const maskElements = editor.getElementsByRole('mask')
+const backgroundElements = editor.getElementsByRole('background')
+const imageElements = editor.getElementsByType('image')
+const textElements = editor.getElementsByType('text')
+```
+
+也可以直接使用元素业务属性插件：
+
+```js
+const allElements = editor.elementData.getAllElements()
+const aiElements = editor.elementData.getElementsByRole('ai-variable')
+const groupElements = editor.elementData.getElementsByType('group')
+```
+
+查询规则：
+
+| API | 匹配规则 |
+| --- | --- |
+| `getAllElements()` | 返回画布全部元素，递归包含组合及其子元素。 |
+| `getElementsByRole(role)` | 递归匹配自定义属性中的 `role`，包括 `attributes.image.role`。角色值精确匹配。 |
+| `getElementsByType(type)` | 匹配元素的 `customType`、Leafer `tag` 或构造函数名称，大小写不敏感。 |
+
+查询会递归包含组合内的子元素。返回值是当前画布中的 Leafer 元素引用，可以继续传给
+`editor.select(element)`、`editor.elementData.get(element)` 等 API；不要直接修改其内部字段。
 
 ### 图片角色
 
@@ -896,6 +931,9 @@ try {
 | 删除图层 | `editor.layer.remove(id)` |
 | 锁定图层 | `editor.layer.toggleLock(id)` |
 | 点击穿透 | `editor.layer.togglePointerThrough(id)` |
+| 获取全部元素 | `editor.getAllElements()` |
+| 按角色获取元素 | `editor.getElementsByRole(role)` |
+| 按类型获取元素 | `editor.getElementsByType(type)` |
 | 写入业务属性 | `editor.elementData.set(target, attributes)` |
 | 导出业务属性 | `editor.elementData.export()` |
 | 监听事件 | `editor.eventBus.on(name, handler)` |

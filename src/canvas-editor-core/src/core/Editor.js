@@ -259,6 +259,37 @@ export class Editor {
     return this
   }
 
+  // ═══════════════════ 元素查询（委托给 ElementDataPlugin） ═══════════════════
+
+  /**
+   * 获取画布中的全部元素，递归包含组合内子元素。
+   *
+   * @returns {Object[]} Leafer 元素数组。
+   */
+  getAllElements() {
+    return this.elementData?.getAllElements?.() ?? []
+  }
+
+  /**
+   * 根据自定义属性中的 role 获取元素。
+   *
+   * @param {string} role 角色值，例如 background、mask 或 ai-variable。
+   * @returns {Object[]} 匹配的 Leafer 元素数组。
+   */
+  getElementsByRole(role) {
+    return this.elementData?.getElementsByRole?.(role) ?? []
+  }
+
+  /**
+   * 根据元素类型获取元素。
+   *
+   * @param {string} type 元素类型，例如 image、text、group 或 rect。
+   * @returns {Object[]} 匹配的 Leafer 元素数组。
+   */
+  getElementsByType(type) {
+    return this.elementData?.getElementsByType?.(type) ?? []
+  }
+
   // ═══════════════════ 生产辅助（委托给 ProductionPlugin） ═══════════════════
 
   /**
