@@ -39,13 +39,13 @@
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 
 import H5CanvasRenderer from '../../components/h5-preview/H5CanvasRenderer.vue'
 import { applyH5Document } from '../../services/h5-document.js'
 import '../../assets/scss/h5-preview.scss'
 
-const documentData = reactive({
+const documentData = ref({
   version: 1,
   canvas: {
     width: 332,
@@ -167,19 +167,23 @@ watch(surname, (value) => updateTextElement('xing', value))
 watch(givenName, (value) => updateTextElement('ming', value))
 
 function findTextElement(type) {
-  return documentData.elements.find((element) => element.type === type)
+  return documentData.value.elements.find((element) => element.type === type)
 }
 
 function updateTextElement(type, text) {
-  const element = findTextElement(type)
-  if (!element) return
-  element.text = text
-  applyJson()
+  const nextDocument = {
+    ...documentData.value,
+    elements: documentData.value.elements.map((element) =>
+      element.type === type ? { ...element, text } : element
+    )
+  }
+
+  applyJson(nextDocument)
 }
 
-function applyJson() {
-  const nextDocument = applyH5Document(JSON.stringify(documentData))
-  Object.assign(documentData, nextDocument)
+function applyJson(value = documentData.value) {
+  const nextDocument = applyH5Document(JSON.stringify(value))
+  documentData.value = nextDocument
 }
 
 function submit() {
