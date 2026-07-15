@@ -26,6 +26,7 @@
         v-model="editor.fontFamily.value"
         :items="editor.fontOptions"
         label="字体"
+        @update:menu="handleFontMenu"
       />
     </PanelGroup>
 
@@ -163,6 +164,18 @@ const styleSelections = computed({
   get: getStyleSelections,
   set: setStyleSelections
 });
+
+/**
+ * 字体下拉框打开时请求服务端字体列表。
+ *
+ * @param {boolean} isOpen 下拉框是否打开。
+ * @returns {void}
+ */
+function handleFontMenu(isOpen) {
+  if (isOpen) {
+    props.editor.loadFontList();
+  }
+}
 
 /**
  * 读取当前文字样式多选状态。

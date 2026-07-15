@@ -174,6 +174,7 @@ export function useCanvasEditor(options = {}) {
     lineThrough: textControls.lineThrough,
     writingMode: textControls.writingMode,
     fontOptions: textControls.fontOptions,
+    loadFontList: textControls.loadFontList,
     addText: textControls.addText,
     handleCanvasDoubleClick: textControls.handleCanvasDoubleClick,
     backgroundInputRef: artboardControls.backgroundInputRef,
