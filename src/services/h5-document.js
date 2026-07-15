@@ -200,6 +200,12 @@ export function saveH5Document(document) {
   localStorage.setItem(H5_DOCUMENT_STORAGE_KEY, JSON.stringify(document));
 }
 
+export function applyH5Document(value) {
+  const document = parseH5Document(value);
+  saveH5Document(document);
+  return document;
+}
+
 export function readH5Document() {
   try {
     const value = localStorage.getItem(H5_DOCUMENT_STORAGE_KEY);
