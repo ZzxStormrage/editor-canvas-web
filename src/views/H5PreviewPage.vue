@@ -12,6 +12,11 @@
       <H5CanvasRenderer :document="documentData" />
     </section>
 
+    <H5ReplacementTester
+      :document="documentData"
+      @update:document="updateDocument"
+    />
+
     <details class="h5-json-panel">
       <summary>导入或查看 JSON</summary>
       <p>可粘贴编辑器导出的 JSON，点击应用后立即重新渲染。</p>
@@ -29,6 +34,7 @@
 import { ref } from 'vue';
 
 import H5CanvasRenderer from '../components/h5-preview/H5CanvasRenderer.vue';
+import H5ReplacementTester from '../components/h5-preview/H5ReplacementTester.vue';
 import { parseH5Document, readH5Document, saveH5Document } from '../services/h5-document.js';
 import '../assets/scss/h5-preview.scss';
 
@@ -36,13 +42,17 @@ const documentData = ref(readH5Document());
 const jsonText = ref(JSON.stringify(documentData.value, null, 2));
 const errorMessage = ref('');
 
+function updateDocument(nextDocument) {
+  documentData.value = nextDocument;
+  saveH5Document(nextDocument);
+  jsonText.value = JSON.stringify(nextDocument, null, 2);
+  errorMessage.value = '';
+}
+
 function applyJson() {
   try {
     const nextDocument = parseH5Document(jsonText.value);
-    documentData.value = nextDocument;
-    saveH5Document(nextDocument);
-    jsonText.value = JSON.stringify(nextDocument, null, 2);
-    errorMessage.value = '';
+    updateDocument(nextDocument);
   } catch (error) {
     errorMessage.value = error.message || 'JSON 数据无效。';
   }

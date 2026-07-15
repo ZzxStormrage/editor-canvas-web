@@ -18,7 +18,7 @@
         @input="updateTextInput(element, $event)"
       />
       <div
-        v-else-if="resolveElementType(element) === 'text'"
+        v-else-if="resolveH5ElementType(element) === 'text'"
         class="h5-element h5-text"
         :data-description="element.attributes?.text?.description || undefined"
         :style="resolveElementStyle(element)"
@@ -26,7 +26,7 @@
         {{ element.text }}
       </div>
       <img
-        v-else-if="resolveElementType(element) === 'image'"
+        v-else-if="resolveH5ElementType(element) === 'image'"
         class="h5-element h5-image"
         :src="element.url"
         :alt="element.attributes?.image?.description || element.name || ''"
@@ -43,6 +43,8 @@
 
 <script setup>
 import { reactive, watch } from 'vue';
+
+import { resolveH5ElementType } from '../../services/h5-document.js';
 
 const props = defineProps({
   document: { type: Object, required: true }
@@ -65,15 +67,8 @@ function initializeInputValues() {
   });
 }
 
-function resolveElementType(element) {
-  const tag = String(element.tag ?? element.type ?? '').toLowerCase();
-  if (tag.includes('text')) return 'text';
-  if (tag.includes('image')) return 'image';
-  return 'shape';
-}
-
 function isEditableText(element) {
-  return resolveElementType(element) === 'text' && element.attributes?.textInput?.enabled === true;
+  return resolveH5ElementType(element) === 'text' && element.attributes?.textInput?.enabled === true;
 }
 
 function resolveElementStyle(element) {
@@ -98,7 +93,7 @@ function resolveElementStyle(element) {
     transform: transforms.join(' ') || undefined,
     transformOrigin: element.origin || 'center center',
     color: resolveColor(element.fill, '#1f2937'),
-    background: resolveElementType(element) === 'shape' ? resolveColor(element.fill, 'transparent') : undefined,
+    background: resolveH5ElementType(element) === 'shape' ? resolveColor(element.fill, 'transparent') : undefined,
     borderColor: resolveColor(element.stroke, 'transparent'),
     borderWidth: element.strokeWidth ? toCanvasUnit(element.strokeWidth, canvas.width) : undefined,
     borderRadius: resolveBorderRadius(element.cornerRadius, canvas.width),
@@ -111,7 +106,10 @@ function resolveElementStyle(element) {
     textAlign: element.textAlign,
     textDecoration: resolveTextDecoration(element.textDecoration),
     writingMode: element.writingMode === 'y' ? 'vertical-rl' : undefined,
-    objectFit: resolveElementType(element) === 'image' ? 'fill' : undefined
+    objectFit: resolveH5ElementType(element) === 'image' ? element.objectFit ?? 'fill' : undefined,
+    objectPosition: resolveH5ElementType(element) === 'image'
+      ? element.objectPosition ?? 'center center'
+      : undefined
   };
 }
 

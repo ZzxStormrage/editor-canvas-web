@@ -159,6 +159,36 @@ export class TextPlugin {
   }
 
   /**
+   * 替换当前严格单选文本的内容，并保留原节点样式、位置和固定宽度。
+   *
+   * @param {string | number} content 新文本内容。
+   * @returns {LeaferText} 已替换内容的原文本节点。
+   * @throws {EditorError} 当前不是严格单选文本时抛出。
+   */
+  replaceSelected(content) {
+    this._assertReady()
+    const selected = this._getSelectedElements()
+    const text = selected.length === 1 && isTextElement(selected[0]) ? selected[0] : null
+
+    if (!text) {
+      throw new EditorError('Select one text element before replacing it.', 'TEXT_SELECTION_REQUIRED')
+    }
+
+    const width = Number(text.width ?? text.__?.width)
+    const updateOptions = {
+      text: content ?? '',
+      ...(Number.isFinite(width) && width > 0 ? { width } : {})
+    }
+    const updatedText = this.update(text, updateOptions)
+
+    this._context.eventBus.emit('text:replaced', {
+      text: updatedText,
+      content: String(content ?? '')
+    })
+    return updatedText
+  }
+
+  /**
    * 打开文本编辑器。
    *
    * @param {LeaferText} [target] 指定文本节点，默认使用当前选中文本。

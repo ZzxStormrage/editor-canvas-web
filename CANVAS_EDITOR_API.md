@@ -12,6 +12,7 @@
 | 第一次接入 | “快速开始” → “创建编辑器” → “生命周期” |
 | 开发 Vue 面板 | “Vue 应用层” → 对应功能模块 → “事件” |
 | 添加图片或文字 | “图片” → “文本” → “选择” |
+| 替换图片或文字 | “图片” → “文本” → “H5 文档运行时” |
 | 开发图层面板 | “图层” → “选择” → “元素业务属性” |
 | 查询元素或截图 | “元素业务属性” → “生产遮罩与打印区域” |
 | 排查问题 | “错误处理” → 对应模块 |
@@ -369,6 +370,46 @@ await editor.image.add('/demo.png', {
 `visible: false` 和 `select: false` 适合需要先完成尺寸、层级和视口计算，再一次性显示的
 组合流程。
 
+### `editor.replaceSelectedImage(source, options)`
+
+替换当前严格单选图片的资源，返回 `Promise<LeaferImage>`。也可以直接调用插件方法
+`editor.image.replaceSelected(source, options)`，两种写法行为一致。
+
+```js
+editor.select(image)
+
+const replacedImage = await editor.replaceSelectedImage(file, {
+  fit: 'contain'
+})
+
+console.log(replacedImage === image) // true，仍是原节点
+```
+
+方法参数：
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `source` | `string \| File \| Blob` | 是 | 无 | 图片 URL、SVG、`File`、`Blob` | 新图片来源；写入节点前会先完成资源加载。 |
+| `options` | `Object` | 否 | `{}` | 普通对象 | 替换配置。 |
+| `options.fit` | `string` | 否 | `'contain'` | `'contain'`、`'cover'`、`'stretch'` | 新图片在当前图片外框中的适配方式。 |
+
+`fit` 行为：
+
+| 值 | 是否保持节点外框 | 是否保持图片比例 | 对齐方式 | 使用场景 |
+| --- | --- | --- | --- | --- |
+| `'contain'` | 是 | 是 | 水平、垂直居中 | 默认值；完整显示新图片，比例不一致时允许留白。 |
+| `'cover'` | 是 | 是 | 水平、垂直居中 | 填满原外框，比例不一致时裁切边缘。 |
+| `'stretch'` | 是 | 否 | 填满外框 | 严格铺满原外框，可能拉伸图片。 |
+
+替换只修改图片资源和填充模式，不重建节点，因此以下内容保持不变：
+
+- `elementId`、自定义属性和图片角色。
+- `x`、`y`、`width`、`height`、旋转、翻转、透明度和缩放。
+- 图层顺序、点击穿透状态和选中状态。
+
+新资源会先加载，再一次性替换，避免先以原始尺寸绘制后再次缩放造成闪烁。图片锁定时
+不会替换，需要先解锁。`File` 和 `Blob` 产生的临时 URL 由图片插件统一释放。
+
 ### `editor.image.getSize(source)`
 
 读取图片原始像素尺寸，不创建节点。
@@ -411,6 +452,7 @@ editor.resetSelectedImageSize()
 | `lockRatio` | `boolean` | 调整单边尺寸或缩放时是否同步另一边。 |
 | `flippedX` / `flippedY` | `boolean` | 水平、垂直翻转状态。 |
 | `locked` | `boolean` | 图片是否锁定，只读；锁定后属性写入会被忽略。 |
+| `fit` | `'contain' \| 'cover' \| 'stretch'` | 图片资源在节点外框中的适配方式，只读。 |
 
 画布拖动、缩放、旋转以及面板写入都会触发 `image:selection-changed`，可用同一个
 监听器刷新属性面板。
@@ -563,6 +605,25 @@ editor.text.update({
   fill: '#7c3aed'
 })
 ```
+
+### `editor.replaceSelectedText(content)`
+
+替换当前严格单选文本的内容。也可以调用 `editor.text.replaceSelected(content)`。
+
+```js
+editor.select(title)
+
+const replacedText = editor.replaceSelectedText('新的商品标题')
+console.log(replacedText === title) // true，仍是原节点
+```
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `content` | `string \| number` | 是 | 无 | 字符串或数字 | 新文本内容，数字会转换为字符串。 |
+
+该方法保留原文本节点、`elementId`、业务属性、位置、样式和固定宽度。它只替换内容，
+文本实际排版高度仍由 Leafer 根据内容、宽度、字号和行高计算。未严格单选文本时抛出
+`TEXT_SELECTION_REQUIRED`。
 
 ### 编辑和读取
 
@@ -766,6 +827,57 @@ const records = editor.elementData.export()
 默认忽略空属性元素；传入 `{ includeEmpty: true }` 可包含全部元素。该方法只导出业务属性，
 不等于完整场景序列化。
 
+## H5 文档运行时
+
+H5 页面不创建 Leafer 编辑器实例，而是渲染可序列化文档。运行时替换通过
+`src/services/h5-document.js` 的纯文档 API 完成，返回新文档，不直接修改传入对象。
+
+```js
+import {
+  replaceH5Image,
+  replaceH5Text,
+  saveH5Document
+} from '@/services/h5-document.js'
+
+const imageDocument = await replaceH5Image(documentData, imageElementId, imageFile)
+const textDocument = replaceH5Text(imageDocument, textElementId, 'H5 动态标题')
+
+saveH5Document(textDocument)
+```
+
+### `replaceH5Image(document, elementId, source, options)`
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `document` | `Object` | 是 | 无 | `version=1` 的 H5 文档 | 当前文档。 |
+| `elementId` | `string` | 是 | 无 | 已存在的图片元素 ID | 通过稳定 `elementId` 定位图片。 |
+| `source` | `string \| File \| Blob` | 是 | 无 | 图片 URL、`File`、`Blob` | 新图片；`File`、`Blob` 会转换为可持久化 Data URL。 |
+| `options` | `Object` | 否 | `{}` | 普通对象 | 替换配置。 |
+| `options.fit` | `string` | 否 | `'contain'` | `'contain'`、`'cover'`、`'stretch'` | 与编辑器图片替换规则一致。 |
+
+返回 `Promise<Object>`。新文档保留图片元素的坐标、宽高、旋转、缩放、透明度、业务
+属性和图层顺序，并更新以下字段：
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `url` | `string` | 无 | 新图片 URL 或 Data URL。 |
+| `sourceWidth` / `sourceHeight` | `number` | 图片原始尺寸 | 新图片原始像素尺寸。 |
+| `objectFit` | `'contain' \| 'cover' \| 'fill'` | `'contain'` | H5 渲染使用的 CSS 图片适配方式。 |
+| `objectPosition` | `string` | `'center center'` | 新图片在原外框中水平、垂直居中。 |
+
+### `replaceH5Text(document, elementId, content)`
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `document` | `Object` | 是 | 无 | `version=1` 的 H5 文档 | 当前文档。 |
+| `elementId` | `string` | 是 | 无 | 已存在的文本元素 ID | 通过稳定 `elementId` 定位文本。 |
+| `content` | `string \| number` | 是 | 无 | 字符串或数字 | 新文本内容。 |
+
+返回新的 `Object` 文档。除 `text` 外，其余文本元素字段保持不变。
+
+启动项目后访问 `#/h5-preview`，可在“替换功能测试”区域选择元素。点击“替换图片”会
+选择本地图片并使用默认 `contain` 规则；输入文字后点击“替换文字”可立即验证渲染结果。
+
 ## 事件
 
 ```js
@@ -782,8 +894,10 @@ unsubscribe()
 | --- | --- | --- |
 | `text:added` | `{ text }` | 文本创建完成。 |
 | `text:updated` | `{ text, options }` | 文本内容或样式更新。 |
+| `text:replaced` | `{ text, content }` | 当前文本内容替换完成。 |
 | `text:selected` | `{ text, options }` | 同步文本属性面板。 |
 | `image:added` | `{ image }` | 图片创建完成。 |
+| `image:replaced` | `{ image, fit, properties }` | 当前图片资源替换完成。 |
 | `image:updated` | `{ image, properties }` | 图片属性通过 Editor API 更新。 |
 | `image:selection-changed` | `{ image, properties }` | 同步当前单选图片属性；非图片时 `properties` 为 `null`。 |
 | `production:mask-changed` | `{ image }` | 遮罩图片完成标记。 |
@@ -938,6 +1052,10 @@ try {
 | `ZOOM_RANGE_INVALID` | 缩放范围无效。 |
 | `IMAGE_SOURCE_INVALID` | 图片来源类型不支持。 |
 | `IMAGE_ADD_FAILED` | 图片读取或节点创建失败。 |
+| `IMAGE_REPLACE_FAILED` | 替换图片资源加载或写入失败。 |
+| `IMAGE_SELECTION_REQUIRED` | 替换图片前没有严格单选图片。 |
+| `IMAGE_LOCKED` | 当前图片已锁定，不能替换。 |
+| `IMAGE_REPLACEMENT_FIT_INVALID` | 图片适配方式不是 `contain`、`cover` 或 `stretch`。 |
 | `TEXT_VALUE_INVALID` | 文本内容类型无效。 |
 | `TEXT_SELECTION_REQUIRED` | 没有可更新的选中文本。 |
 | `ELEMENT_DATA_TARGET_REQUIRED` | 当前没有唯一目标元素。 |
@@ -956,6 +1074,7 @@ try {
 | 调整画板 | `editor.setArtboardSize(width, height)` |
 | 适配画板到视口 | `editor.fitArtboardToView(options)` |
 | 添加图片 | `await editor.image.add(source, options)` |
+| 替换选中图片 | `await editor.replaceSelectedImage(source, options)` |
 | 读取图片尺寸 | `await editor.image.getSize(source)` |
 | 获取选中图片属性 | `editor.getSelectedImageProperties()` |
 | 更新选中图片属性 | `editor.updateSelectedImageProperties(properties)` |
@@ -967,6 +1086,9 @@ try {
 | 截图并上传打印区域 | `await editor.capturePrintArea(options)` |
 | 添加文字 | `await editor.text.add(content, options)` |
 | 更新文字 | `editor.text.update(target, options)` |
+| 替换选中文字 | `editor.replaceSelectedText(content)` |
+| 替换 H5 图片 | `await replaceH5Image(document, elementId, source, options)` |
+| 替换 H5 文字 | `replaceH5Text(document, elementId, content)` |
 | 选择元素 | `editor.select(target)` |
 | 取消选择 | `editor.deselect()` |
 | 获取选区工具条状态 | `editor.getSelectionToolbarState()` |

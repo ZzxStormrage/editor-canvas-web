@@ -10,9 +10,14 @@ import { EditorError } from '../../../errors/editor-error.js';
 import { getElementDataContainer } from '../../../utils/element-data.js';
 import { normalizeOptionalPositiveNumber } from '../../../utils/number.js';
 import { normalizeImageOptions } from '../../../utils/image.js';
+import {
+  normalizeImageReplacementFit,
+  toLeaferImageMode
+} from '../../../utils/image-fit.js';
 
 const ORIGINAL_WIDTH_KEY = '__canvasEditorOriginalWidth';
 const ORIGINAL_HEIGHT_KEY = '__canvasEditorOriginalHeight';
+const IMAGE_FIT_KEY = '__canvasEditorImageFit';
 
 /**
  * 图片插件 —— 全部基于 leafer-ui 原生 API。
@@ -101,6 +106,7 @@ export class ImagePlugin {
 
       image[ORIGINAL_WIDTH_KEY] = imageSize.width;
       image[ORIGINAL_HEIGHT_KEY] = imageSize.height;
+      image[IMAGE_FIT_KEY] = 'stretch';
       getElementDataContainer(image, true);
       contentLayer.add(image);
       if (imageSource.ownedObjectUrl) {
@@ -154,6 +160,70 @@ export class ImagePlugin {
         URL.revokeObjectURL(imageSource.url);
       }
     }
+  }
+
+  /**
+   * 替换当前严格单选图片的资源，并保留节点外框、位置和全部变换属性。
+   *
+   * 默认使用 contain 在原外框内等比缩放并水平、垂直居中。资源会先完成加载，
+   * 再一次性写入节点，避免先显示原始尺寸造成闪烁。
+   *
+   * @param {string | File | Blob} source 新图片 URL、File 或 Blob。
+   * @param {{ fit?: 'contain' | 'cover' | 'stretch' }} [options={}] 替换配置。
+   * @returns {Promise<LeaferImage>} 已替换资源的原图片节点。
+   * @throws {EditorError} 当未单选图片、图片已锁定或资源加载失败时抛出。
+   */
+  async replaceSelected(source, options = {}) {
+    this._assertReady();
+    const image = this._requireSelectedImage();
+    const fit = this._normalizeReplacementOptions(options).fit;
+    let imageSource = null;
+
+    if (image.locked) {
+      throw new EditorError('Unlock the image before replacing it.', 'IMAGE_LOCKED');
+    }
+
+    try {
+      imageSource = await this._normalizeSource(source);
+      const imageSize = await this._loadImageSize(imageSource.url);
+      const previousUrl = image.url;
+
+      this._applyReplacement(image, imageSource.url, imageSize, fit);
+      this._commitObjectUrlReplacement(previousUrl, imageSource);
+      this._notifyImageReplaced(image, fit);
+      return image;
+    } catch (error) {
+      this._revokeUncommittedObjectUrl(imageSource);
+      if (error instanceof EditorError) {
+        throw error;
+      }
+
+      throw new EditorError(error.message || 'Replace image failed.', 'IMAGE_REPLACE_FAILED');
+    }
+  }
+
+  /**
+   * 获取图片当前资源在节点外框中的适配方式。
+   *
+   * @param {LeaferImage} target 图片节点。
+   * @returns {'contain' | 'cover' | 'stretch' | null} 适配方式；非图片返回 null。
+   */
+  getFit(target) {
+    if (!(target instanceof LeaferImage)) {
+      return null;
+    }
+
+    if (target[IMAGE_FIT_KEY]) {
+      return target[IMAGE_FIT_KEY];
+    }
+
+    const inputFill = target.__?.__input?.fill;
+    const imagePaint = Array.isArray(inputFill) ? inputFill[0] : inputFill;
+    if (imagePaint?.mode === 'fit') {
+      return 'contain';
+    }
+
+    return imagePaint?.mode === 'cover' ? 'cover' : 'stretch';
   }
 
   /**
@@ -281,6 +351,117 @@ export class ImagePlugin {
   }
 
   /**
+   * 获取当前严格单选图片，否则抛出业务错误。
+   *
+   * @private
+   * @returns {LeaferImage} 当前图片节点。
+   */
+  _requireSelectedImage() {
+    const image = this._getSelectedImage();
+
+    if (!image) {
+      throw new EditorError('Select one image before replacing it.', 'IMAGE_SELECTION_REQUIRED');
+    }
+
+    return image;
+  }
+
+  /**
+   * 归一化替换配置。
+   *
+   * @private
+   * @param {Object} options 替换配置。
+   * @returns {{ fit: 'contain' | 'cover' | 'stretch' }} 标准配置。
+   */
+  _normalizeReplacementOptions(options) {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+      throw new EditorError(
+        'Image replacement options must be an object.',
+        'IMAGE_REPLACEMENT_OPTIONS_INVALID'
+      );
+    }
+
+    return { fit: normalizeImageReplacementFit(options.fit) };
+  }
+
+  /**
+   * 一次性替换图片资源和填充模式，不改变节点几何属性。
+   *
+   * @private
+   * @param {LeaferImage} image 图片节点。
+   * @param {string} url 已加载的新图片 URL。
+   * @param {{ width: number, height: number }} imageSize 新图片原始尺寸。
+   * @param {'contain' | 'cover' | 'stretch'} fit 适配方式。
+   * @returns {void}
+   */
+  _applyReplacement(image, url, imageSize, fit) {
+    image.set?.({
+      url,
+      fill: {
+        type: 'image',
+        mode: toLeaferImageMode(fit),
+        align: 'center',
+        url
+      }
+    });
+    image[ORIGINAL_WIDTH_KEY] = imageSize.width;
+    image[ORIGINAL_HEIGHT_KEY] = imageSize.height;
+    image[IMAGE_FIT_KEY] = fit;
+    image.forceUpdate?.();
+    image.updateLayout?.();
+    this._context.innerEditor?.update?.();
+    this._context.innerEditor?.updateEditBox?.();
+    this._context.artboard?.syncAllElements?.();
+  }
+
+  /**
+   * 接管新 Blob URL，并释放不再使用的旧 Blob URL。
+   *
+   * @private
+   * @param {string} previousUrl 替换前资源 URL。
+   * @param {{ url: string, ownedObjectUrl: boolean }} imageSource 新资源。
+   * @returns {void}
+   */
+  _commitObjectUrlReplacement(previousUrl, imageSource) {
+    if (imageSource.ownedObjectUrl) {
+      this._ownedObjectUrls.add(imageSource.url);
+    }
+
+    if (previousUrl !== imageSource.url && this._ownedObjectUrls.delete(previousUrl)) {
+      URL.revokeObjectURL(previousUrl);
+    }
+  }
+
+  /**
+   * 替换失败时释放尚未交给节点持有的 Blob URL。
+   *
+   * @private
+   * @param {{ url: string, ownedObjectUrl: boolean } | null} imageSource 新资源。
+   * @returns {void}
+   */
+  _revokeUncommittedObjectUrl(imageSource) {
+    if (imageSource?.ownedObjectUrl && !this._ownedObjectUrls.has(imageSource.url)) {
+      URL.revokeObjectURL(imageSource.url);
+    }
+  }
+
+  /**
+   * 通知应用层图片资源替换完成。
+   *
+   * @private
+   * @param {LeaferImage} image 图片节点。
+   * @param {'contain' | 'cover' | 'stretch'} fit 适配方式。
+   * @returns {void}
+   */
+  _notifyImageReplaced(image, fit) {
+    const properties = this._createPropertiesSnapshot(image);
+
+    this._context.eventBus.emit('image:replaced', { image, fit, properties });
+    this._context.eventBus.emit('image:updated', { image, properties });
+    this._emitSelectionChanged();
+  }
+
+  /**
    * 创建图片属性 DTO，隔离 UI 与 Leafer 节点实现。
    *
    * @private
@@ -318,7 +499,8 @@ export class ImagePlugin {
       lockRatio: image.lockRatio !== false,
       flippedX: scaleX < 0,
       flippedY: scaleY < 0,
-      locked: Boolean(image.locked)
+      locked: Boolean(image.locked),
+      fit: this.getFit(image)
     };
   }
 
