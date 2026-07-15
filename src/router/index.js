@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory } from 'vue-router';
+import { createRouter, createWebHashHistory } from 'vue-router'
 
 const routes = [
   { path: '/', redirect: '/editor' },
@@ -11,20 +11,25 @@ const routes = [
       {
         path: 'hundred-family-surnames',
         name: 'hundred-family-surnames',
-        component: () => import('../views/h5-page/hundredFamilySurnames.vue'),
+        component: () => import('../views/h5-page/hundredFamilySurnames.vue')
       },
       {
         path: 'chinese-zodiac',
         name: 'chinese-zodiac',
-        component: () => import('../views/h5-page/chinese-zodiac.vue'),
+        component: () => import('../views/h5-page/chinese-zodiac.vue')
       },
-    ],
+      {
+        path: 'original-image',
+        name: 'original-image',
+        component: () => import('../views/h5-page/original-image.vue')
+      }
+    ]
   },
   { path: '/docs', name: 'docs', component: () => import('../views/ApiDocsPage.vue') },
-  { path: '/:pathMatch(.*)*', redirect: '/editor' },
-];
+  { path: '/:pathMatch(.*)*', redirect: '/editor' }
+]
 
 export const router = createRouter({
   history: createWebHashHistory(),
   routes
-});
+})
