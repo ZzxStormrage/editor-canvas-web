@@ -137,7 +137,7 @@ const documentData = ref({
       tag: 'Text',
       width: 72,
       fill: '#FFFFFF',
-      text: '航航',
+      text: '航航sss',
       fontFamily: '"PingFang SC"',
       fontSize: 36,
       fontWeight: 400,
@@ -173,9 +173,7 @@ function findTextElement(type) {
 function updateTextElement(type, text) {
   const nextDocument = {
     ...documentData.value,
-    elements: documentData.value.elements.map((element) =>
-      element.type === type ? { ...element, text } : element
-    )
+    elements: documentData.value.elements.map((element) => (element.type === type ? { ...element, text } : element))
   }
 
   applyJson(nextDocument)
