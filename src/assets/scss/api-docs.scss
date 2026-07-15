@@ -516,6 +516,10 @@
 .api-docs-code {
   position: relative;
   margin: 15px 0 22px;
+  overflow: hidden;
+  border: 1px solid #303545;
+  border-radius: 8px;
+  background: #191c26;
 }
 
 .api-docs-code button {
@@ -525,29 +529,42 @@
   z-index: 1;
   min-width: 46px;
   height: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 5px;
   color: #cfd4e4;
-  background: rgba(255, 255, 255, 0.08);
+  background: #2a2f3e;
   font-size: 10px;
   font-weight: 700;
   cursor: pointer;
 }
 
+.api-docs-code button:hover,
+.api-docs-code button:focus-visible {
+  color: #ffffff;
+  background: #3a4052;
+  outline: none;
+}
+
 .api-docs-content pre {
   margin: 0;
-  padding: 17px 18px;
+  padding: 18px 20px;
   overflow-x: auto;
-  border-radius: 8px;
-  background: #202534;
+  border-radius: 0;
+  background: #191c26;
 }
 
 .api-docs-content pre code {
   padding: 0;
-  color: #e7eaf2;
+  color: #d8dee9;
   background: transparent;
   font-size: 11px;
-  line-height: 1.7;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+.api-docs-content pre code::selection,
+.api-docs-content pre code *::selection {
+  background: rgba(121, 192, 255, 0.28);
 }
 
 .api-docs-content a {

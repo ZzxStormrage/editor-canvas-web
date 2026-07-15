@@ -193,6 +193,7 @@ const editor = createEditor({
 | `areaType` | `'grid' \| 'blank'` | 网格或纯色工作区。 |
 | `zoom` | `Object` | 缩放范围、初始值和步进。 |
 | `grid` | `Object` | 网格尺寸和颜色。 |
+| `image` | `Object` | 图片默认配置；`maxWidthRatio: 0.8`、`maxHeightRatio: 0.8`、`lockRatio: true`。 |
 | `artboard` | `Object` | 白色画板尺寸、填充和溢出透明度。 |
 | `image` | `Object` | 新增图片的默认尺寸约束。 |
 | `text` | `Object` | 新增文本的默认样式。 |
@@ -292,7 +293,15 @@ editor.fitArtboardToView({
 
 ### `editor.image.add(source, options)`
 
-支持图片 URL、`File`、`Blob` 和 SVG 字符串，返回 Leafer `Image` 节点。
+添加图片并返回 `Promise<LeaferImage>`。必须使用 `await` 获取创建完成的 Leafer `Image`
+节点。
+
+方法参数：
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `source` | `string \| File \| Blob` | 是 | 无 | 图片 URL、SVG URL、完整 SVG 字符串、`File`、`Blob` | 图片来源。插件负责读取原始像素尺寸和管理临时 Blob URL。 |
+| `options` | `Object` | 否 | `{}` | 见下方字段表 | 本次图片的放置和初始状态配置。 |
 
 ```js
 const image = await editor.image.add('/demo.png', {
@@ -303,19 +312,59 @@ const image = await editor.image.add('/demo.png', {
 })
 ```
 
-常用参数：
+`options` 完整字段：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `x` | `number` | 图片 x 坐标。 |
-| `y` | `number` | 图片 y 坐标。 |
-| `width` | `number` | 图片宽度。 |
-| `height` | `number` | 图片高度。 |
-| `maxWidthRatio` | `number` | 未传宽高时的最大宽度占比。 |
-| `maxHeightRatio` | `number` | 未传宽高时的最大高度占比。 |
-| `lockRatio` | `boolean` | 是否保持宽高比。 |
-| `visible` | `boolean` | 初始是否显示，默认 `true`。 |
-| `select` | `boolean` | 创建完成后是否选中，默认 `true`。 |
+| 字段 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `x` | `number` | 否 | 画板水平居中位置 | 任意有限坐标，可为负数 | 相对内容层的 x 坐标；未传时根据最终图片宽度居中。 |
+| `y` | `number` | 否 | 画板垂直居中位置 | 任意有限坐标，可为负数 | 相对内容层的 y 坐标；未传时根据最终图片高度居中。 |
+| `width` | `number` | 否 | `原始宽度 × 默认缩放比例` | 大于 `0` | 初始显示宽度。传入后覆盖默认宽度计算。 |
+| `height` | `number` | 否 | `原始高度 × 默认缩放比例` | 大于 `0` | 初始显示高度。传入后覆盖默认高度计算。 |
+| `maxWidthRatio` | `number` | 否 | `0.8` | `0 < value <= 1` | 默认尺寸相对画板宽度的最大占比。可被全局 `image.maxWidthRatio` 修改。 |
+| `maxHeightRatio` | `number` | 否 | `0.8` | `0 < value <= 1` | 默认尺寸相对画板高度的最大占比。可被全局 `image.maxHeightRatio` 修改。 |
+| `lockRatio` | `boolean` | 否 | `true` | `true \| false` | 后续编辑宽高时是否保持图片比例，不负责补全首次创建时缺失的单边尺寸。 |
+| `visible` | `boolean` | 否 | `true` | `true \| false` | 图片创建后是否立即显示。 |
+| `select` | `boolean` | 否 | `true` | `true \| false` | 图片创建完成后是否自动进入选中状态。 |
+
+默认放置规则：
+
+1. 操作区域优先使用白色画板；没有画板时使用外层画布。
+2. 默认缩放比例为：
+
+```js
+Math.min(
+  画板宽度 * maxWidthRatio / 图片原始宽度,
+  画板高度 * maxHeightRatio / 图片原始高度,
+  1
+)
+```
+
+3. 默认宽高使用同一个缩放比例，因此保持原始宽高比。
+4. 缩放比例最大为 `1`，大图会缩小，小图不会自动放大。
+5. 未传 `x`、`y` 时，图片按照最终宽高在画板中水平和垂直居中。
+
+单次 `editor.image.add()` 的 `options` 优先级高于创建编辑器时传入的全局 `image` 配置：
+
+```js
+const editor = createEditor({
+  // 所有后续图片的默认值
+  image: {
+    maxWidthRatio: 0.8,
+    maxHeightRatio: 0.8,
+    lockRatio: true
+  }
+})
+
+// 仅覆盖当前图片
+await editor.image.add('/demo.png', {
+  maxWidthRatio: 0.6,
+  select: false
+})
+```
+
+> 注意：当前首次创建时 `width` 和 `height` 分别计算。只传 `width` 或只传 `height`，
+> 不会因为 `lockRatio: true` 自动推导另一边；需要严格等比时请同时传入计算后的宽高，
+> 或同时省略宽高使用默认等比缩放。
 
 `visible: false` 和 `select: false` 适合需要先完成尺寸、层级和视口计算，再一次性显示的
 组合流程。
