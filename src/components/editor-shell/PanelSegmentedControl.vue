@@ -14,6 +14,7 @@
       :role="multiple ? 'checkbox' : 'radio'"
       :aria-checked="isSelected(item.value)"
       :aria-label="item.ariaLabel || item.label"
+      :disabled="disabled"
       :title="item.ariaLabel || item.label"
       @click="handleSelect(item.value)"
     >
@@ -45,6 +46,10 @@ const props = defineProps({
   ariaLabel: {
     type: String,
     default: '选项'
+  },
+  disabled: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -135,6 +140,11 @@ function handleSelect(value) {
 .panel-segmented-control__item:focus-visible {
   outline: 2px solid rgba(var(--v-theme-primary), 0.34);
   outline-offset: 2px;
+}
+
+.panel-segmented-control__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .panel-segmented-control__item.is-active {

@@ -1,7 +1,7 @@
 import { alovaClient } from '../core/alova-client.js';
 
 const EDITOR_DOCUMENT_ENDPOINT =
-  import.meta.env.VITE_EDITOR_DOCUMENT_API_PATH || '/editor/documents';
+  import.meta.env?.VITE_EDITOR_DOCUMENT_API_PATH || '/editor/documents';
 
 /**
  * 编辑器文档接口模块。

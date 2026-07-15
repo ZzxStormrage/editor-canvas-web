@@ -38,22 +38,35 @@ export function configureApiClient(options = {}) {
 }
 
 /**
+ * 创建共享相同拦截器的 Alova 客户端，供不同服务域名独立实例化。
+ *
+ * @param {Object} [options={}] 客户端配置。
+ * @param {string} [options.baseURL] 服务基础地址。
+ * @returns {import('alova').Alova} Alova 客户端实例。
+ */
+export function createAlovaClient(options = {}) {
+  return createAlova({
+    baseURL: normalizeBaseURL(options.baseURL),
+    statesHook: VueHook,
+    requestAdapter: xhrRequestAdapter(),
+    timeout: DEFAULT_REQUEST_TIMEOUT,
+    localCache: { GET: 0 },
+    cacheLogger: false,
+    beforeRequest: appendAuthorizationHeader,
+    responded: {
+      onSuccess: handleSuccessResponse,
+      onError: handleRequestError
+    }
+  });
+}
+
+/**
  * 项目共享的 Alova 客户端。
  *
  * 默认返回服务端响应体；Method 的 meta.responseMode 设为 raw 时返回完整 XHR 响应。
  */
-export const alovaClient = createAlova({
-  baseURL: normalizeBaseURL(import.meta.env.VITE_BASE_URL_API),
-  statesHook: VueHook,
-  requestAdapter: xhrRequestAdapter(),
-  timeout: DEFAULT_REQUEST_TIMEOUT,
-  localCache: { GET: 0 },
-  cacheLogger: false,
-  beforeRequest: appendAuthorizationHeader,
-  responded: {
-    onSuccess: handleSuccessResponse,
-    onError: handleRequestError
-  }
+export const alovaClient = createAlovaClient({
+  baseURL: import.meta.env?.VITE_BASE_URL_API
 });
 
 /**
@@ -152,6 +165,10 @@ async function notifyUnauthorized(error) {
  * @returns {string} 错误信息。
  */
 function resolveHttpErrorMessage(response) {
+  if (response.status === 401) {
+    return '登录已过期，请重新登录。';
+  }
+
   if (typeof response.data === 'string' && response.data.trim()) {
     return response.data;
   }

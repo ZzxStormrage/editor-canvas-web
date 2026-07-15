@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 
+import { pictureApi } from '../../api/index.js'
+
 const WATERMARK_NODE_KEY = '__eleEditorWatermark'
 
 /**
@@ -8,10 +10,12 @@ const WATERMARK_NODE_KEY = '__eleEditorWatermark'
  * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor 获取编辑器实例。
  * @param {() => { x: number, y: number, width: number, height: number }} getArtboardBounds 获取画板边界。
  * @param {import('vue').Ref<string>} fontFamily 当前字体。
+ * @param {((message: string, type: 'success' | 'error') => void) | null} notify 消息通知方法。
  * @returns {Object} 素材状态和操作。
  */
-export function useAssetControls(getEditor, getArtboardBounds, fontFamily) {
+export function useAssetControls(getEditor, getArtboardBounds, fontFamily, notify = null) {
   const imageInputRef = ref(null)
+  const imageUploading = ref(false)
   const watermarkValue = ref('')
   let addingWatermark = false
 
@@ -22,7 +26,9 @@ export function useAssetControls(getEditor, getArtboardBounds, fontFamily) {
 
   /** @returns {void} */
   function openImagePicker() {
-    imageInputRef.value?.click()
+    if (!imageUploading.value) {
+      imageInputRef.value?.click()
+    }
   }
 
   /**
@@ -35,11 +41,22 @@ export function useAssetControls(getEditor, getArtboardBounds, fontFamily) {
 
     event.target.value = ''
 
-    if (!file || !editor) {
+    if (!file || !editor || imageUploading.value) {
       return
     }
 
-    await editor.image.add(file)
+    imageUploading.value = true
+
+    try {
+      const imageUrl = await pictureApi.upload(file)
+      await editor.image.add(imageUrl)
+      notify?.('图片上传成功', 'success')
+    } catch (error) {
+      console.error('Image upload failed.', error)
+      notify?.(error.message || '图片上传失败。', 'error')
+    } finally {
+      imageUploading.value = false
+    }
   }
 
   /**
@@ -122,6 +139,7 @@ export function useAssetControls(getEditor, getArtboardBounds, fontFamily) {
 
   return {
     imageInputRef,
+    imageUploading,
     watermarkValue,
     isAddingWatermark,
     openImagePicker,

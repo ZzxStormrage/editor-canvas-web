@@ -1,10 +1,36 @@
 import { ChildEvent, PropertyEvent } from 'leafer-ui'
 import { EditorEvent } from '@leafer-in/editor'
+import { EditorError } from '../../../errors/editor-error.js'
 import { getElementDataContainer } from '../../../utils/element-data.js'
 
 const LAYER_EVENT = 'layers:changed'
-const OBSERVED_PROPERTIES = new Set(['locked', 'hittable', 'hitSelf', 'hitChildren', 'name', 'customType', 'text'])
+const OBSERVED_PROPERTIES = new Set([
+  'locked',
+  'hittable',
+  'hitSelf',
+  'hitChildren',
+  'name',
+  'customType',
+  'text',
+  'url'
+])
 const IMAGE_ROLES = new Set(['background', 'mask', 'ai-variable'])
+const THUMBNAIL_STABLE_PROPERTIES = new Set([
+  'x',
+  'y',
+  'scaleX',
+  'scaleY',
+  'locked',
+  'hittable',
+  'hitSelf',
+  'hitChildren',
+  'name',
+  'customType',
+  'draggable',
+  'editable'
+])
+const DEFAULT_THUMBNAIL_SIZE = 80
+const THUMBNAIL_CHANGE_DELAY = 120
 
 /**
  * 图层插件 —— 将 Leafer 场景树转换为稳定的图层列表 API。
@@ -28,6 +54,14 @@ export class LayerPlugin {
     this._eventBindings = []
     /** @private @type {Function | null} */
     this._unsubscribeElementDataChanged = null
+    /** @private @type {WeakMap<Object, number>} */
+    this._thumbnailVersions = new WeakMap()
+    /** @private @type {Map<string, { version: number, maxSize: number, source: string }>} */
+    this._thumbnailCache = new Map()
+    /** @private @type {Map<string, Promise<string | null>>} */
+    this._thumbnailTasks = new Map()
+    /** @private @type {ReturnType<typeof setTimeout> | null} */
+    this._thumbnailChangeTimer = null
   }
 
   /** @returns {string} 插件 ID。 */
@@ -79,6 +113,51 @@ export class LayerPlugin {
     return [...(this._context?.contentLayer?.children ?? [])]
       .reverse()
       .map((node, index) => this._toLayerItem(node, index, selected.has(node)))
+  }
+
+  /**
+   * 按需获取图层真实缩略图。图片直接复用原资源，其余节点导出为受控尺寸的 Blob URL。
+   *
+   * @param {string} id 图层 ID。
+   * @param {{ maxSize?: number }} [options={}] 缩略图配置。
+   * @returns {Promise<string | null>} 可直接用于 img.src 的缩略图地址。
+   * @throws {EditorError} 当 Leafer 导出失败时抛出。
+   */
+  async getThumbnail(id, options = {}) {
+    const layerId = String(id)
+    const node = this._nodes.get(layerId)
+
+    if (!node) {
+      return null
+    }
+
+    if (this._getNodeType(node) === 'image') {
+      return this._getImageThumbnailSource(node)
+    }
+
+    const maxSize = this._normalizeThumbnailSize(options.maxSize)
+    const version = this._getThumbnailVersion(node)
+    const cached = this._thumbnailCache.get(layerId)
+
+    if (cached?.version === version && cached.maxSize === maxSize) {
+      return cached.source
+    }
+
+    const taskKey = `${layerId}:${version}:${maxSize}`
+    const activeTask = this._thumbnailTasks.get(taskKey)
+
+    if (activeTask) {
+      return await activeTask
+    }
+
+    const task = this._exportThumbnail(node, layerId, version, maxSize)
+    this._thumbnailTasks.set(taskKey, task)
+
+    try {
+      return await task
+    } finally {
+      this._thumbnailTasks.delete(taskKey)
+    }
   }
 
   /**
@@ -216,6 +295,13 @@ export class LayerPlugin {
     this._propertyEventIds.clear()
     this._unsubscribeElementDataChanged?.()
     this._unsubscribeElementDataChanged = null
+    if (this._thumbnailChangeTimer) {
+      clearTimeout(this._thumbnailChangeTimer)
+      this._thumbnailChangeTimer = null
+    }
+    this._thumbnailCache.forEach(({ source }) => URL.revokeObjectURL(source))
+    this._thumbnailCache.clear()
+    this._thumbnailTasks.clear()
     this._nodes.clear()
     this._context = null
   }
@@ -228,8 +314,17 @@ export class LayerPlugin {
 
   /** @private */
   _handlePropertyChanged(event) {
+    const layerNode = this._resolveLayerNode(event.target)
+    const thumbnailChanged = layerNode && this._shouldInvalidateThumbnail(event, layerNode)
+
+    if (thumbnailChanged) {
+      this._invalidateThumbnail(layerNode)
+    }
+
     if (OBSERVED_PROPERTIES.has(event.attrName)) {
       this._emitChanged()
+    } else if (thumbnailChanged) {
+      this._scheduleThumbnailChanged()
     }
   }
 
@@ -240,6 +335,7 @@ export class LayerPlugin {
 
     this._propertyEventIds.forEach((eventId, node) => {
       if (!currentNodes.has(node)) {
+        this._clearThumbnailCache(this._getNodeId(node))
         node.off_(eventId)
         this._propertyEventIds.delete(node)
       }
@@ -288,6 +384,9 @@ export class LayerPlugin {
       elementId: elementData.elementId,
       name: this._getNodeName(node),
       type,
+      previewText: type === 'text' ? this._getTextPreview(node) : '',
+      thumbnailSource: type === 'image' ? this._getImageThumbnailSource(node) : null,
+      thumbnailVersion: this._getThumbnailVersion(node),
       imageRole: type === 'image' ? this._getImageRole(elementData.attributes) : null,
       customAttributeCount,
       locked: Boolean(node.locked),
@@ -306,6 +405,10 @@ export class LayerPlugin {
     }
 
     if (this._getImageRole(attributes)) {
+      count += 1
+    }
+
+    if (typeof attributes.text?.description === 'string' && attributes.text.description.trim()) {
       count += 1
     }
 
@@ -343,7 +446,7 @@ export class LayerPlugin {
     }
 
     if (this._getNodeType(node) === 'text') {
-      const text = String(node.__canvasEditorRawText ?? node.text ?? '').replaceAll('\n', ' ').trim()
+      const text = this._getTextPreview(node)
 
       return text ? text.slice(0, 18) : '文字'
     }
@@ -351,10 +454,163 @@ export class LayerPlugin {
     return this._getNodeType(node) === 'image' ? '图片' : '图层'
   }
 
+  /**
+   * @private
+   * @param {Object} node Leafer 文本节点。
+   * @returns {string} 归一化后的短文本预览。
+   */
+  _getTextPreview(node) {
+    return String(node.__canvasEditorRawText ?? node.text ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 40)
+  }
+
+  /**
+   * @private
+   * @param {Object} node Leafer 图片节点。
+   * @returns {string | null} 可直接复用的图片地址。
+   */
+  _getImageThumbnailSource(node) {
+    return typeof node.url === 'string' && node.url ? node.url : null
+  }
+
+  /**
+   * @private
+   * @param {Object} node Leafer 图层节点。
+   * @param {string} layerId 图层 ID。
+   * @param {number} version 开始导出时的视觉版本。
+   * @param {number} maxSize 缩略图最大边长。
+   * @returns {Promise<string | null>} 生成的 Blob URL；节点已变化时返回 null。
+   * @throws {EditorError} 当 Leafer 导出失败时抛出。
+   */
+  async _exportThumbnail(node, layerId, version, maxSize) {
+    try {
+      await import('@leafer-in/export')
+      const result = await node.export('png', {
+        blob: true,
+        size: this._getThumbnailExportSize(node, maxSize),
+        pixelRatio: 1,
+        trim: true,
+        padding: 2
+      })
+
+      if (result.error || !(result.data instanceof Blob)) {
+        throw result.error ?? new Error('图层缩略图没有生成有效图片。')
+      }
+
+      if (this._nodes.get(layerId) !== node || this._getThumbnailVersion(node) !== version) {
+        return null
+      }
+
+      const source = URL.createObjectURL(result.data)
+      this._clearThumbnailCache(layerId)
+      this._thumbnailCache.set(layerId, { version, maxSize, source })
+      return source
+    } catch (error) {
+      if (error instanceof EditorError) {
+        throw error
+      }
+      throw new EditorError(error.message || '生成图层缩略图失败。', 'LAYER_THUMBNAIL_EXPORT_FAILED')
+    }
+  }
+
+  /**
+   * @private
+   * @param {Object} node Leafer 图层节点。
+   * @param {number} maxSize 缩略图最大边长。
+   * @returns {{ width?: number, height?: number }} 保持宽高比的 Leafer 导出尺寸。
+   */
+  _getThumbnailExportSize(node, maxSize) {
+    const bounds = node.getBounds?.('render', 'local') ?? { width: 1, height: 1 }
+    return bounds.width >= bounds.height ? { width: maxSize } : { height: maxSize }
+  }
+
+  /**
+   * @private
+   * @param {number | undefined} value 缩略图最大边长。
+   * @returns {number} 限制后的最大边长。
+   */
+  _normalizeThumbnailSize(value) {
+    const size = Number(value)
+    return Number.isFinite(size) ? Math.min(160, Math.max(40, Math.round(size))) : DEFAULT_THUMBNAIL_SIZE
+  }
+
+  /**
+   * @private
+   * @param {Object} node Leafer 图层节点。
+   * @returns {number} 当前视觉版本。
+   */
+  _getThumbnailVersion(node) {
+    return this._thumbnailVersions.get(node) ?? 0
+  }
+
+  /**
+   * @private
+   * @param {Object} node Leafer 图层节点。
+   * @returns {void}
+   */
+  _invalidateThumbnail(node) {
+    this._thumbnailVersions.set(node, this._getThumbnailVersion(node) + 1)
+  }
+
+  /**
+   * @private
+   * @param {PropertyEvent} event Leafer 属性变化事件。
+   * @param {Object} layerNode 顶层图层节点。
+   * @returns {boolean} 是否需要失效真实缩略图。
+   */
+  _shouldInvalidateThumbnail(event, layerNode) {
+    return event.target !== layerNode || !THUMBNAIL_STABLE_PROPERTIES.has(event.attrName)
+  }
+
+  /**
+   * @private
+   * @param {Object} target 发生属性变化的 Leafer 节点。
+   * @returns {Object | null} 所属顶层图层节点。
+   */
+  _resolveLayerNode(target) {
+    const contentLayer = this._context?.contentLayer
+    let node = target
+
+    while (node?.parent && node.parent !== contentLayer) {
+      node = node.parent
+    }
+
+    return node?.parent === contentLayer ? node : null
+  }
+
+  /** @private @returns {void} */
+  _scheduleThumbnailChanged() {
+    if (this._thumbnailChangeTimer) {
+      clearTimeout(this._thumbnailChangeTimer)
+    }
+
+    this._thumbnailChangeTimer = setTimeout(() => {
+      this._thumbnailChangeTimer = null
+      this._emitChanged()
+    }, THUMBNAIL_CHANGE_DELAY)
+  }
+
+  /**
+   * @private
+   * @param {string} layerId 图层 ID。
+   * @returns {void}
+   */
+  _clearThumbnailCache(layerId) {
+    const cached = this._thumbnailCache.get(layerId)
+
+    if (cached) {
+      URL.revokeObjectURL(cached.source)
+      this._thumbnailCache.delete(layerId)
+    }
+  }
+
   /** @private */
   _getNodeType(node) {
     const tag = String(node.tag ?? node.constructor?.name ?? '').toLowerCase()
 
+    if (node.isBranch || tag.includes('group')) return 'group'
     if (tag.includes('text')) return 'text'
     if (tag.includes('image')) return 'image'
     if (tag.includes('rect')) return 'rect'

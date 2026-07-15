@@ -61,6 +61,17 @@ export function useLayerControls(getEditor) {
     getEditor()?.layer?.hover(id)
   }
 
+  /**
+   * 按需获取真实图层缩略图。
+   *
+   * @param {string} id 图层 ID。
+   * @param {{ maxSize?: number }} [options] 缩略图配置。
+   * @returns {Promise<string | null>} 缩略图地址。
+   */
+  async function getLayerThumbnail(id, options) {
+    return await (getEditor()?.layer?.getThumbnail(id, options) ?? null)
+  }
+
   return {
     layers,
     draggingLayer,
@@ -72,6 +83,7 @@ export function useLayerControls(getEditor) {
     deleteLayer,
     toggleLayerLock,
     toggleLayerPointerThrough,
-    hoverLayer
+    hoverLayer,
+    getLayerThumbnail
   }
 }

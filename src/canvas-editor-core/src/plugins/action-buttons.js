@@ -1,26 +1,15 @@
 import { Group, Image as LeaferImage, Rect, Text, PointerEvent, DragEvent, MoveEvent } from 'leafer-ui'
 import { EditorEvent, EditorMoveEvent, EditorRotateEvent, EditorScaleEvent } from '@leafer-in/editor'
 
-import copyIconSvg from '../assets/icons/copy.svg?raw'
-import deleteIconSvg from '../assets/icons/delete-themes.svg?raw'
-import layerIconSvg from '../assets/icons/layers.svg?raw'
-import lockIconSvg from '../assets/icons/lock.svg?raw'
 import rotateIconSvg from '../assets/icons/rotate.svg?raw'
-import unlockIconSvg from '../assets/icons/unlock.svg?raw'
 import { cloneElementData } from '../utils/element-data.js'
 import { isTextElement } from '../utils/text.js'
 
 /**
- * 编辑器操作按钮管理器。
+ * 编辑器选区交互管理器。
  *
- * 监听 @leafer-in/editor 的选中事件，在 EditBox 上动态添加
- * 锁定/解锁、复制、删除操作按钮。
- *
- * 按钮外观对齐 leafer-ui 的设计语言，放置在 editBox.buttons 容器中。
- *
- * 锁定元素时：
- *   - 显示解锁按钮 —— 始终可点击
- *   - 复制、删除按钮灰色且不可点击
+ * 负责选区行为、编辑框控制点和可序列化选区状态。操作工具条由 Vue 组件
+ * 渲染，只通过本类的公开方法执行锁定、复制、删除和层级操作。
  *
  * @author zzx
  * @since 2026-07-01
@@ -31,25 +20,12 @@ const DEFAULT_ACTION_THEME = {
   surfaceColor: '#ffffff',
   borderColor: '#e5e7eb',
   textColor: '#111827',
-  disabledTextColor: '#a8b0bd',
   disabledFillColor: '#f7f8fa',
-  hoverFillColor: '#f3f4f6',
-  transparentFillColor: 'rgba(255, 255, 255, 0)',
   shadow: { x: 0, y: 4, blur: 12, spread: 0, color: 'rgba(15, 23, 42, 0.14)' },
-  menuShadow: { x: 0, y: 6, blur: 16, spread: 0, color: 'rgba(15, 23, 42, 0.14)' },
   middleHandleShadow: { x: 0, y: 2, blur: 8, spread: 0, color: 'rgba(15, 23, 42, 0.2)' },
   middleHandleHoverShadow: { x: 0, y: 3, blur: 10, spread: 0, color: 'rgba(37, 99, 235, 0.24)' },
   rotationTipFill: 'rgba(0, 0, 0, 0.7)',
   rotationTipTextColor: '#ffffff'
-}
-
-const BUTTON_ICON_SVGS = {
-  lock: lockIconSvg,
-  unlock: unlockIconSvg,
-  layer: layerIconSvg,
-  copy: copyIconSvg,
-  delete: deleteIconSvg,
-  rotate: rotateIconSvg
 }
 
 const LAYER_ACTION_DEFS = [
@@ -75,10 +51,6 @@ const LAYER_ACTION_DEFS = [
   }
 ]
 
-const BAR_HEIGHT = 36
-const BAR_PADDING_X = 8
-const BTN_SIZE = 30
-const ICON_SIZE = 20
 const BTN_RADIUS = 8
 const ROTATE_BTN_SIZE = 30
 const ROTATE_ICON_INSET = 5
@@ -86,8 +58,6 @@ const ROTATE_ICON_SIZE = ROTATE_BTN_SIZE - ROTATE_ICON_INSET * 2
 const ROTATE_ANGLE_GAP = 12
 const ROTATE_ANGLE_WIDTH = 50
 const ROTATE_ANGLE_HEIGHT = 24
-const MENU_ITEM_HEIGHT = 34
-const MENU_GAP = 8
 const RESIZE_HANDLE_CURSORS = ['nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize']
 const RESIZE_LINE_CURSORS = ['ns-resize', 'ew-resize', 'ns-resize', 'ew-resize']
 const TEXT_WIDTH_RESIZE_POINT_INDEXES = new Set([3, 7])
@@ -95,38 +65,8 @@ const TEXT_WIDTH_RESIZE_LINE_INDEXES = new Set([1, 3])
 const TEXT_HEIGHT_RESIZE_POINT_INDEXES = new Set([1, 5])
 const TEXT_HEIGHT_RESIZE_LINE_INDEXES = new Set([0, 2])
 const TEXT_WIDTH_EDIT_CONFIG = { editSize: 'size', lockRatio: false }
-
-/**
- * 兼容 Leafer 按钮子节点命中：指针可能落到 Group、背景或图标任意一层。
- *
- * @param {import('leafer-ui').UI[]} targets 需要绑定同一个动作的节点。
- * @param {'tap' | 'down'} trigger 触发方式。
- * @param {(event: Object) => void} handler 点击处理函数。
- * @returns {void}
- */
-function bindButtonAction(targets, trigger, handler) {
-  let isHandled = false
-  const handleAction = (event) => {
-    event.stop()
-
-    if (isHandled) {
-      return
-    }
-
-    isHandled = true
-    handler(event)
-    requestAnimationFrame(() => {
-      isHandled = false
-    })
-  }
-
-  targets.forEach((target) => {
-    target.on(trigger === 'down' ? PointerEvent.DOWN : PointerEvent.TAP, handleAction)
-    if (trigger === 'down') {
-      target.on(PointerEvent.TAP, (event) => event.stop())
-    }
-  })
-}
+const EDITOR_GROUP_KEY = '__canvasEditorGroup'
+const EDITOR_GROUP_NAME = '组合'
 
 function createIconUrl(svg, color) {
   const crispSvg = svg
@@ -140,16 +80,6 @@ function normalizeActionTheme(theme = {}) {
     ...DEFAULT_ACTION_THEME,
     ...(theme ?? {})
   }
-}
-
-function createButtonStyles(theme) {
-  return Object.entries(BUTTON_ICON_SVGS).reduce((styles, [key, svg]) => {
-    styles[key] = {
-      icon: createIconUrl(svg, theme.textColor),
-      disabledIcon: createIconUrl(svg, theme.disabledTextColor)
-    }
-    return styles
-  }, {})
 }
 
 function createLayerActions() {
@@ -170,17 +100,11 @@ export class EditorActionButtons {
   /** @type {Object} */
   #theme
 
-  /** @type {Record<string, { icon: string, disabledIcon: string }>} */
-  #btnStyle
+  /** @type {string} */
+  #rotateIconUrl
 
   /** @type {Array<{ key: string, label: string, shortcut: string }>} */
   #layerActions
-
-  /** @type {import('leafer-ui').Group | null} */
-  #btnGroup
-
-  /** @type {boolean} */
-  #isLayerMenuOpen
 
   /** @type {import('leafer-ui').Rect | null} */
   #cursorRect
@@ -227,6 +151,9 @@ export class EditorActionButtons {
   /** @type {(() => void) | null} */
   #onDomHoverFallbackLeave
 
+  /** @type {number | null} */
+  #selectionStateFrame
+
   /** @type {boolean} */
   #disposed = false
 
@@ -245,10 +172,8 @@ export class EditorActionButtons {
     this.#innerEditor = innerEditor
     this.#eventBus = eventBus
     this.#theme = normalizeActionTheme(theme)
-    this.#btnStyle = createButtonStyles(this.#theme)
+    this.#rotateIconUrl = createIconUrl(rotateIconSvg, this.#theme.textColor)
     this.#layerActions = createLayerActions()
-    this.#btnGroup = null
-    this.#isLayerMenuOpen = false
     this.#cursorRect = null
     this.#rotatePoint = null
     this.#rotateIcon = null
@@ -264,6 +189,7 @@ export class EditorActionButtons {
     this.#hoverFallbackView = null
     this.#onDomHoverFallbackMove = null
     this.#onDomHoverFallbackLeave = null
+    this.#selectionStateFrame = null
 
     this.#innerEditor.on_(EditorEvent.SELECT, this.#onSelect, this)
     this.#innerEditor.on_(EditorEvent.BEFORE_SELECT, this.#onBeforeSelect, this)
@@ -553,10 +479,6 @@ export class EditorActionButtons {
       return null
     }
 
-    if (this.#isPointInVisibleNode(this.#btnGroup, point)) {
-      return 'pointer'
-    }
-
     if (this.#isPointInVisibleNode(this.#rotatePoint, point)) {
       return 'pointer'
     }
@@ -655,7 +577,7 @@ export class EditorActionButtons {
       console.warn('[canvas-editor-core] Failed to compare editor selection before select.', err)
     }
 
-    this.#removeButtons()
+    this.#resetSelectionControls()
   }
 
   /**
@@ -667,27 +589,29 @@ export class EditorActionButtons {
     this.closeLayerMenu()
 
     if (list.length === 0) {
-      this.#removeButtons()
+      this.#resetSelectionControls()
+      this.#emitSelectionToolbarState()
       return
     }
 
-    this.#buildButtons(list)
+    this.#syncSelectionControls(list)
   }
 
-  // ────────── 按钮构建 ──────────
+  // ────────── 选区控制 ──────────
 
   /**
    * @param {import('leafer-ui').UI[]} selected
+   * @returns {void}
    */
-  #buildButtons(selected) {
+  #syncSelectionControls(selected) {
     const editBox = this.#innerEditor.editBox
-    if (!editBox?.buttons) {
+    if (!editBox) {
       // 锁定切换时 editBox 可能正在重建中，延迟重试
       if (this.#lockRetryCount > 0) {
         this.#lockRetryCount--
         requestAnimationFrame(() => {
           if (!this.#disposed) {
-            this.#buildButtons(selected)
+            this.#syncSelectionControls(selected)
           }
         })
       }
@@ -707,55 +631,10 @@ export class EditorActionButtons {
       console.warn('[canvas-editor-core] Failed to attach selection attributes.', err)
     }
 
-    // 移除旧的
-    this.#removeButtons()
+    this.#resetSelectionControls()
 
     // 判断锁定态：使用共享属性决定（true = 全部锁定，false = 全部未锁定，undefined = 混合）
     const allLocked = shared.locked === true
-    const selectedSnapshot = [...selected]
-
-    // 按钮定义：[key, callback, disabled?]
-    const btnDefs = [
-      [allLocked ? 'unlock' : 'lock', () => this.#toggleLock(selected, allLocked), false],
-      ['copy', () => this.#copySelected(selected), allLocked],
-      ['delete', () => this.#deleteSelected(selectedSnapshot), allLocked, 'down'],
-      ['layer', null, allLocked]
-    ]
-
-    const totalWidth = btnDefs.length * BTN_SIZE
-    const barWidth = totalWidth + BAR_PADDING_X * 2
-    const btnGroup = new Group({ x: 0, y: 0 })
-    const barBg = new Rect({
-      x: -barWidth / 2,
-      y: 0,
-      width: barWidth,
-      height: BAR_HEIGHT,
-      cornerRadius: BAR_HEIGHT / 2,
-      fill: this.#theme.surfaceColor,
-      stroke: this.#theme.borderColor,
-      strokeWidth: 1,
-      shadow: this.#theme.shadow
-    })
-    let offsetX = -totalWidth / 2 // 居中（父容器 around: 'center'）
-
-    btnGroup.add(barBg)
-
-    for (const [key, onClick, disabled, trigger] of btnDefs) {
-      const style = this.#btnStyle[key] || this.#btnStyle.lock
-      let btn = null
-      const handleClick = key === 'layer'
-        ? () => this.#toggleLayerMenu(editBox, selected, btn)
-        : onClick
-
-      btn = disabled
-        ? this.#createDisabledButton(key, offsetX)
-        : this.#createButton(style, offsetX, handleClick, trigger)
-      btnGroup.add(btn)
-      offsetX += BTN_SIZE
-    }
-
-    this.#btnGroup = btnGroup
-    editBox.buttons.add(btnGroup)
     this.#syncMoveCursor(editBox)
     this.#syncResizeHandleCursors(editBox, selected)
     this.#syncMiddleHandleHover(editBox, selected)
@@ -764,6 +643,8 @@ export class EditorActionButtons {
     if (allLocked) {
       this.#showLockedEditBox(editBox)
     }
+
+    this.#emitSelectionToolbarState()
   }
 
   /**
@@ -793,60 +674,135 @@ export class EditorActionButtons {
   }
 
   /**
-   * @param {import('@leafer-in/interface').IEditBox} editBox
-   * @param {import('leafer-ui').UI[]} selected
-   * @param {import('leafer-ui').Group} layerButton
+   * 获取 Vue 选区工具条需要的可序列化状态。
+   *
+   * @returns {{
+   *   visible: boolean,
+   *   bounds: { x: number, y: number, width: number, height: number } | null,
+   *   locked: boolean,
+   *   selectionCount: number,
+   *   canGroup: boolean,
+   *   canUngroup: boolean,
+   *   disabled: {
+   *     duplicate: boolean,
+   *     delete: boolean,
+   *     layer: boolean,
+   *     group: boolean,
+   *     ungroup: boolean
+   *   }
+   * }} 选区工具条状态。
    */
-  #toggleLayerMenu(editBox, selected, layerButton) {
-    if (this.#isLayerMenuOpen) {
-      this.closeLayerMenu()
-      return
-    }
+  getSelectionToolbarState() {
+    const selected = this.#innerEditor?.list ?? []
+    const bounds = this.#getSelectionBounds(selected)
+    const locked = this.#computeSharedAttributes(selected).locked === true
+    const visible = selected.length > 0 && Boolean(bounds)
+    const canGroup = this.#canGroupSelection(selected)
+    const canUngroup = selected.length === 1 && this.#isEditorGroup(selected[0]) && !locked
 
-    this.#isLayerMenuOpen = true
-    this.#emitLayerMenuOpen(editBox, selected, layerButton)
+    return {
+      visible,
+      bounds: visible ? bounds : null,
+      locked,
+      selectionCount: selected.length,
+      canGroup,
+      canUngroup,
+      disabled: {
+        duplicate: !visible || locked,
+        delete: !visible || locked,
+        layer: !visible || locked,
+        group: !canGroup,
+        ungroup: !canUngroup
+      }
+    }
   }
 
   /**
-   * 通知 Vue Overlay 打开层级菜单。
+   * 判断当前多选是否可组合。
    *
-   * 菜单 UI 由 Vue 组件渲染，Leafer 只负责提供按钮入口、选区状态和坐标。
+   * Leafer 官方组合要求节点属于同一父级；锁定节点不参与结构变更。
    *
-   * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
    * @param {import('leafer-ui').UI[]} selected 当前选中元素。
-   * @param {import('leafer-ui').Group} layerButton 层级按钮节点。
+   * @returns {boolean} 是否允许组合。
+   */
+  #canGroupSelection(selected) {
+    if (selected.length < 2 || selected.some((item) => item?.locked)) {
+      return false
+    }
+
+    const parent = selected[0]?.parent
+    return Boolean(parent && selected.every((item) => item?.parent === parent))
+  }
+
+  /**
+   * 判断节点是否为编辑器创建的组合。
+   *
+   * @param {import('leafer-ui').UI | null} element Leafer 元素。
+   * @returns {boolean} 是否为可解组节点。
+   */
+  #isEditorGroup(element) {
+    return Boolean(
+      element?.isBranch &&
+      (element[EDITOR_GROUP_KEY] === true || element.customType === EDITOR_GROUP_NAME)
+    )
+  }
+
+  /**
+   * 合并当前选区全部元素的世界坐标边界。
+   *
+   * @param {import('leafer-ui').UI[]} selected 当前选中元素。
+   * @returns {{ x: number, y: number, width: number, height: number } | null} 合并边界。
+   */
+  #getSelectionBounds(selected) {
+    const boundsList = selected
+      .map((item) => item?.worldBoxBounds)
+      .filter((bounds) => (
+        Number.isFinite(bounds?.x) &&
+        Number.isFinite(bounds?.y) &&
+        Number.isFinite(bounds?.width) &&
+        Number.isFinite(bounds?.height)
+      ))
+
+    if (boundsList.length === 0) {
+      return null
+    }
+
+    const minX = Math.min(...boundsList.map((bounds) => bounds.x))
+    const minY = Math.min(...boundsList.map((bounds) => bounds.y))
+    const maxX = Math.max(...boundsList.map((bounds) => bounds.x + bounds.width))
+    const maxY = Math.max(...boundsList.map((bounds) => bounds.y + bounds.height))
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    }
+  }
+
+  /**
+   * 合并同一帧内的连续变换事件，再通知 Vue 更新工具条位置。
+   *
    * @returns {void}
    */
-  #emitLayerMenuOpen(editBox, selected, layerButton) {
-    const position = this.#getLayerMenuPosition(editBox, layerButton)
+  #scheduleSelectionToolbarState() {
+    if (this.#selectionStateFrame !== null) {
+      return
+    }
 
-    this.#eventBus?.emit('selection:layer-menu-open', {
-      ...position,
-      actions: this.getLayerMenuActions(selected)
+    this.#selectionStateFrame = requestAnimationFrame(() => {
+      this.#selectionStateFrame = null
+      this.#emitSelectionToolbarState()
     })
   }
 
   /**
-   * 使用按钮真实世界边界计算 Vue Overlay 菜单位置。
+   * 发布当前选区工具条状态。
    *
-   * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
-   * @param {import('leafer-ui').Group} layerButton 层级按钮节点。
-   * @returns {{ x: number, y: number }} Vue 菜单坐标。
+   * @returns {void}
    */
-  #getLayerMenuPosition(editBox, layerButton) {
-    const bounds = layerButton?.worldBoxBounds
-
-    if (bounds) {
-      return {
-        x: bounds.x + bounds.width + MENU_GAP,
-        y: bounds.y + bounds.height / 2 - MENU_ITEM_HEIGHT / 2
-      }
-    }
-
-    return {
-      x: editBox.buttons.x + MENU_GAP,
-      y: editBox.buttons.y - MENU_ITEM_HEIGHT / 2
-    }
+  #emitSelectionToolbarState() {
+    this.#eventBus?.emit('selection:toolbar-changed', this.getSelectionToolbarState())
   }
 
   /**
@@ -855,7 +811,6 @@ export class EditorActionButtons {
    * @returns {void}
    */
   closeLayerMenu() {
-    this.#isLayerMenuOpen = false
     this.#eventBus?.emit('selection:layer-menu-close')
   }
 
@@ -876,8 +831,9 @@ export class EditorActionButtons {
     editBox.resizeLines?.forEach((line) => {
       line.visible = false
     })
-    editBox.buttons.visible = true
-    editBox.layoutButtons?.()
+    if (editBox.buttons) {
+      editBox.buttons.visible = false
+    }
     this.#hideRotationTip()
   }
 
@@ -889,16 +845,16 @@ export class EditorActionButtons {
   #syncTextHeightHandlesAfterTransform() {
     const selected = this.#innerEditor?.list ?? []
 
-    if (!selected.some(isTextElement)) {
-      return
+    if (selected.some(isTextElement)) {
+      this.#hideTextHeightHandles(this.#innerEditor?.editBox, selected)
+      requestAnimationFrame(() => {
+        if (!this.#disposed) {
+          this.#hideTextHeightHandles(this.#innerEditor?.editBox, selected)
+        }
+      })
     }
 
-    this.#hideTextHeightHandles(this.#innerEditor?.editBox, selected)
-    requestAnimationFrame(() => {
-      if (!this.#disposed) {
-        this.#hideTextHeightHandles(this.#innerEditor?.editBox, selected)
-      }
-    })
+    this.#scheduleSelectionToolbarState()
   }
 
   /**
@@ -954,97 +910,13 @@ export class EditorActionButtons {
     }
   }
 
-  /**
-   * @param {{ icon: string, disabledIcon: string }} style
-   * @param {number} offsetX
-   * @param {() => void} onClick
-   * @param {'tap' | 'down'} [trigger]
-   * @returns {Group}
-   */
-  #createButton(style, offsetX, onClick, trigger = 'tap') {
-    const btn = new Group({ x: offsetX, y: 3, cursor: 'pointer' })
-
-    const bg = new Rect({
-      width: BTN_SIZE,
-      height: BTN_SIZE,
-      cornerRadius: BTN_RADIUS,
-      fill: this.#theme.transparentFillColor,
-      cursor: 'pointer'
-    })
-
-    const icon = this.#createIcon(style.icon)
-    icon.cursor = 'pointer'
-
-    btn.addMany(bg, icon)
-
-    // 交互效果
-    btn.on(PointerEvent.ENTER, (e) => {
-      this.#setCanvasCursor('pointer', e.current)
-      bg.fill = this.#theme.hoverFillColor
-    })
-    btn.on(PointerEvent.LEAVE, (e) => {
-      bg.fill = this.#theme.transparentFillColor
-      this.#updateCanvasCursor(e.current)
-    })
-    bindButtonAction([btn, bg, icon], trigger, () => {
-      onClick?.()
-    })
-
-    return btn
-  }
-
-  /**
-   * 创建禁用态的按钮（锁定元素时复制/删除按钮不可点击）。
-   * @param {string} key
-   * @param {number} offsetX
-   * @returns {Group}
-   */
-  #createDisabledButton(key, offsetX) {
-    const style = this.#btnStyle[key] || this.#btnStyle.copy
-    const btn = new Group({ x: offsetX, y: 3 })
-
-    const bg = new Rect({
-      width: BTN_SIZE,
-      height: BTN_SIZE,
-      cornerRadius: BTN_RADIUS,
-      fill: this.#theme.disabledFillColor
-    })
-
-    const icon = this.#createIcon(style.disabledIcon)
-
-    btn.addMany(bg, icon)
-    // 不绑定任何点击事件 — 完全禁用
-
-    return btn
-  }
-
-  /**
-   * @param {string} url
-   * @returns {LeaferImage}
-   */
-  #createIcon(url) {
-    const offset = (BTN_SIZE - ICON_SIZE) / 2
-    return new LeaferImage({
-      url,
-      x: offset,
-      y: offset,
-      width: ICON_SIZE,
-      height: ICON_SIZE
-    })
-  }
-
-  #removeButtons() {
+  #resetSelectionControls() {
     this.#unbindMiddleHandleHover()
     this.#unbindImmediateCursorHover()
     this.#unbindTextWidthResizeMode()
     this.#unbindRotateButton()
     this.#removeRotationTip()
     this.closeLayerMenu()
-    if (this.#btnGroup) {
-      this.#btnGroup.remove()
-      this.#btnGroup.destroy()
-      this.#btnGroup = null
-    }
   }
 
   /**
@@ -1303,7 +1175,7 @@ export class EditorActionButtons {
 
     if (!disabled) {
       this.#rotateIcon = new LeaferImage({
-        url: this.#btnStyle.rotate.icon,
+        url: this.#rotateIconUrl,
         x: ROTATE_ICON_INSET,
         y: ROTATE_ICON_INSET,
         width: ROTATE_ICON_SIZE,
@@ -1368,6 +1240,7 @@ export class EditorActionButtons {
 
   #onRotate(e) {
     this.#showRotationTip(this.#formatRotation(e?.target?.rotation ?? e?.rotation ?? 0))
+    this.#scheduleSelectionToolbarState()
   }
 
   /**
@@ -1448,7 +1321,7 @@ export class EditorActionButtons {
     const shared = this.#computeSharedAttributes(list)
     if (shared.locked === true) {
       requestAnimationFrame(() => {
-        if (!this.#disposed) this.#buildButtons(list)
+        if (!this.#disposed) this.#syncSelectionControls(list)
       })
     }
   }
@@ -1615,6 +1488,111 @@ export class EditorActionButtons {
   // ────────── 操作逻辑 ──────────
 
   /**
+   * 切换当前选区的锁定状态。
+   *
+   * @returns {void}
+   */
+  toggleSelectionLock() {
+    const selected = [...(this.#innerEditor?.list ?? [])]
+
+    if (selected.length === 0) {
+      return
+    }
+
+    const allLocked = this.#computeSharedAttributes(selected).locked === true
+    this.#toggleLock(selected, allLocked)
+  }
+
+  /**
+   * 复制当前未锁定的选区。
+   *
+   * @returns {void}
+   */
+  duplicateSelection() {
+    const selected = [...(this.#innerEditor?.list ?? [])]
+
+    if (selected.length === 0 || this.getSelectionToolbarState().disabled.duplicate) {
+      return
+    }
+
+    this.#copySelected(selected)
+  }
+
+  /**
+   * 删除当前未锁定的选区。
+   *
+   * @returns {void}
+   */
+  deleteSelection() {
+    const selected = [...(this.#innerEditor?.list ?? [])]
+
+    if (selected.length === 0 || this.getSelectionToolbarState().disabled.delete) {
+      return
+    }
+
+    this.#deleteSelected(selected)
+  }
+
+  /**
+   * 使用 Leafer Editor 官方能力组合当前多选节点。
+   *
+   * @returns {void}
+   */
+  groupSelection() {
+    const selected = [...(this.#innerEditor?.list ?? [])]
+
+    if (!this.#canGroupSelection(selected)) {
+      return
+    }
+
+    const group = this.#innerEditor.group({
+      name: EDITOR_GROUP_NAME,
+      customType: EDITOR_GROUP_NAME,
+      editable: true,
+      draggable: true
+    })
+
+    if (!group) {
+      return
+    }
+
+    group.name = EDITOR_GROUP_NAME
+    group.customType = EDITOR_GROUP_NAME
+    group[EDITOR_GROUP_KEY] = true
+    this.#eventBus?.emit('selection:group-changed', {
+      action: 'group',
+      group,
+      children: selected
+    })
+    this.#innerEditor.update?.()
+    this.#scheduleSelectionToolbarState()
+  }
+
+  /**
+   * 使用 Leafer Editor 官方能力解散当前组合节点。
+   *
+   * @returns {void}
+   */
+  ungroupSelection() {
+    const selected = [...(this.#innerEditor?.list ?? [])]
+    const group = selected[0]
+
+    if (selected.length !== 1 || !this.#isEditorGroup(group) || group.locked) {
+      return
+    }
+
+    const children = [...(group.children ?? [])]
+    this.#innerEditor.ungroup()
+    this.#eventBus?.emit('selection:group-changed', {
+      action: 'ungroup',
+      group,
+      children
+    })
+    this.#innerEditor.update?.()
+    this.#scheduleSelectionToolbarState()
+  }
+
+  /**
    * @param {import('leafer-ui').UI[]} selected
    * @param {boolean} currentlyLocked
    */
@@ -1627,10 +1605,10 @@ export class EditorActionButtons {
     })
     this.#innerEditor.update?.()
 
-    // 等 Leafer 完成 editBox 的锁定态更新后，再补回按钮。
+    // 等 Leafer 完成 editBox 的锁定态更新后，再刷新控制点和 Vue 状态。
     requestAnimationFrame(() => {
       if (!this.#disposed) {
-        this.#buildButtons(selected)
+        this.#syncSelectionControls(selected)
       }
       this.#isTogglingLock = false
     })
@@ -1705,6 +1683,7 @@ export class EditorActionButtons {
     this.closeLayerMenu()
     this.#eventBus?.emit('selection:layer-changed', { action, selected })
     this.#innerEditor.updateEditBox?.()
+    this.#scheduleSelectionToolbarState()
   }
 
   /**
@@ -1716,7 +1695,7 @@ export class EditorActionButtons {
   runLayerAction(action) {
     const selected = this.#innerEditor?.list ?? []
 
-    if (selected.length === 0) {
+    if (selected.length === 0 || this.getSelectionToolbarState().disabled.layer) {
       this.closeLayerMenu()
       return
     }
@@ -1737,6 +1716,20 @@ export class EditorActionButtons {
       ...action,
       disabled: !layerState[action.key]
     }))
+  }
+
+  /**
+   * 获取当前选区可执行的层级操作，供 Vue 工具条调用。
+   *
+   * @returns {Array<{ key: string, label: string, shortcut: string, disabled: boolean }>}
+   * 层级菜单项。
+   */
+  getSelectionLayerActions() {
+    if (this.getSelectionToolbarState().disabled.layer) {
+      return this.#layerActions.map((action) => ({ ...action, disabled: true }))
+    }
+
+    return this.getLayerMenuActions()
   }
 
   /**
@@ -1861,7 +1854,12 @@ export class EditorActionButtons {
     if (this.#disposed) return
     this.#disposed = true
 
-    this.#removeButtons()
+    if (this.#selectionStateFrame !== null) {
+      cancelAnimationFrame(this.#selectionStateFrame)
+      this.#selectionStateFrame = null
+    }
+
+    this.#resetSelectionControls()
     this.#unbindMoveCursorEvents()
     this.#unbindMiddleHandleHover()
     this.#unbindHoverFallback()

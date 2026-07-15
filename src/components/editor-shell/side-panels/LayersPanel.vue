@@ -41,12 +41,11 @@
             @mouseenter="editor.hoverLayer(element.id)"
             @mouseleave="editor.hoverLayer(null)"
           >
-            <v-icon class="layer-drag-handle" icon="mdi-drag-vertical" size="20" />
-            <span class="layer-type-icon">
-              <v-icon :icon="resolveLayerIcon(element.type)" size="17" />
+            <span class="layer-drag-handle" aria-hidden="true">
+              <v-icon icon="mdi-drag-vertical" size="20" />
             </span>
-            <div class="layer-name-cell">
-              <span class="layer-name" :title="element.name">{{ element.name }}</span>
+            <div class="layer-preview-cell" :title="element.name">
+              <LayerPreview :layer="element" :load-thumbnail="editor.getLayerThumbnail" />
               <span
                 v-if="element.imageRole"
                 class="layer-image-role-badge"
@@ -86,7 +85,8 @@ import { ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import ElementAttributesEditor from '../layers/ElementAttributesEditor.vue';
 import LayerActionButtons from '../layers/LayerActionButtons.vue';
-import { getImageRoleLabel, resolveLayerIcon } from '../layers/layerDisplay.js';
+import LayerPreview from '../layers/LayerPreview.vue';
+import { getImageRoleLabel } from '../layers/layerDisplay.js';
 
 const props = defineProps({
   editor: {

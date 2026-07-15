@@ -14,6 +14,8 @@
   --editor-line: rgb(var(--v-theme-line));
   --editor-outline: rgb(var(--v-theme-outline));
   --editor-control: rgb(var(--v-theme-control));
+  --editor-input-font-size: 13px;
+  --editor-text-field-height: 36px;
   --editor-control-shadow: 0 1px 5px rgba(var(--v-theme-shadow), 0.14);
   --editor-workspace-shadow: 0 6px 16px rgba(var(--v-theme-shadow), 0.1);
   width: 100vw;
@@ -149,6 +151,27 @@
   overflow-y: auto;
   border-right: 1px solid rgba(var(--v-theme-outline), 0.16);
   background: rgb(var(--v-theme-background));
+}
+
+.editor-side-panel .v-field__input,
+.editor-side-panel .v-select__selection-text {
+  font-size: var(--editor-input-font-size);
+  letter-spacing: 0;
+}
+
+.editor-side-panel .v-field__input input,
+.editor-side-panel .v-field__input textarea {
+  font-size: inherit;
+  letter-spacing: inherit;
+}
+
+.editor-side-panel .v-text-field {
+  --v-input-control-height: var(--editor-text-field-height);
+  --v-input-padding-top: 6px;
+}
+
+.editor-side-panel .v-text-field .v-field--variant-outlined {
+  --v-field-padding-bottom: 6px;
 }
 
 .side-file-input {
@@ -401,6 +424,79 @@
   background: rgba(var(--v-theme-canvas), 0.58);
 }
 
+.selection-action-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--selection-toolbar-width, 154px);
+  height: 40px;
+  gap: 2px;
+  box-sizing: border-box;
+  border: 1px solid rgba(var(--v-theme-outline), 0.2);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-surface), 0.98);
+  box-shadow: 0 8px 20px rgba(var(--v-theme-shadow), 0.16);
+  transform: translate3d(
+    var(--selection-toolbar-x),
+    var(--selection-toolbar-y),
+    0
+  );
+  transform-origin: center bottom;
+  will-change: transform;
+}
+
+.selection-action-toolbar__button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  color: var(--editor-muted);
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms ease;
+}
+
+.selection-action-toolbar__button .v-btn__overlay {
+  opacity: 0;
+}
+
+.selection-action-toolbar__button:not(.v-btn--disabled):hover,
+.selection-action-toolbar__button:not(.v-btn--disabled):focus-visible {
+  color: var(--editor-primary);
+  background: var(--editor-primary-soft);
+}
+
+.selection-action-toolbar__button:not(.v-btn--disabled):active {
+  transform: scale(0.94);
+}
+
+.selection-action-toolbar__button.is-delete:not(.v-btn--disabled):hover,
+.selection-action-toolbar__button.is-delete:not(.v-btn--disabled):focus-visible {
+  color: rgb(var(--v-theme-error));
+  background: rgba(var(--v-theme-error), 0.1);
+}
+
+.selection-toolbar-enter-active,
+.selection-toolbar-leave-active {
+  transition:
+    opacity 160ms cubic-bezier(0.25, 1, 0.5, 1),
+    transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.selection-toolbar-enter-from,
+.selection-toolbar-leave-to {
+  opacity: 0;
+  transform: translate3d(
+    var(--selection-toolbar-x),
+    calc(var(--selection-toolbar-y) + 4px),
+    0
+  ) scale(0.96);
+}
+
 .selection-layer-menu {
   position: absolute;
   z-index: 5;
@@ -481,7 +577,7 @@
 .layers-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   min-height: 0;
 }
 
@@ -493,14 +589,14 @@
 
 .layer-item {
   display: grid;
-  grid-template-columns: 36px 24px minmax(0, 1fr) 118px;
+  grid-template-columns: 40px minmax(0, 1fr) 126px;
   align-items: center;
-  min-height: 50px;
-  padding: 4px 3px;
+  min-height: 64px;
+  padding: 4px 3px 4px 1px;
   border: 1px solid transparent;
   border-radius: 6px;
   color: var(--editor-text);
-  background: transparent;
+  background: rgba(var(--v-theme-on-surface), 0.1);
   cursor: default;
   outline: none;
   transition:
@@ -513,7 +609,7 @@
 .layer-item:hover,
 .layer-item:focus-visible {
   border-color: rgba(var(--v-theme-primary), 0.18);
-  background: var(--editor-primary-soft);
+  background: rgba(var(--v-theme-on-surface), 0.14);
 }
 
 .layer-item:focus-visible {
@@ -530,15 +626,15 @@
   border-bottom-left-radius: 4px;
 }
 
-.layer-item--locked .layer-name {
-  color: var(--editor-muted);
+.layer-item--locked .layer-preview {
+  opacity: 0.62;
 }
 
 .layer-drag-handle {
   display: inline-grid;
   place-items: center;
-  width: 36px;
-  height: 42px;
+  width: 40px;
+  height: 54px;
   border-radius: 6px;
   color: var(--editor-subtle);
   cursor: grab;
@@ -561,35 +657,62 @@
   cursor: grabbing;
 }
 
-.layer-type-icon {
-  display: inline-grid;
+.layer-preview {
+  display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 5px;
-  color: var(--editor-primary);
-  background: rgba(var(--v-theme-primary), 0.09);
+  width: 100%;
+  height: 54px;
+  min-width: 0;
+  overflow: hidden;
+  transition: opacity 160ms ease;
 }
 
-.layer-name-cell {
+.layer-preview-cell {
+  position: relative;
   display: flex;
   min-width: 0;
+  height: 54px;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  padding: 4px 8px;
+  overflow: hidden;
 }
 
-.layer-name {
-  min-width: 0;
-  flex: 1;
+.layer-preview__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center center;
+}
+
+.layer-preview__placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-height: 100%;
+  padding: 3px 6px;
   overflow: hidden;
-  font-size: 12px;
+  color: var(--editor-text);
+  font-size: 11px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.15;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.layer-preview--loading .layer-preview__placeholder {
+  opacity: 0.58;
+}
+
 .layer-image-role-badge {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
@@ -640,10 +763,10 @@
 .layer-action-button {
   display: inline-grid;
   place-items: center;
-  flex: 0 0 28px;
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
+  flex: 0 0 30px;
+  width: 30px;
+  min-width: 30px;
+  height: 32px;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -990,6 +1113,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .selection-action-toolbar,
+  .selection-action-toolbar__button,
+  .selection-toolbar-enter-active,
+  .selection-toolbar-leave-active,
   .selection-layer-menu,
   .selection-layer-menu__item,
   .layer-item,

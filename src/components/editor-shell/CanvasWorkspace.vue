@@ -81,6 +81,10 @@
           @pointerdown.self="editor.closeLayerMenu"
           @dblclick="editor.handleCanvasDoubleClick"
         ></div>
+        <SelectionActionToolbar
+          :editor="editor"
+          :toolbar="editor.selectionToolbar.value"
+        />
         <SelectionLayerMenu
           :menu="editor.layerMenu.value"
           @action="editor.runLayerAction"
@@ -91,6 +95,7 @@
 </template>
 
 <script setup>
+import SelectionActionToolbar from './SelectionActionToolbar.vue';
 import SelectionLayerMenu from './SelectionLayerMenu.vue';
 
 const props = defineProps({

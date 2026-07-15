@@ -1,9 +1,18 @@
 import { Image as LeaferImage, Platform, Resource, isString } from 'leafer-ui';
+import {
+  EditorEvent,
+  EditorMoveEvent,
+  EditorRotateEvent,
+  EditorScaleEvent
+} from '@leafer-in/editor';
 
 import { EditorError } from '../../../errors/editor-error.js';
 import { getElementDataContainer } from '../../../utils/element-data.js';
 import { normalizeOptionalPositiveNumber } from '../../../utils/number.js';
 import { normalizeImageOptions } from '../../../utils/image.js';
+
+const ORIGINAL_WIDTH_KEY = '__canvasEditorOriginalWidth';
+const ORIGINAL_HEIGHT_KEY = '__canvasEditorOriginalHeight';
 
 /**
  * 图片插件 —— 全部基于 leafer-ui 原生 API。
@@ -54,6 +63,10 @@ export class ImagePlugin {
    */
   bootstrap(context) {
     this._context = context;
+    context.innerEditor?.on_(EditorEvent.SELECT, this._emitSelectionChanged, this);
+    context.innerEditor?.on_(EditorMoveEvent.MOVE, this._emitSelectionChanged, this);
+    context.innerEditor?.on_(EditorScaleEvent.SCALE, this._emitSelectionChanged, this);
+    context.innerEditor?.on_(EditorRotateEvent.ROTATE, this._emitSelectionChanged, this);
   }
 
   /**
@@ -74,6 +87,7 @@ export class ImagePlugin {
 
     try {
       const { contentLayer, eventBus, state } = this._context;
+      const shouldSelect = options.select !== false;
       imageSource = await this._normalizeSource(source);
       const imageSize = await this._loadImageSize(imageSource.url);
       const imageConfig = this._normalizePlacement(imageSize, options, state);
@@ -85,15 +99,18 @@ export class ImagePlugin {
         ...imageConfig
       });
 
+      image[ORIGINAL_WIDTH_KEY] = imageSize.width;
+      image[ORIGINAL_HEIGHT_KEY] = imageSize.height;
       getElementDataContainer(image, true);
       contentLayer.add(image);
       if (imageSource.ownedObjectUrl) {
         this._ownedObjectUrls.add(imageSource.url);
       }
-      // 延迟到下一帧 select，确保 contentLayer.add() 后 Leafer
-      // 内部渲染管线稳定，避免 editTool 尚未加载时触发 update()
-      await new Promise(resolve => requestAnimationFrame(resolve));
-      this._context.innerEditor?.select(image);
+      if (shouldSelect) {
+        // 等待节点进入 Leafer 渲染管线后再创建选框。
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        this._context.innerEditor?.select(image);
+      }
       eventBus.emit('image:added', { image });
 
       return image;
@@ -140,11 +157,100 @@ export class ImagePlugin {
   }
 
   /**
+   * 获取当前单选图片的可编辑属性快照。
+   *
+   * 位置以画板左上角为原点，尺寸为用户实际看到的显示尺寸，缩放比例以图片
+   * 原始像素尺寸为 100%。
+   *
+   * @returns {{
+   *   x: number,
+   *   y: number,
+   *   width: number,
+   *   height: number,
+   *   originalWidth: number,
+   *   originalHeight: number,
+   *   scalePercentX: number,
+   *   scalePercentY: number,
+   *   rotation: number,
+   *   opacity: number,
+   *   lockRatio: boolean,
+   *   flippedX: boolean,
+   *   flippedY: boolean,
+   *   locked: boolean
+   * } | null} 图片属性；非单选图片时返回 null。
+   */
+  getSelectedProperties() {
+    const image = this._getSelectedImage();
+    return image ? this._createPropertiesSnapshot(image) : null;
+  }
+
+  /**
+   * 更新当前单选图片属性。
+   *
+   * @param {Object} properties 图片属性补丁。
+   * @returns {Object | null} 更新后的图片属性；非单选图片时返回 null。
+   * @throws {EditorError} 当属性值无效时抛出。
+   */
+  updateSelectedProperties(properties = {}) {
+    this._assertReady();
+    const image = this._getSelectedImage();
+
+    if (!image) {
+      return null;
+    }
+
+    if (!properties || typeof properties !== 'object' || Array.isArray(properties)) {
+      throw new EditorError('Image properties must be an object.', 'IMAGE_PROPERTIES_INVALID');
+    }
+
+    if (image.locked) {
+      return this._createPropertiesSnapshot(image);
+    }
+
+    const current = this._createPropertiesSnapshot(image);
+    const patch = this._createTransformPatch(image, current, properties);
+
+    image.set?.(patch);
+    image.forceUpdate?.();
+    image.updateLayout?.();
+    this._context.innerEditor?.update?.();
+    this._context.innerEditor?.updateEditBox?.();
+    this._context.artboard?.syncAllElements?.();
+
+    const nextProperties = this._createPropertiesSnapshot(image);
+    this._context.eventBus.emit('image:updated', { image, properties: nextProperties });
+    this._emitSelectionChanged();
+    return nextProperties;
+  }
+
+  /**
+   * 将当前单选图片恢复到原始像素尺寸。
+   *
+   * @returns {Object | null} 更新后的图片属性；非单选图片时返回 null。
+   */
+  resetSelectedSize() {
+    const properties = this.getSelectedProperties();
+
+    if (!properties) {
+      return null;
+    }
+
+    return this.updateSelectedProperties({
+      width: properties.originalWidth,
+      height: properties.originalHeight
+    });
+  }
+
+  /**
    * 销毁插件。
    *
    * @returns {void}
    */
   destroy() {
+    this._context?.innerEditor?.off_(EditorEvent.SELECT, this._emitSelectionChanged, this);
+    this._context?.innerEditor?.off_(EditorMoveEvent.MOVE, this._emitSelectionChanged, this);
+    this._context?.innerEditor?.off_(EditorScaleEvent.SCALE, this._emitSelectionChanged, this);
+    this._context?.innerEditor?.off_(EditorRotateEvent.ROTATE, this._emitSelectionChanged, this);
     this._ownedObjectUrls.forEach((url) => URL.revokeObjectURL(url));
     this._ownedObjectUrls.clear();
     this._context = null;
@@ -162,13 +268,299 @@ export class ImagePlugin {
   }
 
   /**
+   * 获取当前严格单选的图片节点。
+   *
+   * @private
+   * @returns {LeaferImage | null} 图片节点。
+   */
+  _getSelectedImage() {
+    const selected = this._context?.innerEditor?.list ?? [];
+    const image = selected.length === 1 ? selected[0] : null;
+
+    return image instanceof LeaferImage ? image : null;
+  }
+
+  /**
+   * 创建图片属性 DTO，隔离 UI 与 Leafer 节点实现。
+   *
+   * @private
+   * @param {LeaferImage} image 图片节点。
+   * @returns {Object} 可序列化图片属性。
+   */
+  _createPropertiesSnapshot(image) {
+    const bounds = this._getOperationBounds(this._context.state);
+    const baseWidth = this._getPositiveNumber(image.width ?? image.__?.width, 1);
+    const baseHeight = this._getPositiveNumber(image.height ?? image.__?.height, 1);
+    const originalWidth = this._getPositiveNumber(
+      image[ORIGINAL_WIDTH_KEY] ?? image.image?.width,
+      baseWidth
+    );
+    const originalHeight = this._getPositiveNumber(
+      image[ORIGINAL_HEIGHT_KEY] ?? image.image?.height,
+      baseHeight
+    );
+    const scaleX = this._getFiniteNumber(image.scaleX, 1);
+    const scaleY = this._getFiniteNumber(image.scaleY, 1);
+    const width = baseWidth * Math.abs(scaleX);
+    const height = baseHeight * Math.abs(scaleY);
+
+    return {
+      x: this._round(this._getFiniteNumber(image.x, 0) - bounds.x),
+      y: this._round(this._getFiniteNumber(image.y, 0) - bounds.y),
+      width: this._round(width),
+      height: this._round(height),
+      originalWidth: this._round(originalWidth),
+      originalHeight: this._round(originalHeight),
+      scalePercentX: this._round(width / originalWidth * 100),
+      scalePercentY: this._round(height / originalHeight * 100),
+      rotation: this._round(this._getFiniteNumber(image.rotation, 0)),
+      opacity: this._round(this._getFiniteNumber(image.opacity, 1) * 100),
+      lockRatio: image.lockRatio !== false,
+      flippedX: scaleX < 0,
+      flippedY: scaleY < 0,
+      locked: Boolean(image.locked)
+    };
+  }
+
+  /**
+   * 将 UI 属性补丁转换为 Leafer 节点变换补丁。
+   *
+   * @private
+   * @param {LeaferImage} image 图片节点。
+   * @param {Object} current 当前属性快照。
+   * @param {Object} properties UI 属性补丁。
+   * @returns {Object} Leafer set() 参数。
+   */
+  _createTransformPatch(image, current, properties) {
+    const bounds = this._getOperationBounds(this._context.state);
+    const patch = {};
+    const lockRatio = this._getOptionalBoolean(properties.lockRatio, 'lockRatio');
+    const nextLockRatio = lockRatio ?? current.lockRatio;
+
+    this._setPositionPatch(patch, properties, bounds);
+    this._setVisualSizePatch(patch, image, current, properties, nextLockRatio);
+    this._setAppearancePatch(patch, properties);
+    this._setFlipPatch(patch, image, properties);
+
+    if (lockRatio !== undefined) {
+      patch.lockRatio = lockRatio;
+    }
+
+    return patch;
+  }
+
+  /**
+   * 写入画板相对坐标。
+   *
+   * @private
+   * @param {Object} patch Leafer 属性补丁。
+   * @param {Object} properties UI 属性补丁。
+   * @param {{ x: number, y: number }} bounds 画板边界。
+   * @returns {void}
+   */
+  _setPositionPatch(patch, properties, bounds) {
+    const x = this._getOptionalNumber(properties.x, 'x');
+    const y = this._getOptionalNumber(properties.y, 'y');
+
+    if (x !== undefined) patch.x = bounds.x + x;
+    if (y !== undefined) patch.y = bounds.y + y;
+  }
+
+  /**
+   * 写入显示尺寸和相对原图的缩放比例。
+   *
+   * @private
+   * @param {Object} patch Leafer 属性补丁。
+   * @param {LeaferImage} image 图片节点。
+   * @param {Object} current 当前属性快照。
+   * @param {Object} properties UI 属性补丁。
+   * @param {boolean} lockRatio 是否锁定比例。
+   * @returns {void}
+   */
+  _setVisualSizePatch(patch, image, current, properties, lockRatio) {
+    const requested = this._getRequestedVisualSize(current, properties);
+
+    if (requested.width === undefined && requested.height === undefined) {
+      return;
+    }
+
+    const size = this._completeLockedSize(current, requested, lockRatio);
+    const baseWidth = this._getPositiveNumber(image.width ?? image.__?.width, 1);
+    const baseHeight = this._getPositiveNumber(image.height ?? image.__?.height, 1);
+    const scaleXSign = this._getFiniteNumber(image.scaleX, 1) < 0 ? -1 : 1;
+    const scaleYSign = this._getFiniteNumber(image.scaleY, 1) < 0 ? -1 : 1;
+
+    if (size.width !== undefined) patch.scaleX = scaleXSign * size.width / baseWidth;
+    if (size.height !== undefined) patch.scaleY = scaleYSign * size.height / baseHeight;
+  }
+
+  /**
+   * 读取尺寸字段，并把百分比缩放换算成显示像素。
+   *
+   * @private
+   * @param {Object} current 当前属性快照。
+   * @param {Object} properties UI 属性补丁。
+   * @returns {{ width: number | undefined, height: number | undefined }} 显示尺寸。
+   */
+  _getRequestedVisualSize(current, properties) {
+    const width = this._getOptionalPositiveNumber(properties.width, 'width');
+    const height = this._getOptionalPositiveNumber(properties.height, 'height');
+    const scalePercentX = this._getOptionalPositiveNumber(
+      properties.scalePercentX,
+      'scalePercentX'
+    );
+    const scalePercentY = this._getOptionalPositiveNumber(
+      properties.scalePercentY,
+      'scalePercentY'
+    );
+
+    return {
+      width: scalePercentX === undefined
+        ? width
+        : current.originalWidth * scalePercentX / 100,
+      height: scalePercentY === undefined
+        ? height
+        : current.originalHeight * scalePercentY / 100
+    };
+  }
+
+  /**
+   * 单边调整且锁定比例时，同步计算另一边尺寸。
+   *
+   * @private
+   * @param {Object} current 当前属性快照。
+   * @param {{ width: number | undefined, height: number | undefined }} requested 请求尺寸。
+   * @param {boolean} lockRatio 是否锁定比例。
+   * @returns {{ width: number | undefined, height: number | undefined }} 完整尺寸。
+   */
+  _completeLockedSize(current, requested, lockRatio) {
+    const hasBothOrNeither = (requested.width === undefined) === (requested.height === undefined);
+
+    if (!lockRatio || hasBothOrNeither) {
+      return requested;
+    }
+
+    const ratio = current.width / current.height;
+    return requested.width !== undefined
+      ? { width: requested.width, height: requested.width / ratio }
+      : { width: requested.height * ratio, height: requested.height };
+  }
+
+  /**
+   * 写入旋转和不透明度。
+   *
+   * @private
+   * @param {Object} patch Leafer 属性补丁。
+   * @param {Object} properties UI 属性补丁。
+   * @returns {void}
+   */
+  _setAppearancePatch(patch, properties) {
+    const rotation = this._getOptionalNumber(properties.rotation, 'rotation');
+    const opacity = this._getOptionalNumber(properties.opacity, 'opacity');
+
+    if (rotation !== undefined) patch.rotation = rotation;
+    if (opacity !== undefined) patch.opacity = Math.min(100, Math.max(0, opacity)) / 100;
+  }
+
+  /**
+   * 写入水平或垂直翻转，保持当前缩放绝对值不变。
+   *
+   * @private
+   * @param {Object} patch Leafer 属性补丁。
+   * @param {LeaferImage} image 图片节点。
+   * @param {Object} properties UI 属性补丁。
+   * @returns {void}
+   */
+  _setFlipPatch(patch, image, properties) {
+    const flippedX = this._getOptionalBoolean(properties.flippedX, 'flippedX');
+    const flippedY = this._getOptionalBoolean(properties.flippedY, 'flippedY');
+
+    if (flippedX !== undefined) {
+      patch.scaleX = (flippedX ? -1 : 1) * Math.abs(
+        patch.scaleX ?? this._getFiniteNumber(image.scaleX, 1)
+      );
+    }
+    if (flippedY !== undefined) {
+      patch.scaleY = (flippedY ? -1 : 1) * Math.abs(
+        patch.scaleY ?? this._getFiniteNumber(image.scaleY, 1)
+      );
+    }
+  }
+
+  /**
+   * 通知应用层当前图片选区属性发生变化。
+   *
+   * @private
+   * @returns {void}
+   */
+  _emitSelectionChanged() {
+    const image = this._getSelectedImage();
+    this._context?.eventBus.emit('image:selection-changed', {
+      image,
+      properties: image ? this._createPropertiesSnapshot(image) : null
+    });
+  }
+
+  /** @private @param {*} value 输入值。 @param {number} fallback 回退值。 @returns {number} */
+  _getFiniteNumber(value, fallback) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
+  /** @private @param {*} value 输入值。 @param {number} fallback 回退值。 @returns {number} */
+  _getPositiveNumber(value, fallback) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : fallback;
+  }
+
+  /** @private @param {*} value 输入值。 @param {string} key 属性名。 @returns {number | undefined} */
+  _getOptionalNumber(value, key) {
+    if (value === undefined || value === null) return undefined;
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+      throw new EditorError(`image.${key} must be a number.`, 'IMAGE_PROPERTY_NUMBER_INVALID');
+    }
+
+    return number;
+  }
+
+  /** @private @param {*} value 输入值。 @param {string} key 属性名。 @returns {number | undefined} */
+  _getOptionalPositiveNumber(value, key) {
+    const number = this._getOptionalNumber(value, key);
+
+    if (number !== undefined && number <= 0) {
+      throw new EditorError(`image.${key} must be greater than 0.`, 'IMAGE_PROPERTY_SIZE_INVALID');
+    }
+
+    return number;
+  }
+
+  /** @private @param {*} value 输入值。 @param {string} key 属性名。 @returns {boolean | undefined} */
+  _getOptionalBoolean(value, key) {
+    if (value === undefined || value === null) return undefined;
+
+    if (typeof value !== 'boolean') {
+      throw new EditorError(`image.${key} must be a boolean.`, 'IMAGE_PROPERTY_BOOLEAN_INVALID');
+    }
+
+    return value;
+  }
+
+  /** @private @param {number} value 输入值。 @returns {number} 最多保留两位小数。 */
+  _round(value) {
+    return Number(value.toFixed(2));
+  }
+
+  /**
    * 计算图片放置位置和尺寸。
    *
    * @private
    * @param {{ width: number, height: number }} imageSize 图片原始尺寸。
    * @param {Object} options 外部放置配置。
    * @param {Object} state 编辑器状态。
-   * @returns {{ x: number, y: number, width: number, height: number, lockRatio: boolean }} 图片节点配置。
+   * @returns {{ x: number, y: number, width: number, height: number, lockRatio: boolean,
+   * visible: boolean }} 图片节点配置。
    */
   _normalizePlacement(imageSize, options, state) {
     const bounds = this._getOperationBounds(state);
@@ -191,7 +583,8 @@ export class ImagePlugin {
       y: mergedOptions.y ?? bounds.y + (bounds.height - height) / 2,
       width,
       height,
-      lockRatio: mergedOptions.lockRatio ?? true
+      lockRatio: mergedOptions.lockRatio ?? true,
+      visible: mergedOptions.visible ?? true
     };
   }
 

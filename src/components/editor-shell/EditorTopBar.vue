@@ -18,8 +18,10 @@
           density="compact"
           prepend-icon="mdi-book-open-page-variant-outline"
           size="small"
+          target="_blank"
           to="/docs"
           variant="text"
+          rel="noopener noreferrer"
         >
           API 文档
         </v-btn>

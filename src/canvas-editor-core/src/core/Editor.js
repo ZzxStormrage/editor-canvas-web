@@ -94,6 +94,10 @@ export class Editor {
   get elementData() {
     return this.#pluginManager.get('elementData')
   }
+  /** @returns {import('../plugins/feature-plugins/production/production-plugin.js').ProductionPlugin} 生产辅助插件。 */
+  get production() {
+    return this.#pluginManager.get('production')
+  }
   /** @returns {import('@leafer-in/editor').Editor} 图形编辑器实例 */
   get editor() {
     return this.#innerEditor
@@ -220,6 +224,145 @@ export class Editor {
   setArtboardSize(width, height) {
     this.#artboard?.resize(width, height)
     return this
+  }
+
+  // ═══════════════════ 图片属性（委托给 ImagePlugin） ═══════════════════
+
+  /**
+   * 获取当前单选图片的可编辑属性。
+   *
+   * @returns {ReturnType<import('../plugins/feature-plugins/image/image-plugin.js').ImagePlugin['getSelectedProperties']>}
+   * 图片属性；当前不是单选图片时返回 null。
+   */
+  getSelectedImageProperties() {
+    return this.image?.getSelectedProperties?.() ?? null
+  }
+
+  /**
+   * 更新当前单选图片属性。
+   *
+   * @param {Object} properties 图片属性补丁。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  updateSelectedImageProperties(properties) {
+    this.image?.updateSelectedProperties?.(properties)
+    return this
+  }
+
+  /**
+   * 将当前单选图片恢复到原始像素尺寸。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  resetSelectedImageSize() {
+    this.image?.resetSelectedSize?.()
+    return this
+  }
+
+  // ═══════════════════ 元素查询（委托给 ElementDataPlugin） ═══════════════════
+
+  /**
+   * 获取画布中的全部元素，递归包含组合内子元素。
+   *
+   * @returns {Object[]} Leafer 元素数组。
+   */
+  getAllElements() {
+    return this.elementData?.getAllElements?.() ?? []
+  }
+
+  /**
+   * 根据自定义属性中的 role 获取元素。
+   *
+   * @param {string} role 角色值，例如 background、mask 或 ai-variable。
+   * @returns {Object[]} 匹配的 Leafer 元素数组。
+   */
+  getElementsByRole(role) {
+    return this.elementData?.getElementsByRole?.(role) ?? []
+  }
+
+  /**
+   * 根据元素类型获取元素。
+   *
+   * @param {string} type 元素类型，例如 image、text、group 或 rect。
+   * @returns {Object[]} 匹配的 Leafer 元素数组。
+   */
+  getElementsByType(type) {
+    return this.elementData?.getElementsByType?.(type) ?? []
+  }
+
+  // ═══════════════════ 生产辅助（委托给 ProductionPlugin） ═══════════════════
+
+  /**
+   * 把图片标记为遮罩图。
+   *
+   * @param {Object} image Leafer 图片节点。
+   * @param {File | Blob | string | null} [source=null] 透明区域识别使用的图片来源。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  markImageAsMask(image, source = null) {
+    this.production?.markMask?.(image, source)
+    return this
+  }
+
+  /**
+   * 创建或重置打印区域。
+   *
+   * @param {{ x?: number, y?: number, width?: number, height?: number }} [options={}] 打印区域。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  createPrintArea(options = {}) {
+    this.production?.createPrintArea?.(options)
+    return this
+  }
+
+  /**
+   * 获取打印区域画板相对属性。
+   *
+   * @returns {{ x: number, y: number, width: number, height: number } | null} 打印区域。
+   */
+  getPrintAreaProperties() {
+    return this.production?.getPrintAreaProperties?.() ?? null
+  }
+
+  /**
+   * 更新打印区域位置和尺寸。
+   *
+   * @param {{ x?: number, y?: number, width?: number, height?: number }} properties 打印区域。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  updatePrintArea(properties) {
+    this.production?.updatePrintArea?.(properties)
+    return this
+  }
+
+  /**
+   * 删除打印区域。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  removePrintArea() {
+    this.production?.removePrintArea?.()
+    return this
+  }
+
+  /**
+   * 根据遮罩透明区域自动生成打印区域。
+   *
+   * @param {{ alphaThreshold?: number, maxAnalysisSize?: number }} [options={}] 识别选项。
+   * @returns {Promise<{ x: number, y: number, width: number, height: number }>} 打印区域。
+   */
+  detectPrintAreaFromMask(options = {}) {
+    return this.production?.detectPrintAreaFromMask?.(options)
+  }
+
+  /**
+   * 截取打印区域并生成 File；传入 upload 时返回上传接口结果。
+   *
+   * @param {Object} [options={}] 截图和上传选项。
+   * @returns {Promise<File | *>} File 或上传结果。
+   */
+  capturePrintArea(options = {}) {
+    return this.production?.capturePrintArea?.(options)
   }
 
   // ═══════════════════ 缩放（委托给 ViewportManager） ═══════════════════
@@ -384,6 +527,90 @@ export class Editor {
   removeFromSelection(item) {
     this.#innerEditor?.removeItem(item)
     return this
+  }
+
+  /**
+   * 获取 Vue 选区工具条所需的状态和世界坐标边界。
+   *
+   * @returns {ReturnType<import('../plugins/action-buttons.js').EditorActionButtons['getSelectionToolbarState']>}
+   * 选区工具条状态。
+   */
+  getSelectionToolbarState() {
+    return this.#actionButtons?.getSelectionToolbarState() ?? {
+      visible: false,
+      bounds: null,
+      locked: false,
+      selectionCount: 0,
+      canGroup: false,
+      canUngroup: false,
+      disabled: {
+        duplicate: true,
+        delete: true,
+        layer: true,
+        group: true,
+        ungroup: true
+      }
+    }
+  }
+
+  /**
+   * 切换当前选区锁定状态。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  toggleSelectionLock() {
+    this.#actionButtons?.toggleSelectionLock()
+    return this
+  }
+
+  /**
+   * 复制当前选区。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  duplicateSelection() {
+    this.#actionButtons?.duplicateSelection()
+    return this
+  }
+
+  /**
+   * 删除当前选区。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  deleteSelection() {
+    this.#actionButtons?.deleteSelection()
+    return this
+  }
+
+  /**
+   * 将当前多选节点组合为一个可编辑组。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  groupSelection() {
+    this.#actionButtons?.groupSelection()
+    return this
+  }
+
+  /**
+   * 解散当前选中的组合节点。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  ungroupSelection() {
+    this.#actionButtons?.ungroupSelection()
+    return this
+  }
+
+  /**
+   * 获取当前选区的层级菜单项。
+   *
+   * @returns {Array<{ key: string, label: string, shortcut: string, disabled: boolean }>}
+   * 层级菜单项。
+   */
+  getSelectionLayerActions() {
+    return this.#actionButtons?.getSelectionLayerActions() ?? []
   }
 
   /**
