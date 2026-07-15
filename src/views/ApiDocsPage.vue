@@ -160,6 +160,13 @@ const MODULE_DEFINITIONS = [
     ]
   },
   {
+    key: 'bridge',
+    label: '跨端通信',
+    namespace: 'postBridgeMessage',
+    icon: 'mdi-swap-horizontal',
+    headings: ['postMessage 跨端通信']
+  },
+  {
     key: 'core',
     label: 'Core 核心',
     namespace: 'createEditor / Editor',

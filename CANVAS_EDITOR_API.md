@@ -11,6 +11,7 @@
 | --- | --- |
 | 第一次接入 | “快速开始” → “创建编辑器” → “生命周期” |
 | 开发 Vue 面板 | “Vue 应用层” → 对应功能模块 → “事件” |
+| 嵌入后台或小程序 | “postMessage 跨端通信” → “Vue 应用层” |
 | 添加图片或文字 | “图片” → “文本” → “选择” |
 | 替换图片或文字 | “图片” → “文本” → “H5 文档运行时” |
 | 开发图层面板 | “图层” → “选择” → “元素业务属性” |
@@ -150,6 +151,353 @@ if (coreEditor) {
 ```
 
 `getEditor()` 在组件挂载前和卸载后会返回 `null`。
+
+## postMessage 跨端通信
+
+项目通过 `src/services/message-bridge.js` 统一处理编辑器与后台管理系统、iframe、
+`window.open` 页面及小程序 `web-view` 的通信。之前需求中出现的 `posstMeagess`、
+`posstMegess` 都是历史拼写，代码中的正式方法名是 `postBridgeMessage`。
+
+### 自动初始化
+
+应用入口已经自动启动消息桥，并在编辑器加载时发送 `editor:ready`：
+
+```js
+import {
+  MESSAGE_TYPES,
+  postBridgeMessage,
+  startMessageBridge
+} from '@/services/message-bridge.js'
+
+startMessageBridge()
+
+postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
+  capabilities: [MESSAGE_TYPES.AUTH_TOKEN]
+})
+```
+
+业务组件不需要再次启动消息桥。`startMessageBridge()` 是幂等方法，重复调用会返回同一个
+停止函数。
+
+内置消息类型：
+
+| 常量 | 实际值 | 方向 | 说明 |
+| --- | --- | --- | --- |
+| `MESSAGE_TYPES.EDITOR_READY` | `'editor:ready'` | 编辑器 → 宿主 | 编辑器通信层已就绪，`payload.capabilities` 表示支持的能力。 |
+| `MESSAGE_TYPES.AUTH_TOKEN` | `'auth:token'` | 双向 | 传递登录 Token；编辑器接收后会用于后续 API 请求。 |
+
+自定义消息类型可以使用任意非空字符串，推荐采用 `模块:动作` 格式，例如
+`document:saved`、`selection:changed`。`'*'` 只允许用于订阅全部消息，不能作为发送类型。
+
+### 标准消息结构
+
+所有消息统一为可结构化克隆的普通对象：
+
+```js
+{
+  channel: 'ele-editor',
+  version: 1,
+  id: 'message-id',
+  type: 'document:saved',
+  sender: 'editor',
+  timestamp: 1784088000000,
+  payload: {
+    documentId: 'document-1001'
+  }
+}
+```
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `channel` | `string` | 是 | `'ele-editor'` | 固定通信频道，用于过滤其他页面消息。 |
+| `version` | `number` | 是 | `1` | 消息协议版本。 |
+| `id` | `string` | 否 | 自动生成 | 消息唯一 ID，方便日志追踪和请求响应关联。 |
+| `type` | `string` | 是 | 无 | 消息类型。 |
+| `sender` | `string` | 否 | `'editor'` | 发送方标识，例如 `editor`、`admin`、`mini-program`。 |
+| `timestamp` | `number` | 否 | 当前时间 | Unix 毫秒时间戳。 |
+| `payload` | `*` | 否 | `{}` | 业务数据，必须能被浏览器结构化克隆。 |
+
+只需要创建消息、不立即发送时使用：
+
+```js
+import { createBridgeMessage } from '@/services/message-bridge.js'
+
+const message = createBridgeMessage('document:saved', {
+  documentId: 'document-1001'
+}, {
+  sender: 'editor'
+})
+```
+
+### `postBridgeMessage(type, payload, options)`
+
+发送一条标准消息，并返回本次实际调用的通道。
+
+```js
+import { postBridgeMessage } from '@/services/message-bridge.js'
+
+const result = postBridgeMessage('document:saved', {
+  documentId: 'document-1001',
+  json: editorJson
+})
+
+console.log(result.message)
+console.log(result.channels)
+```
+
+方法参数：
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `type` | `string` | 是 | 无 | 非空字符串，不能是 `'*'` | 消息类型。 |
+| `payload` | `*` | 否 | `{}` | 可结构化克隆的数据 | 业务数据。 |
+| `options` | `Object` | 否 | `{}` | 普通对象 | 发送配置。 |
+| `options.target` | `string` | 否 | `'auto'` | `'auto'`、`'parent'`、`'opener'`、`'mini-program'` | 目标通道。 |
+| `options.targetWindow` | `WindowProxy \| null` | 否 | 无 | 有效窗口引用 | 直接发送到指定窗口；设置后忽略 `target`。 |
+| `options.targetOrigin` | `string` | 否 | 自动推导 | 完整 origin | 窗口消息目标源，例如 `https://admin.example.com`。 |
+| `options.sender` | `string` | 否 | `'editor'` | 字符串 | 自定义发送方标识。 |
+| `options.id` | `string` | 否 | 自动生成 | 字符串 | 指定消息 ID。 |
+
+`target` 行为：
+
+| 值 | 行为 |
+| --- | --- |
+| `'auto'` | 依次尝试小程序、父窗口、`window.opener`，成功后使用最合适的通道。 |
+| `'parent'` | 仅发送到 iframe 的父窗口。 |
+| `'opener'` | 仅发送到通过 `window.open()` 打开编辑器的窗口。 |
+| `'mini-program'` | 仅发送到可用的小程序原生桥。 |
+
+返回值类型为 `{ message: Object, channels: string[] }`。`channels` 可能包含
+`'mini-program'`、`'parent'`、`'opener'` 或 `'window'`；空数组表示当前页面没有可用宿主，
+不表示消息格式错误。
+
+### 编辑器向后台管理系统发送
+
+编辑器作为 iframe 嵌入后台时，使用 `parent` 通道：
+
+```js
+postBridgeMessage('document:saved', {
+  documentId: 'document-1001',
+  json: editorJson
+}, {
+  target: 'parent',
+  targetOrigin: 'https://admin.example.com'
+})
+```
+
+后台管理系统接收消息时必须同时校验来源和 iframe 窗口：
+
+```js
+const editorFrame = document.querySelector('#editor-frame')
+const editorOrigin = 'https://editor.example.com'
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== editorOrigin) return
+  if (event.source !== editorFrame.contentWindow) return
+
+  const message = event.data
+  if (message?.channel !== 'ele-editor' || message.version !== 1) return
+
+  if (message.type === 'document:saved') {
+    console.log('编辑器 JSON', message.payload.json)
+  }
+})
+```
+
+### 后台管理系统向编辑器传 Token
+
+编辑器启动后会发送 `editor:ready`。后台收到该消息后再发送 `auth:token`，可以避免 iframe
+尚未完成监听初始化时丢失 Token。
+
+```js
+const editorFrame = document.querySelector('#editor-frame')
+const editorOrigin = 'https://editor.example.com'
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== editorOrigin) return
+  if (event.source !== editorFrame.contentWindow) return
+
+  const message = event.data
+  if (message?.channel !== 'ele-editor' || message.version !== 1) return
+  if (message.type !== 'editor:ready') return
+
+  editorFrame.contentWindow.postMessage({
+    channel: 'ele-editor',
+    version: 1,
+    type: 'auth:token',
+    sender: 'admin',
+    timestamp: Date.now(),
+    payload: {
+      token: accessToken
+    }
+  }, editorOrigin)
+})
+```
+
+Token 约定：
+
+- 推荐字段为 `payload.token`，兼容字段为 `payload.authorization`。
+- 可以传原始 Token，也可以传 `Bearer xxx`；编辑器会自动去除 `Bearer` 前缀。
+- Token 只保存在运行时内存中，收到新值后会覆盖临时回退 Token。
+- 后续 Alova API 请求会自动写入 `Authorization: Bearer <token>`。
+- 不要把真实 Token 写入文档、URL 查询参数或日志。
+
+编辑器内部也可以主动向宿主发送 Token：
+
+```js
+import { postAccessToken } from '@/services/auth-token.js'
+
+postAccessToken(accessToken, {
+  target: 'parent',
+  targetOrigin: 'https://admin.example.com'
+})
+```
+
+### `window.open` 页面通信
+
+编辑器由后台通过 `window.open()` 打开时，发送到 `opener`：
+
+```js
+postBridgeMessage('document:saved', {
+  documentId: 'document-1001',
+  json: editorJson
+}, {
+  target: 'opener',
+  targetOrigin: 'https://admin.example.com'
+})
+```
+
+后台页面仍使用标准 `window.addEventListener('message', handler)` 接收，并校验
+`event.origin` 与 `event.source === editorWindow`。
+
+### 小程序 `web-view` 通信
+
+编辑器会自动识别 `uni`、微信、QQ、支付宝、百度、抖音和京东小程序桥。
+
+```js
+postBridgeMessage('document:saved', {
+  documentId: 'document-1001',
+  json: editorJson
+}, {
+  target: 'mini-program'
+})
+```
+
+微信小程序页面示例：
+
+```xml
+<web-view src="{{ editorUrl }}" bindmessage="handleEditorMessage" />
+```
+
+```js
+Page({
+  handleEditorMessage(event) {
+    const messages = event.detail.data || []
+    const message = messages[messages.length - 1]
+
+    if (message?.channel !== 'ele-editor' || message.version !== 1) return
+
+    if (message.type === 'document:saved') {
+      console.log(message.payload.json)
+    }
+  }
+})
+```
+
+不同小程序的 `web-view` 消息触发时机可能不同，宿主端应按对应平台文档处理页面返回、
+分享或销毁时机。
+
+### 编辑器订阅宿主消息
+
+使用 `subscribeBridgeMessage()` 订阅指定类型，组件卸载时必须取消：
+
+```js
+import { onBeforeUnmount } from 'vue'
+
+import { subscribeBridgeMessage } from '@/services/message-bridge.js'
+
+const unsubscribe = subscribeBridgeMessage('document:load', ({ message, payload, context }) => {
+  console.log(message.id)
+  console.log(payload.document)
+  console.log(context.origin, context.transport)
+})
+
+onBeforeUnmount(unsubscribe)
+```
+
+监听全部消息：
+
+```js
+const unsubscribe = subscribeBridgeMessage('*', ({ message }) => {
+  console.log(message.type, message.payload)
+})
+```
+
+处理器可以是同步函数或异步函数。单个处理器异常只会记录日志，不会阻断其他订阅者。
+
+### 原生容器与全局桥
+
+消息桥启动后会暴露 `window.EleEditorBridge`，供原生 WebView 容器直接调用：
+
+```js
+window.EleEditorBridge.receiveMessage({
+  channel: 'ele-editor',
+  version: 1,
+  type: 'auth:token',
+  sender: 'native-app',
+  payload: {
+    token: accessToken
+  }
+})
+```
+
+全局对象提供以下方法：
+
+| 方法或字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `channel` | `string` | 固定为 `'ele-editor'`。 |
+| `version` | `number` | 当前为 `1`。 |
+| `postMessage(type, payload, options)` | `Function` | 对应 `postBridgeMessage()`。 |
+| `receiveMessage(message, context)` | `Function` | 注入宿主消息，识别成功返回 `true`。 |
+| `subscribe(type, handler)` | `Function` | 对应 `subscribeBridgeMessage()`。 |
+
+`receiveMessage()` 同时兼容标准对象、JSON 字符串和 `{ data: message }` 包装格式。
+
+### 来源白名单
+
+生产环境不要使用 `'*'`。可以通过环境变量配置多个允许来源：
+
+```env
+VITE_MESSAGE_ALLOWED_ORIGINS=https://admin.example.com,https://ops.example.com
+```
+
+也可以在手动初始化时传入：
+
+```js
+const stopBridge = startMessageBridge({
+  allowedOrigins: [
+    'https://admin.example.com',
+    'https://ops.example.com'
+  ]
+})
+
+// 仅在整个应用不再需要通信时调用
+stopBridge()
+```
+
+接收白名单会自动包含编辑器自身 origin 和 `document.referrer` 的 origin。发送窗口消息时，
+推荐始终显式传入 `targetOrigin`；未传时才会从 referrer、环境变量或当前页面来源推导。
+
+### 通信排查
+
+| 现象 | 检查项 |
+| --- | --- |
+| `channels` 返回 `[]` | 当前页面是否真的位于 iframe、小程序或 `window.open` 场景。 |
+| 后台收不到消息 | `target` 是否正确，`targetOrigin` 是否与后台 origin 完全一致。 |
+| 编辑器收不到消息 | 消息是否包含 `channel: 'ele-editor'`、`version: 1` 和有效 `type`。 |
+| Token 未生效 | 是否在 `editor:ready` 后发送，字段是否为 `payload.token` 或 `payload.authorization`。 |
+| 消息被忽略 | `event.origin` 是否在 `allowedOrigins` 或 `VITE_MESSAGE_ALLOWED_ORIGINS` 中。 |
+| 小程序消息延迟 | 检查对应平台 `web-view postMessage` 的触发时机限制。 |
 
 ## 创建编辑器
 
@@ -1089,6 +1437,11 @@ try {
 | 替换选中文字 | `editor.replaceSelectedText(content)` |
 | 替换 H5 图片 | `await replaceH5Image(document, elementId, source, options)` |
 | 替换 H5 文字 | `replaceH5Text(document, elementId, content)` |
+| 创建通信消息 | `createBridgeMessage(type, payload, options)` |
+| 发送跨端消息 | `postBridgeMessage(type, payload, options)` |
+| 订阅跨端消息 | `subscribeBridgeMessage(type, handler)` |
+| 注入宿主消息 | `receiveBridgeMessage(message, context)` |
+| 发送 Token | `postAccessToken(token, options)` |
 | 选择元素 | `editor.select(target)` |
 | 取消选择 | `editor.deselect()` |
 | 获取选区工具条状态 | `editor.getSelectionToolbarState()` |
