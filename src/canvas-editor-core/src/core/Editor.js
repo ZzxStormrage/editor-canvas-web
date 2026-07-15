@@ -259,6 +259,27 @@ export class Editor {
     return this
   }
 
+  /**
+   * 替换当前严格单选图片，保留节点外框、位置和变换属性。
+   *
+   * @param {string | File | Blob} source 新图片来源。
+   * @param {{ fit?: 'contain' | 'cover' | 'stretch' }} [options={}] 替换配置。
+   * @returns {Promise<import('leafer-ui').Image> | undefined} 已替换资源的图片节点。
+   */
+  replaceSelectedImage(source, options = {}) {
+    return this.image?.replaceSelected?.(source, options)
+  }
+
+  /**
+   * 替换当前严格单选文本，保留节点样式、位置和固定宽度。
+   *
+   * @param {string | number} content 新文本内容。
+   * @returns {import('leafer-ui').Text | null} 已替换内容的文本节点。
+   */
+  replaceSelectedText(content) {
+    return this.text?.replaceSelected?.(content) ?? null
+  }
+
   // ═══════════════════ 元素查询（委托给 ElementDataPlugin） ═══════════════════
 
   /**

@@ -12,6 +12,7 @@
 | 第一次接入 | “快速开始” → “创建编辑器” → “生命周期” |
 | 开发 Vue 面板 | “Vue 应用层” → 对应功能模块 → “事件” |
 | 添加图片或文字 | “图片” → “文本” → “选择” |
+| 替换图片或文字 | “图片” → “文本” → “H5 文档运行时” |
 | 开发图层面板 | “图层” → “选择” → “元素业务属性” |
 | 查询元素或截图 | “元素业务属性” → “生产遮罩与打印区域” |
 | 排查问题 | “错误处理” → 对应模块 |
@@ -193,6 +194,7 @@ const editor = createEditor({
 | `areaType` | `'grid' \| 'blank'` | 网格或纯色工作区。 |
 | `zoom` | `Object` | 缩放范围、初始值和步进。 |
 | `grid` | `Object` | 网格尺寸和颜色。 |
+| `image` | `Object` | 图片默认配置；`maxWidthRatio: 0.8`、`maxHeightRatio: 0.8`、`lockRatio: true`。 |
 | `artboard` | `Object` | 白色画板尺寸、填充和溢出透明度。 |
 | `image` | `Object` | 新增图片的默认尺寸约束。 |
 | `text` | `Object` | 新增文本的默认样式。 |
@@ -292,7 +294,15 @@ editor.fitArtboardToView({
 
 ### `editor.image.add(source, options)`
 
-支持图片 URL、`File`、`Blob` 和 SVG 字符串，返回 Leafer `Image` 节点。
+添加图片并返回 `Promise<LeaferImage>`。必须使用 `await` 获取创建完成的 Leafer `Image`
+节点。
+
+方法参数：
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `source` | `string \| File \| Blob` | 是 | 无 | 图片 URL、SVG URL、完整 SVG 字符串、`File`、`Blob` | 图片来源。插件负责读取原始像素尺寸和管理临时 Blob URL。 |
+| `options` | `Object` | 否 | `{}` | 见下方字段表 | 本次图片的放置和初始状态配置。 |
 
 ```js
 const image = await editor.image.add('/demo.png', {
@@ -303,22 +313,102 @@ const image = await editor.image.add('/demo.png', {
 })
 ```
 
-常用参数：
+`options` 完整字段：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `x` | `number` | 图片 x 坐标。 |
-| `y` | `number` | 图片 y 坐标。 |
-| `width` | `number` | 图片宽度。 |
-| `height` | `number` | 图片高度。 |
-| `maxWidthRatio` | `number` | 未传宽高时的最大宽度占比。 |
-| `maxHeightRatio` | `number` | 未传宽高时的最大高度占比。 |
-| `lockRatio` | `boolean` | 是否保持宽高比。 |
-| `visible` | `boolean` | 初始是否显示，默认 `true`。 |
-| `select` | `boolean` | 创建完成后是否选中，默认 `true`。 |
+| 字段 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `x` | `number` | 否 | 画板水平居中位置 | 任意有限坐标，可为负数 | 相对内容层的 x 坐标；未传时根据最终图片宽度居中。 |
+| `y` | `number` | 否 | 画板垂直居中位置 | 任意有限坐标，可为负数 | 相对内容层的 y 坐标；未传时根据最终图片高度居中。 |
+| `width` | `number` | 否 | `原始宽度 × 默认缩放比例` | 大于 `0` | 初始显示宽度。传入后覆盖默认宽度计算。 |
+| `height` | `number` | 否 | `原始高度 × 默认缩放比例` | 大于 `0` | 初始显示高度。传入后覆盖默认高度计算。 |
+| `maxWidthRatio` | `number` | 否 | `0.8` | `0 < value <= 1` | 默认尺寸相对画板宽度的最大占比。可被全局 `image.maxWidthRatio` 修改。 |
+| `maxHeightRatio` | `number` | 否 | `0.8` | `0 < value <= 1` | 默认尺寸相对画板高度的最大占比。可被全局 `image.maxHeightRatio` 修改。 |
+| `lockRatio` | `boolean` | 否 | `true` | `true \| false` | 后续编辑宽高时是否保持图片比例，不负责补全首次创建时缺失的单边尺寸。 |
+| `visible` | `boolean` | 否 | `true` | `true \| false` | 图片创建后是否立即显示。 |
+| `select` | `boolean` | 否 | `true` | `true \| false` | 图片创建完成后是否自动进入选中状态。 |
+
+默认放置规则：
+
+1. 操作区域优先使用白色画板；没有画板时使用外层画布。
+2. 默认缩放比例为：
+
+```js
+Math.min(
+  画板宽度 * maxWidthRatio / 图片原始宽度,
+  画板高度 * maxHeightRatio / 图片原始高度,
+  1
+)
+```
+
+3. 默认宽高使用同一个缩放比例，因此保持原始宽高比。
+4. 缩放比例最大为 `1`，大图会缩小，小图不会自动放大。
+5. 未传 `x`、`y` 时，图片按照最终宽高在画板中水平和垂直居中。
+
+单次 `editor.image.add()` 的 `options` 优先级高于创建编辑器时传入的全局 `image` 配置：
+
+```js
+const editor = createEditor({
+  // 所有后续图片的默认值
+  image: {
+    maxWidthRatio: 0.8,
+    maxHeightRatio: 0.8,
+    lockRatio: true
+  }
+})
+
+// 仅覆盖当前图片
+await editor.image.add('/demo.png', {
+  maxWidthRatio: 0.6,
+  select: false
+})
+```
+
+> 注意：当前首次创建时 `width` 和 `height` 分别计算。只传 `width` 或只传 `height`，
+> 不会因为 `lockRatio: true` 自动推导另一边；需要严格等比时请同时传入计算后的宽高，
+> 或同时省略宽高使用默认等比缩放。
 
 `visible: false` 和 `select: false` 适合需要先完成尺寸、层级和视口计算，再一次性显示的
 组合流程。
+
+### `editor.replaceSelectedImage(source, options)`
+
+替换当前严格单选图片的资源，返回 `Promise<LeaferImage>`。也可以直接调用插件方法
+`editor.image.replaceSelected(source, options)`，两种写法行为一致。
+
+```js
+editor.select(image)
+
+const replacedImage = await editor.replaceSelectedImage(file, {
+  fit: 'contain'
+})
+
+console.log(replacedImage === image) // true，仍是原节点
+```
+
+方法参数：
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `source` | `string \| File \| Blob` | 是 | 无 | 图片 URL、SVG、`File`、`Blob` | 新图片来源；写入节点前会先完成资源加载。 |
+| `options` | `Object` | 否 | `{}` | 普通对象 | 替换配置。 |
+| `options.fit` | `string` | 否 | `'contain'` | `'contain'`、`'cover'`、`'stretch'` | 新图片在当前图片外框中的适配方式。 |
+
+`fit` 行为：
+
+| 值 | 是否保持节点外框 | 是否保持图片比例 | 对齐方式 | 使用场景 |
+| --- | --- | --- | --- | --- |
+| `'contain'` | 是 | 是 | 水平、垂直居中 | 默认值；完整显示新图片，比例不一致时允许留白。 |
+| `'cover'` | 是 | 是 | 水平、垂直居中 | 填满原外框，比例不一致时裁切边缘。 |
+| `'stretch'` | 是 | 否 | 填满外框 | 严格铺满原外框，可能拉伸图片。 |
+
+替换只修改图片资源和填充模式，不重建节点，因此以下内容保持不变：
+
+- `elementId`、自定义属性和图片角色。
+- `x`、`y`、`width`、`height`、旋转、翻转、透明度和缩放。
+- 图层顺序、点击穿透状态和选中状态。
+
+新资源会先加载，再一次性替换，避免先以原始尺寸绘制后再次缩放造成闪烁。图片锁定时
+不会替换，需要先解锁。`File` 和 `Blob` 产生的临时 URL 由图片插件统一释放。
 
 ### `editor.image.getSize(source)`
 
@@ -362,6 +452,7 @@ editor.resetSelectedImageSize()
 | `lockRatio` | `boolean` | 调整单边尺寸或缩放时是否同步另一边。 |
 | `flippedX` / `flippedY` | `boolean` | 水平、垂直翻转状态。 |
 | `locked` | `boolean` | 图片是否锁定，只读；锁定后属性写入会被忽略。 |
+| `fit` | `'contain' \| 'cover' \| 'stretch'` | 图片资源在节点外框中的适配方式，只读。 |
 
 画布拖动、缩放、旋转以及面板写入都会触发 `image:selection-changed`，可用同一个
 监听器刷新属性面板。
@@ -514,6 +605,25 @@ editor.text.update({
   fill: '#7c3aed'
 })
 ```
+
+### `editor.replaceSelectedText(content)`
+
+替换当前严格单选文本的内容。也可以调用 `editor.text.replaceSelected(content)`。
+
+```js
+editor.select(title)
+
+const replacedText = editor.replaceSelectedText('新的商品标题')
+console.log(replacedText === title) // true，仍是原节点
+```
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `content` | `string \| number` | 是 | 无 | 字符串或数字 | 新文本内容，数字会转换为字符串。 |
+
+该方法保留原文本节点、`elementId`、业务属性、位置、样式和固定宽度。它只替换内容，
+文本实际排版高度仍由 Leafer 根据内容、宽度、字号和行高计算。未严格单选文本时抛出
+`TEXT_SELECTION_REQUIRED`。
 
 ### 编辑和读取
 
@@ -717,6 +827,57 @@ const records = editor.elementData.export()
 默认忽略空属性元素；传入 `{ includeEmpty: true }` 可包含全部元素。该方法只导出业务属性，
 不等于完整场景序列化。
 
+## H5 文档运行时
+
+H5 页面不创建 Leafer 编辑器实例，而是渲染可序列化文档。运行时替换通过
+`src/services/h5-document.js` 的纯文档 API 完成，返回新文档，不直接修改传入对象。
+
+```js
+import {
+  replaceH5Image,
+  replaceH5Text,
+  saveH5Document
+} from '@/services/h5-document.js'
+
+const imageDocument = await replaceH5Image(documentData, imageElementId, imageFile)
+const textDocument = replaceH5Text(imageDocument, textElementId, 'H5 动态标题')
+
+saveH5Document(textDocument)
+```
+
+### `replaceH5Image(document, elementId, source, options)`
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `document` | `Object` | 是 | 无 | `version=1` 的 H5 文档 | 当前文档。 |
+| `elementId` | `string` | 是 | 无 | 已存在的图片元素 ID | 通过稳定 `elementId` 定位图片。 |
+| `source` | `string \| File \| Blob` | 是 | 无 | 图片 URL、`File`、`Blob` | 新图片；`File`、`Blob` 会转换为可持久化 Data URL。 |
+| `options` | `Object` | 否 | `{}` | 普通对象 | 替换配置。 |
+| `options.fit` | `string` | 否 | `'contain'` | `'contain'`、`'cover'`、`'stretch'` | 与编辑器图片替换规则一致。 |
+
+返回 `Promise<Object>`。新文档保留图片元素的坐标、宽高、旋转、缩放、透明度、业务
+属性和图层顺序，并更新以下字段：
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `url` | `string` | 无 | 新图片 URL 或 Data URL。 |
+| `sourceWidth` / `sourceHeight` | `number` | 图片原始尺寸 | 新图片原始像素尺寸。 |
+| `objectFit` | `'contain' \| 'cover' \| 'fill'` | `'contain'` | H5 渲染使用的 CSS 图片适配方式。 |
+| `objectPosition` | `string` | `'center center'` | 新图片在原外框中水平、垂直居中。 |
+
+### `replaceH5Text(document, elementId, content)`
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `document` | `Object` | 是 | 无 | `version=1` 的 H5 文档 | 当前文档。 |
+| `elementId` | `string` | 是 | 无 | 已存在的文本元素 ID | 通过稳定 `elementId` 定位文本。 |
+| `content` | `string \| number` | 是 | 无 | 字符串或数字 | 新文本内容。 |
+
+返回新的 `Object` 文档。除 `text` 外，其余文本元素字段保持不变。
+
+启动项目后访问 `#/h5-preview`，可在“替换功能测试”区域选择元素。点击“替换图片”会
+选择本地图片并使用默认 `contain` 规则；输入文字后点击“替换文字”可立即验证渲染结果。
+
 ## 事件
 
 ```js
@@ -733,8 +894,10 @@ unsubscribe()
 | --- | --- | --- |
 | `text:added` | `{ text }` | 文本创建完成。 |
 | `text:updated` | `{ text, options }` | 文本内容或样式更新。 |
+| `text:replaced` | `{ text, content }` | 当前文本内容替换完成。 |
 | `text:selected` | `{ text, options }` | 同步文本属性面板。 |
 | `image:added` | `{ image }` | 图片创建完成。 |
+| `image:replaced` | `{ image, fit, properties }` | 当前图片资源替换完成。 |
 | `image:updated` | `{ image, properties }` | 图片属性通过 Editor API 更新。 |
 | `image:selection-changed` | `{ image, properties }` | 同步当前单选图片属性；非图片时 `properties` 为 `null`。 |
 | `production:mask-changed` | `{ image }` | 遮罩图片完成标记。 |
@@ -889,6 +1052,10 @@ try {
 | `ZOOM_RANGE_INVALID` | 缩放范围无效。 |
 | `IMAGE_SOURCE_INVALID` | 图片来源类型不支持。 |
 | `IMAGE_ADD_FAILED` | 图片读取或节点创建失败。 |
+| `IMAGE_REPLACE_FAILED` | 替换图片资源加载或写入失败。 |
+| `IMAGE_SELECTION_REQUIRED` | 替换图片前没有严格单选图片。 |
+| `IMAGE_LOCKED` | 当前图片已锁定，不能替换。 |
+| `IMAGE_REPLACEMENT_FIT_INVALID` | 图片适配方式不是 `contain`、`cover` 或 `stretch`。 |
 | `TEXT_VALUE_INVALID` | 文本内容类型无效。 |
 | `TEXT_SELECTION_REQUIRED` | 没有可更新的选中文本。 |
 | `ELEMENT_DATA_TARGET_REQUIRED` | 当前没有唯一目标元素。 |
@@ -907,6 +1074,7 @@ try {
 | 调整画板 | `editor.setArtboardSize(width, height)` |
 | 适配画板到视口 | `editor.fitArtboardToView(options)` |
 | 添加图片 | `await editor.image.add(source, options)` |
+| 替换选中图片 | `await editor.replaceSelectedImage(source, options)` |
 | 读取图片尺寸 | `await editor.image.getSize(source)` |
 | 获取选中图片属性 | `editor.getSelectedImageProperties()` |
 | 更新选中图片属性 | `editor.updateSelectedImageProperties(properties)` |
@@ -918,6 +1086,9 @@ try {
 | 截图并上传打印区域 | `await editor.capturePrintArea(options)` |
 | 添加文字 | `await editor.text.add(content, options)` |
 | 更新文字 | `editor.text.update(target, options)` |
+| 替换选中文字 | `editor.replaceSelectedText(content)` |
+| 替换 H5 图片 | `await replaceH5Image(document, elementId, source, options)` |
+| 替换 H5 文字 | `replaceH5Text(document, elementId, content)` |
 | 选择元素 | `editor.select(target)` |
 | 取消选择 | `editor.deselect()` |
 | 获取选区工具条状态 | `editor.getSelectionToolbarState()` |

@@ -106,11 +106,42 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { marked } from 'marked';
+import { Marked } from 'marked';
+import { markedHighlight } from 'marked-highlight';
+import hljs from 'highlight.js/lib/core';
+import css from 'highlight.js/lib/languages/css';
+import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
+import plaintext from 'highlight.js/lib/languages/plaintext';
+import xml from 'highlight.js/lib/languages/xml';
 
 import markdownSource from '../../CANVAS_EDITOR_API.md?raw';
+import 'highlight.js/styles/github-dark.css';
 import '../assets/scss/api-docs.scss';
 import { buildHeadingSearchIndex, createSearchSummary, normalizeSearchText } from './api-doc-search.js';
+
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('plaintext', plaintext);
+hljs.registerLanguage('xml', xml);
+
+const HIGHLIGHT_LANGUAGE_ALIASES = Object.freeze({
+  html: 'xml',
+  js: 'javascript',
+  vue: 'xml'
+});
+const markdownParser = new Marked(
+  markedHighlight({
+    emptyLangClass: 'hljs',
+    langPrefix: 'hljs language-',
+    highlight(code, language) {
+      const normalizedLanguage = HIGHLIGHT_LANGUAGE_ALIASES[language] ?? language;
+      const supportedLanguage = hljs.getLanguage(normalizedLanguage) ? normalizedLanguage : 'plaintext';
+      return hljs.highlight(code, { language: supportedLanguage, ignoreIllegals: true }).value;
+    }
+  })
+);
 
 const MODULE_DEFINITIONS = [
   {
@@ -298,7 +329,7 @@ function createTocModules(items) {
 function renderMarkdown(markdown, headings) {
   let headingIndex = 0;
   let previousModuleKey = '';
-  const html = marked.parse(markdown, { gfm: true, breaks: false });
+  const html = markdownParser.parse(markdown, { gfm: true, breaks: false });
 
   return html
     .replace(/<h([2-4])>([\s\S]*?)<\/h\1>/g, (match, level, content) => {

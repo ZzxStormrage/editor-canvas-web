@@ -136,14 +136,6 @@
       </div>
     </PanelGroup>
 
-    <PanelGroup v-else key="empty">
-      <div class="image-properties-empty" aria-live="polite">
-        <span class="image-properties-empty__icon">
-          <v-icon icon="mdi-image-outline" size="20" />
-        </span>
-        <span>未选择图片</span>
-      </div>
-    </PanelGroup>
   </Transition>
 </template>
 
@@ -266,27 +258,6 @@ function formatDimension(value) {
   width: 26px;
   min-width: 26px;
   height: 26px;
-}
-
-.image-properties-empty {
-  display: flex;
-  min-height: 64px;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  color: var(--editor-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.image-properties-empty__icon {
-  display: inline-flex;
-  width: 32px;
-  height: 32px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  background: rgba(var(--v-theme-control), 0.68);
 }
 
 .image-property-panel-enter-active,

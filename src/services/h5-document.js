@@ -1,3 +1,8 @@
+import {
+  normalizeImageReplacementFit,
+  toCssObjectFit
+} from '../canvas-editor-core/src/utils/image-fit.js';
+
 const H5_DOCUMENT_VERSION = 1;
 const RADIANS_PER_DEGREE = Math.PI / 180;
 export const H5_DOCUMENT_STORAGE_KEY = 'ele-editor:h5-document';
@@ -63,6 +68,7 @@ async function serializeH5Element(editor, artboardBounds, item) {
   const { element, nested, opacity } = item;
   const data = element.toJSON?.() ?? {};
   const transform = nested ? resolveFlattenedTransform(element, editor.contentLayer) : data;
+  const imageFit = editor.image?.getFit?.(element);
 
   delete data.children;
 
@@ -74,7 +80,10 @@ async function serializeH5Element(editor, artboardBounds, item) {
     y: Number(transform.y ?? element.y ?? 0) - artboardBounds.y,
     opacity,
     elementId: editor.elementData?.getId?.(element),
-    attributes: editor.elementData?.get?.(element) ?? {}
+    attributes: editor.elementData?.get?.(element) ?? {},
+    ...(imageFit
+      ? { objectFit: toCssObjectFit(imageFit), objectPosition: 'center center' }
+      : {})
   };
 }
 
@@ -222,6 +231,66 @@ export function parseH5Document(value) {
   return document;
 }
 
+/**
+ * 替换 H5 文档中指定图片元素的资源，保留元素外框、位置和变换属性。
+ *
+ * @param {Object} document H5 文档。
+ * @param {string} elementId 图片元素稳定 ID。
+ * @param {string | File | Blob} source 新图片来源。
+ * @param {{ fit?: 'contain' | 'cover' | 'stretch' }} [options={}] 替换配置。
+ * @returns {Promise<Object>} 替换后的新 H5 文档。
+ */
+export async function replaceH5Image(document, elementId, source, options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    throw new Error('替换图片 options 必须是对象。');
+  }
+
+  const fit = normalizeImageReplacementFit(options.fit);
+  const url = await normalizeReplacementImageSource(source);
+  const sourceSize = await preloadH5Image(url);
+
+  return replaceH5Element(document, elementId, 'image', (element) => ({
+    ...element,
+    url,
+    sourceWidth: sourceSize.width,
+    sourceHeight: sourceSize.height,
+    objectFit: toCssObjectFit(fit),
+    objectPosition: 'center center'
+  }));
+}
+
+/**
+ * 替换 H5 文档中指定文本元素的内容，保留元素样式、位置和尺寸。
+ *
+ * @param {Object} document H5 文档。
+ * @param {string} elementId 文本元素稳定 ID。
+ * @param {string | number} content 新文本内容。
+ * @returns {Object} 替换后的新 H5 文档。
+ */
+export function replaceH5Text(document, elementId, content) {
+  if (typeof content !== 'string' && typeof content !== 'number') {
+    throw new Error('替换文字必须是字符串或数字。');
+  }
+
+  return replaceH5Element(document, elementId, 'text', (element) => ({
+    ...element,
+    text: String(content)
+  }));
+}
+
+/**
+ * 识别 H5 元素类型。
+ *
+ * @param {Object} element H5 元素。
+ * @returns {'image' | 'text' | 'shape'} 标准元素类型。
+ */
+export function resolveH5ElementType(element) {
+  const tag = String(element?.tag ?? element?.type ?? '').toLowerCase();
+  if (tag.includes('text')) return 'text';
+  if (tag.includes('image')) return 'image';
+  return 'shape';
+}
+
 export function createSampleH5Document() {
   return {
     version: H5_DOCUMENT_VERSION,
@@ -247,6 +316,72 @@ export function createSampleH5Document() {
 
 function isPositiveNumber(value) {
   return Number.isFinite(Number(value)) && Number(value) > 0;
+}
+
+/**
+ * 不可变替换一个 H5 元素。
+ *
+ * @param {Object} document H5 文档。
+ * @param {string} elementId 元素稳定 ID。
+ * @param {'image' | 'text'} expectedType 期望元素类型。
+ * @param {(element: Object) => Object} replacer 元素替换函数。
+ * @returns {Object} 替换后的新文档。
+ */
+function replaceH5Element(document, elementId, expectedType, replacer) {
+  const currentDocument = parseH5Document(document);
+  const normalizedId = String(elementId ?? '').trim();
+  const targetIndex = currentDocument.elements.findIndex((element) => {
+    return element.elementId === normalizedId;
+  });
+
+  if (!normalizedId || targetIndex < 0) {
+    throw new Error(`未找到 elementId=${normalizedId || '(empty)'} 的元素。`);
+  }
+
+  const target = currentDocument.elements[targetIndex];
+  if (resolveH5ElementType(target) !== expectedType) {
+    throw new Error(`elementId=${normalizedId} 不是${expectedType === 'image' ? '图片' : '文本'}元素。`);
+  }
+
+  const elements = [...currentDocument.elements];
+  elements[targetIndex] = replacer(target);
+  return { ...currentDocument, elements };
+}
+
+/**
+ * 将 H5 替换图片来源转换为可持久化 URL。
+ *
+ * @param {string | File | Blob} source 图片来源。
+ * @returns {Promise<string>} URL 或 Data URL。
+ */
+async function normalizeReplacementImageSource(source) {
+  if (typeof source === 'string' && source.trim()) {
+    return source.trim();
+  }
+
+  if (typeof Blob !== 'undefined' && source instanceof Blob) {
+    return blobToDataUrl(source);
+  }
+
+  throw new Error('替换图片需要有效的 URL、File 或 Blob。');
+}
+
+/**
+ * 预加载替换图片，确保文档只在资源有效时更新。
+ *
+ * @param {string} url 图片 URL。
+ * @returns {Promise<{ width: number, height: number }>} 图片原始尺寸。
+ */
+function preloadH5Image(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({
+      width: image.naturalWidth || image.width,
+      height: image.naturalHeight || image.height
+    });
+    image.onerror = () => reject(new Error('替换图片加载失败，请检查图片文件或 URL。'));
+    image.src = url;
+  });
 }
 
 async function normalizeImageUrl(url) {
