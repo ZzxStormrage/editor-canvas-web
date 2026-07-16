@@ -1141,6 +1141,22 @@ editor.text.update({
 })
 ```
 
+业务页面需要修改指定文字样式时，使用 Editor 外观方法，不改变当前选区：
+
+```js
+const surnameElements = editor.getElementsByAttribute('text.description', '姓')
+
+surnameElements.forEach((element) => {
+  editor.updateText(element, {
+    fontFamily: '字由点字典宋',
+    fontUrl: 'https://cdn.example.com/fonts/dianzidiansong.ttf',
+    width: element.width
+  })
+})
+```
+
+`width` 可用于保持当前文字框宽度；不传时，字体变化后 TextPlugin 会按新字体重新测量宽度。
+
 ### `editor.replaceSelectedText(content)`
 
 替换当前严格单选文本的内容。也可以调用 `editor.text.replaceSelected(content)`。
@@ -1731,6 +1747,7 @@ try {
 | 截图并上传打印区域 | `await editor.capturePrintArea(options)` |
 | 添加文字 | `await editor.text.add(content, options)` |
 | 更新文字 | `editor.text.update(target, options)` |
+| 更新指定文字样式 | `editor.updateText(target, options)` |
 | 替换选中文字 | `editor.replaceSelectedText(content)` |
 | 替换 H5 图片 | `await replaceH5Image(document, elementId, source, options)` |
 | 替换 H5 文字 | `replaceH5Text(document, elementId, content)` |

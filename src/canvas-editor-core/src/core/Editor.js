@@ -286,6 +286,17 @@ export class Editor {
   }
 
   /**
+   * 更新指定文本节点样式，不改变当前选区。
+   *
+   * @param {import('leafer-ui').Text} target 指定文本节点。
+   * @param {Object} options 文本样式补丁。
+   * @returns {import('leafer-ui').Text | null} 更新后的文本节点。
+   */
+  updateText(target, options) {
+    return this.text?.update?.(target, options, { select: false }) ?? null
+  }
+
+  /**
    * 替换当前严格单选文本，保留节点样式、位置和固定宽度。
    *
    * @param {string | number} content 新文本内容。
