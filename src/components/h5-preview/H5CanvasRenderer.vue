@@ -14,7 +14,7 @@
         :aria-label="element.attributes?.text?.description || element.name || '文本输入'"
         :data-description="element.attributes?.text?.description || undefined"
         :style="resolveElementStyle(element)"
-        :wrap="element.attributes.textInput.maxCharactersPerLine ? 'hard' : 'soft'"
+        :wrap="element.attributes?.textInput?.maxCharactersPerLine ? 'hard' : 'soft'"
         @input="updateTextInput(element, $event)"
       />
       <div

@@ -7,7 +7,12 @@
           :document="documentData"
           @ready="handleCanvasReady"
           @loaded="handleDocumentLoaded"
+          @error="handleCanvasError"
         />
+        <div v-if="!canvasLoaded" class="canvas-runtime-loading" role="status" aria-live="polite">
+          <span class="save-spinner" aria-hidden="true"></span>
+          <span>画布加载中...</span>
+        </div>
       </div>
       <div v-else-if="templateLoading" class="canvas-loading" role="status" aria-live="polite">
         <span class="save-spinner" aria-hidden="true"></span>
@@ -60,8 +65,6 @@
             <input v-model="day" inputmode="numeric" maxlength="2" placeholder="01" />
           </label>
         </div>
-
-        <button class="advanced-edit" type="button" @click="onAdvancedEdit">高级编辑</button>
       </div>
     </section>
 
@@ -72,7 +75,7 @@
       <button
         class="submit-button"
         type="button"
-        :disabled="saving || templateLoading || !documentData"
+        :disabled="saving || templateLoading || !documentData || !canvasLoaded"
         :aria-busy="saving"
         @click="onSubmit"
       >
@@ -91,22 +94,23 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { pictureApi } from '../../api/index.js'
+import { customerPictureApi } from '../../api/index.js'
 import CanvasDocumentViewport from '../../components/canvas-runtime/CanvasDocumentViewport.vue'
-import { loadCustomTemplateDocument } from '../../services/custom-template-document.js'
+import { loadCustomerTemplateDocument } from '../../services/custom-template-document.js'
 import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
 import { wxAPI } from '../../services/wx-api.js'
 
 const type = ref(1)
 const canvasViewportRef = ref(null)
 const route = useRoute()
-const year = ref('1990')
-const month = ref('01')
-const day = ref('01')
+const year = ref('')
+const month = ref('')
+const day = ref('')
 const saving = ref(false)
 const saveStatus = ref({ type: 'success', text: '' })
 const templateLoading = ref(false)
 const templateError = ref('')
+const canvasLoaded = ref(false)
 const dateTextBindings = [
   { description: '年', value: year },
   { description: '月', value: month },
@@ -170,6 +174,7 @@ async function loadTemplateFromRoute() {
   const templateId = resolveTemplateId(route.query.templateId)
 
   documentData.value = null
+  canvasLoaded.value = false
   templateError.value = ''
 
   if (rawTemplateId === null || rawTemplateId === '') {
@@ -187,7 +192,7 @@ async function loadTemplateFromRoute() {
   templateLoading.value = true
 
   try {
-    const { document } = await loadCustomTemplateDocument(templateId, {
+    const { document } = await loadCustomerTemplateDocument(templateId, {
       partnerId: resolveRouteValue(route.query.partnerId)
     })
 
@@ -259,12 +264,27 @@ function handleCanvasReady(editor) {
 
 /** @param {{ editor: Object }} payload 文档加载事件。 @returns {void} */
 function handleDocumentLoaded(payload) {
+  syncDateValuesFromEditor(payload.editor)
   payload.editor.arrangeLayersByRole({
     back: ['background'],
     front: ['mask']
   })
   applySelectedAnimal(payload.editor)
   applyDateTextValues(payload.editor)
+  canvasLoaded.value = true
+  templateError.value = ''
+}
+
+/**
+ * 处理统一文档资源加载失败。
+ *
+ * @param {*} error 画布加载错误。
+ * @returns {void}
+ */
+function handleCanvasError(error) {
+  canvasLoaded.value = false
+  documentData.value = null
+  templateError.value = error?.message || '画布加载失败。'
 }
 
 /**
@@ -297,6 +317,25 @@ function applyDateTextValues(editor = canvasViewportRef.value?.getEditor?.()) {
   })
 }
 
+/**
+ * 从模板中读取带年月日描述的文字，作为生产页面初始输入值。
+ *
+ * @param {Object | null} editor 核心编辑器实例。
+ * @returns {void}
+ */
+function syncDateValuesFromEditor(editor) {
+  if (!editor) {
+    return
+  }
+
+  dateTextBindings.forEach(({ description, value }) => {
+    const element = editor.getElementsByAttribute('text.description', description)[0]
+    if (element) {
+      value.value = String(element.text ?? '')
+    }
+  })
+}
+
 watch([year, month, day], () => {
   applyDateTextValues()
 })
@@ -309,13 +348,9 @@ watch(
   { immediate: true }
 )
 
-function onAdvancedEdit() {
-  // TODO: 高级编辑
-}
-
 /** @returns {Promise<void>} 保存当前 JSON，并按需获取打印区域截图。 */
 async function onSubmit() {
-  if (saving.value || templateLoading.value || !documentData.value) {
+  if (saving.value || templateLoading.value || !documentData.value || !canvasLoaded.value) {
     return
   }
 
@@ -394,7 +429,7 @@ function capturePrintAreaImage(editor) {
     includeMask: false,
     type: 'image/png',
     quality: 1,
-    upload: (file) => pictureApi.upload(file)
+    upload: (file) => customerPictureApi.upload(file)
   })
 }
 </script>
@@ -429,6 +464,7 @@ function capturePrintAreaImage(editor) {
 }
 
 .canvas-frame {
+  position: relative;
   width: min(100%, calc(var(--preview-max-height) * var(--canvas-ratio)));
   max-height: var(--preview-max-height);
   overflow: hidden;
@@ -439,6 +475,25 @@ function capturePrintAreaImage(editor) {
 .canvas-frame :deep(.canvas-document-viewport) {
   width: 100%;
   height: 100%;
+}
+
+.canvas-runtime-loading {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: #525252;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+.canvas-runtime-loading .save-spinner {
+  border-color: #e5e5e5;
+  border-top-color: #d61f35;
 }
 
 .canvas-loading {
@@ -538,7 +593,6 @@ function capturePrintAreaImage(editor) {
 }
 
 .animal-option:focus-visible,
-.advanced-edit:focus-visible,
 .submit-button:focus-visible,
 .date-inputs input:focus-visible {
   outline: 2px solid #c92a38;
@@ -593,21 +647,6 @@ function capturePrintAreaImage(editor) {
 
 .date-inputs input::placeholder {
   color: #737373;
-}
-
-.advanced-edit {
-  justify-self: end;
-  padding: 2px 0;
-  border: 0;
-  color: #666666;
-  background: transparent;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.advanced-edit:hover {
-  color: #b51f2d;
 }
 
 .submit-footer {

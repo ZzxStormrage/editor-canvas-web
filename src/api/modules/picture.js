@@ -6,23 +6,43 @@ const PICTURE_UPLOAD_PATH = '/admin/api/localStorage/pictures';
 /**
  * 图片存储接口模块。
  */
-export const pictureApi = Object.freeze({
-  /**
-   * 上传单张图片并返回可直接渲染的图片地址。
-   *
-   * @param {File | Blob} file 图片文件。
-   * @returns {import('alova').Method} Alova Method 实例，响应值为图片 URL。
-   */
-  upload(file) {
-    const formData = new FormData();
-    formData.append('file', assertImageFile(file));
+export const pictureApi = createPictureApi(PICTURE_UPLOAD_PATH);
 
-    return xiaoxiangClient.Post(PICTURE_UPLOAD_PATH, formData, {
-      name: 'picture.upload',
-      transformData: resolveUploadedPictureUrl
-    });
+/**
+ * 创建指定业务前缀的图片上传接口。
+ *
+ * @param {string} uploadPath 上传路径。
+ * @param {string} [methodName='picture.upload'] Alova 方法名。
+ * @returns {{ upload: (file: File | Blob) => import('alova').Method }} 图片接口。
+ */
+export function createPictureApi(uploadPath, methodName = 'picture.upload') {
+  const apiPath = normalizeUploadPath(uploadPath);
+
+  return Object.freeze({
+    /**
+     * @param {File | Blob} file 图片文件。
+     * @returns {import('alova').Method} 响应值为图片 URL 的 Alova Method。
+     */
+    upload(file) {
+      const formData = new FormData();
+      formData.append('file', assertImageFile(file));
+
+      return xiaoxiangClient.Post(apiPath, formData, {
+        name: methodName,
+        transformData: resolveUploadedPictureUrl
+      });
+    }
+  });
+}
+
+/** @param {string} value 上传路径。 @returns {string} 规范上传路径。 */
+function normalizeUploadPath(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new TypeError('Picture upload path must be a non-empty string.');
   }
-});
+
+  return value.trim();
+}
 
 /**
  * 校验上传文件。

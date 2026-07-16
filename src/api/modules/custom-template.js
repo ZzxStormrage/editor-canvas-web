@@ -5,67 +5,56 @@ const CUSTOM_TEMPLATE_ENDPOINT = import.meta.env?.VITE_CUSTOM_TEMPLATE_API_PATH 
 /**
  * 自定义模板设计接口模块。
  */
-export const customTemplateApi = Object.freeze({
-  /**
-   * 查询自定义模板列表。
-   *
-   * @param {Object} [params={}] Swagger 定义的列表查询参数。
-   * @param {{ partnerId?: string | number | null }} [options={}] 请求上下文。
-   * @returns {import('alova').Method} Alova Method 实例。
-   */
-  list(params = {}, options = {}) {
-    return xiaoxiangClient.Get(CUSTOM_TEMPLATE_ENDPOINT, {
-      name: 'customTemplate.list',
-      params: normalizeQueryParams(params),
-      headers: createRequestHeaders(options)
-    })
-  },
+export const customTemplateApi = createCustomTemplateApi(CUSTOM_TEMPLATE_ENDPOINT)
 
-  /**
-   * 查询自定义模板详情。
-   *
-   * @param {string | number} id 模板 ID。
-   * @param {{ partnerId?: string | number | null }} [options={}] 请求上下文。
-   * @returns {import('alova').Method} Alova Method 实例。
-   */
-  detail(id, options = {}) {
-    return xiaoxiangClient.Get(createDetailURL(id), {
-      name: 'customTemplate.detail',
-      headers: createRequestHeaders(options)
-    })
-  },
+/**
+ * 创建指定业务前缀的自定义模板接口模块。
+ *
+ * @param {string} endpoint 接口路径。
+ * @param {string} [namePrefix='customTemplate'] Alova 方法名前缀。
+ * @returns {Object} 自定义模板接口。
+ */
+export function createCustomTemplateApi(endpoint, namePrefix = 'customTemplate') {
+  const apiEndpoint = normalizeEndpoint(endpoint)
 
-  /**
-   * 新增自定义模板。
-   *
-   * @param {Object} dto 模板保存 DTO。
-   * @param {{ partnerId?: string | number | null }} [options={}] 请求上下文。
-   * @returns {import('alova').Method} Alova Method 实例。
-   */
-  create(dto, options = {}) {
-    return xiaoxiangClient.Post(CUSTOM_TEMPLATE_ENDPOINT, assertTemplateDto(dto), {
-      name: 'customTemplate.create',
-      headers: createRequestHeaders(options)
-    })
-  },
+  return Object.freeze({
+    /** @param {Object} [params={}] 查询参数。 @param {Object} [options={}] 请求上下文。 @returns {import('alova').Method} */
+    list(params = {}, options = {}) {
+      return xiaoxiangClient.Get(apiEndpoint, {
+        name: `${namePrefix}.list`,
+        params: normalizeQueryParams(params),
+        headers: createRequestHeaders(options)
+      })
+    },
 
-  /**
-   * 修改自定义模板。
-   *
-   * @param {Object} dto 必须包含 id 的模板保存 DTO。
-   * @param {{ partnerId?: string | number | null }} [options={}] 请求上下文。
-   * @returns {import('alova').Method} Alova Method 实例。
-   */
-  update(dto, options = {}) {
-    const payload = assertTemplateDto(dto)
-    normalizePositiveInteger(payload.id, 'customTemplate.id')
+    /** @param {string | number} id 模板 ID。 @param {Object} [options={}] 请求上下文。 @returns {import('alova').Method} */
+    detail(id, options = {}) {
+      return xiaoxiangClient.Get(createDetailURL(apiEndpoint, id), {
+        name: `${namePrefix}.detail`,
+        headers: createRequestHeaders(options)
+      })
+    },
 
-    return xiaoxiangClient.Put(CUSTOM_TEMPLATE_ENDPOINT, payload, {
-      name: 'customTemplate.update',
-      headers: createRequestHeaders(options)
-    })
-  }
-})
+    /** @param {Object} dto 模板 DTO。 @param {Object} [options={}] 请求上下文。 @returns {import('alova').Method} */
+    create(dto, options = {}) {
+      return xiaoxiangClient.Post(apiEndpoint, assertTemplateDto(dto), {
+        name: `${namePrefix}.create`,
+        headers: createRequestHeaders(options)
+      })
+    },
+
+    /** @param {Object} dto 模板 DTO。 @param {Object} [options={}] 请求上下文。 @returns {import('alova').Method} */
+    update(dto, options = {}) {
+      const payload = assertTemplateDto(dto)
+      normalizePositiveInteger(payload.id, 'customTemplate.id')
+
+      return xiaoxiangClient.Put(apiEndpoint, payload, {
+        name: `${namePrefix}.update`,
+        headers: createRequestHeaders(options)
+      })
+    }
+  })
+}
 
 /**
  * 创建详情请求地址。
@@ -73,8 +62,17 @@ export const customTemplateApi = Object.freeze({
  * @param {string | number} id 模板 ID。
  * @returns {string} 详情地址。
  */
-function createDetailURL(id) {
-  return `${CUSTOM_TEMPLATE_ENDPOINT}/${normalizePositiveInteger(id, 'customTemplate.id')}`
+function createDetailURL(endpoint, id) {
+  return `${endpoint}/${normalizePositiveInteger(id, 'customTemplate.id')}`
+}
+
+/** @param {string} value 接口路径。 @returns {string} 规范接口路径。 */
+function normalizeEndpoint(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new TypeError('Custom template endpoint must be a non-empty string.')
+  }
+
+  return value.trim().replace(/\/$/, '')
 }
 
 /**

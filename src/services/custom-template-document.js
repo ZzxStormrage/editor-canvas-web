@@ -1,4 +1,5 @@
 import { customTemplateApi } from '../api/modules/custom-template.js'
+import { customerCustomTemplateApi } from '../api/modules/customer-custom-template.js'
 import { parseEditorDocument } from '../canvas-editor-core/src/utils/editor-document.js'
 
 /**
@@ -9,7 +10,30 @@ import { parseEditorDocument } from '../canvas-editor-core/src/utils/editor-docu
  * @returns {Promise<{ record: Object, document: Object }>} 模板记录和规范化文档。
  */
 export async function loadCustomTemplateDocument(templateId, options = {}) {
-  const response = await customTemplateApi.detail(templateId, options)
+  return loadTemplateDocument(customTemplateApi, templateId, options)
+}
+
+/**
+ * 通过 customer 接口获取并解析 H5 生产页面模板。
+ *
+ * @param {string | number} templateId 模板主键。
+ * @param {{ partnerId?: string | number | null }} [options={}] 请求上下文。
+ * @returns {Promise<{ record: Object, document: Object }>} 模板记录和规范化文档。
+ */
+export async function loadCustomerTemplateDocument(templateId, options = {}) {
+  return loadTemplateDocument(customerCustomTemplateApi, templateId, options)
+}
+
+/**
+ * 使用指定模板 API 加载统一文档。
+ *
+ * @param {{ detail: Function }} api 模板接口。
+ * @param {string | number} templateId 模板主键。
+ * @param {{ partnerId?: string | number | null }} options 请求上下文。
+ * @returns {Promise<{ record: Object, document: Object }>} 模板记录和规范化文档。
+ */
+async function loadTemplateDocument(api, templateId, options) {
+  const response = await api.detail(templateId, options)
   const record = resolveCustomTemplateRecord(response)
 
   if (!record) {

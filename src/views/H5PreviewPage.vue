@@ -31,7 +31,7 @@
 import { ref } from 'vue'
 
 import H5CanvasRenderer from '../components/h5-preview/H5CanvasRenderer.vue'
-import { applyH5Document, readH5Document } from '../services/h5-document.js'
+import { applyH5Document, readH5Document, saveH5Document } from '../services/h5-document.js'
 import '../assets/scss/h5-preview.scss'
 
 const documentData = ref(readH5Document())

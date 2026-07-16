@@ -1,4 +1,4 @@
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import { customTemplateApi } from '../api/modules/custom-template.js'
 import { resolveCustomTemplateRecord } from '../services/custom-template-document.js'
@@ -6,6 +6,7 @@ import { setAccessToken } from '../services/auth-token.js'
 import { MESSAGE_TYPES, postBridgeMessage } from '../services/message-bridge.js'
 
 const TOKEN_QUERY_KEYS = ['token', 'authorization', 'Authorization']
+const ROUTE_CONTEXT_KEYS = ['id', 'itemId', 'userId', 'partnerId', 'templateName', 'previewImgUrl']
 
 /**
  * 管理编辑器路由与自定义模板接口之间的加载、创建和更新流程。
@@ -24,6 +25,9 @@ export function useCustomTemplatePersistence(options) {
   const saving = ref(false)
   const template = reactive(createTemplateState())
   let routeContext = readRouteContext(route)
+  let activeRouteKey = createRoutePersistenceKey(route)
+  let initializationQueued = false
+  let isMounted = false
 
   const statusText = computed(() => {
     if (loading.value) {
@@ -40,14 +44,20 @@ export function useCustomTemplatePersistence(options) {
    */
   async function initialize() {
     if (loading.value) {
+      initializationQueued = true
       return null
     }
 
+    initializationQueued = false
     loading.value = true
     try {
-      routeContext = readRouteContext(route)
-      applyRouteContext(template, routeContext)
-      if (routeContext.id) {
+      activeRouteKey = createRoutePersistenceKey(route)
+      const currentRouteContext = readRouteContext(route)
+      routeContext = currentRouteContext
+      resetTemplateState(template)
+      applyRouteContext(template, currentRouteContext)
+      editor.getEditor()?.clearDocument?.()
+      if (currentRouteContext.id) {
         postLifecycleMessage(
           MESSAGE_TYPES.TEMPLATE_LOADING,
           createTemplatePayload(template, {
@@ -55,9 +65,9 @@ export function useCustomTemplatePersistence(options) {
           })
         )
       }
-      await applyRouteAuthorization(routeContext, route, router)
+      await applyRouteAuthorization(currentRouteContext, route, router)
 
-      if (!routeContext.id) {
+      if (!currentRouteContext.id) {
         postLifecycleMessage(
           MESSAGE_TYPES.EDITOR_INITIALIZED,
           createTemplatePayload(template, {
@@ -67,13 +77,13 @@ export function useCustomTemplatePersistence(options) {
         return null
       }
 
-      const response = await customTemplateApi.detail(routeContext.id, createRequestOptions(template))
+      const response = await customTemplateApi.detail(currentRouteContext.id, createRequestOptions(template))
       const record = resolveCustomTemplateRecord(response)
 
       if (!record) {
         throw new Error('模板详情接口未返回有效数据。')
       }
-      applyTemplateRecord(template, record, routeContext)
+      applyTemplateRecord(template, record, currentRouteContext)
       await loadTemplateContent(editor, record.content)
       editor.fitArtboardToView()
       postLifecycleMessage(
@@ -100,6 +110,10 @@ export function useCustomTemplatePersistence(options) {
       return null
     } finally {
       loading.value = false
+      if (initializationQueued) {
+        initializationQueued = false
+        void initialize()
+      }
     }
   }
 
@@ -149,6 +163,8 @@ export function useCustomTemplatePersistence(options) {
       }
 
       if (template.id) {
+        routeContext = { ...routeContext, id: template.id }
+        activeRouteKey = createContextPersistenceKey(routeContext)
         await syncRouteTemplateId(route, router, template.id)
       }
 
@@ -174,7 +190,19 @@ export function useCustomTemplatePersistence(options) {
     }
   }
 
-  onMounted(initialize)
+  watch(
+    () => createRoutePersistenceKey(route),
+    (routeKey) => {
+      if (isMounted && routeKey !== activeRouteKey) {
+        void initialize()
+      }
+    }
+  )
+
+  onMounted(() => {
+    isMounted = true
+    void initialize()
+  })
 
   return {
     loading,
@@ -252,6 +280,43 @@ function createTemplateState() {
     templateName: '',
     previewImgUrl: ''
   }
+}
+
+/**
+ * 清空旧模板状态，避免路由切换后沿用上一份模板元数据。
+ *
+ * @param {Object} target 当前模板状态。
+ * @returns {void}
+ */
+function resetTemplateState(target) {
+  Object.assign(target, createTemplateState())
+}
+
+/**
+ * 创建用于监听模板路由变化的稳定键。
+ *
+ * @param {import('vue-router').RouteLocationNormalizedLoaded} route 当前路由。
+ * @returns {string} 路由持久化键。
+ */
+function createRoutePersistenceKey(route) {
+  return createContextPersistenceKey({
+    id: readRouteValue(route, ['id']),
+    itemId: readRouteValue(route, ['itemId']),
+    userId: readRouteValue(route, ['userId']),
+    partnerId: readRouteValue(route, ['partnerId', 'xPartnerId', 'X-Partner-Id']),
+    templateName: readRouteValue(route, ['templateName']),
+    previewImgUrl: readRouteValue(route, ['previewImgUrl'])
+  })
+}
+
+/**
+ * 将模板路由上下文转换为稳定字符串。
+ *
+ * @param {Object} context 模板路由上下文。
+ * @returns {string} 稳定上下文键。
+ */
+function createContextPersistenceKey(context) {
+  return JSON.stringify(ROUTE_CONTEXT_KEYS.map((key) => String(context[key] ?? '')))
 }
 
 /**

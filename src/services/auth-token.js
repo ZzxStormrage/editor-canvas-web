@@ -1,11 +1,11 @@
 import { MESSAGE_TYPES, postBridgeMessage, subscribeBridgeMessage } from './message-bridge.js'
 
-// 临时回退 Token，宿主发送 auth:token 后会立即被内存中的新 Token 替换。
-const TEMPORARY_ACCESS_TOKEN =
-  'eyJhbGciOiJIUzUxMiJ9.eyJqdGkiOiI2ZDhlZWM2N2MzZGE0ZDc0YjBkYjVlZWNiMzljMGU0MyIsInN1YiI6ImFkbWluIn0.WPOMKzkpYbQqAbhj8g0CqCTck16GA-acCYuot_L9cq8wz3ckz1Cp4YwBy7KbDC9IzAzgf-k5fb1vXkne06FPQQ'
-let accessToken = TEMPORARY_ACCESS_TOKEN
+const ACCESS_TOKEN_WAIT_TIMEOUT = 3000
+const CONFIGURED_ACCESS_TOKEN = import.meta.env?.VITE_TEMPORARY_ACCESS_TOKEN
+let accessToken = CONFIGURED_ACCESS_TOKEN ? normalizeAccessToken(CONFIGURED_ACCESS_TOKEN) : ''
 let removeTokenSubscription = null
 const authExpiredSubscribers = new Set()
+const accessTokenWaiters = new Set()
 
 /**
  * 设置当前运行时 Token。
@@ -15,6 +15,8 @@ const authExpiredSubscribers = new Set()
  */
 export function setAccessToken(token) {
   accessToken = normalizeAccessToken(token)
+  accessTokenWaiters.forEach((resolve) => resolve(accessToken))
+  accessTokenWaiters.clear()
   return accessToken
 }
 
@@ -25,6 +27,35 @@ export function setAccessToken(token) {
  */
 export function getAccessToken() {
   return accessToken || null
+}
+
+/**
+ * 等待宿主传入 Token，避免页面初始化请求抢在 auth:token 之前发出。
+ *
+ * @param {number} [timeout=ACCESS_TOKEN_WAIT_TIMEOUT] 最大等待时间，单位毫秒。
+ * @returns {Promise<string | null>} Token 或超时后的 null。
+ */
+export function waitForAccessToken(timeout = ACCESS_TOKEN_WAIT_TIMEOUT) {
+  if (accessToken) {
+    return Promise.resolve(accessToken)
+  }
+
+  const waitTimeout =
+    Number.isFinite(Number(timeout)) && Number(timeout) >= 0 ? Number(timeout) : ACCESS_TOKEN_WAIT_TIMEOUT
+
+  return new Promise((resolve) => {
+    let timer = null
+    const finish = (token = null) => {
+      if (timer) {
+        clearTimeout(timer)
+      }
+      accessTokenWaiters.delete(finish)
+      resolve(token)
+    }
+
+    accessTokenWaiters.add(finish)
+    timer = setTimeout(() => finish(), waitTimeout)
+  })
 }
 
 /**

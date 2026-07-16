@@ -193,6 +193,9 @@ if (coreEditor) {
 | `token` | `string` | 否 | 兼容路由鉴权，也支持 `authorization`。读取后会立即从地址栏删除。 |
 
 Token 优先通过 `postMessage` 的 `auth:token` 发送，避免出现在浏览器历史、截图或宿主日志中。
+源码不内置生产 Token；本地调试如确实需要临时 Token，应通过未提交的
+`VITE_TEMPORARY_ACCESS_TOKEN` 环境变量配置。API 请求最多等待 3 秒接收宿主 Token，超时后
+按无 Token 请求并由接口返回登录过期提示。
 
 页面使用独立的 `useCustomTemplatePersistence()` 管理持久化，不会把 HTTP 逻辑写入
 `canvas-editor-core`。“立即保存”的请求规则：
@@ -527,6 +530,15 @@ postBridgeMessage('document:saved', {
 
 ```js
 Page({
+  onLoad(options) {
+    const templateId = encodeURIComponent(options.templateId)
+    const token = encodeURIComponent(wx.getStorageSync('accessToken'))
+
+    this.setData({
+      editorUrl: `https://editor.example.com/#/h5-page/chinese-zodiac?templateId=${templateId}&token=${token}`
+    })
+  },
+
   handleEditorMessage(event) {
     const messages = event.detail.data || []
     const message = [...messages]
@@ -548,6 +560,11 @@ Page({
   }
 })
 ```
+
+微信 `web-view` 标准能力不提供小程序主动调用 H5 JavaScript 的通道，因此首次 Token 推荐放在
+H5 hash 路由查询参数中。H5 支持 `token`、`authorization` 和 `Authorization`，读取后会立即
+写入内存并通过 `router.replace()` 从地址栏删除。后台 iframe 或具备 JavaScript 注入能力的
+原生容器仍推荐发送 `auth:token` 消息，避免 Token 出现在 URL 中。
 
 生肖页面保存成功后会按以下顺序处理：
 
@@ -1557,17 +1574,22 @@ function onDocumentLoaded({ editor }) {
 
 # 带分销商请求头回显模板
 #/h5-page/chinese-zodiac?templateId=1001&partnerId=10
+
+# 微信小程序 web-view 初始化时传入 Token
+#/h5-page/chinese-zodiac?templateId=1001&token=ACCESS_TOKEN
 ```
 
 | 参数 | 位置 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
-| `templateId` | 查询参数 | 正整数 | 是 | 自定义模板主键；请求 `/admin/api/customTemplate/{templateId}`。 |
+| `templateId` | 查询参数 | 正整数 | 是 | 自定义模板主键；请求 `/customer/api/customTemplate/{templateId}`。 |
 | `partnerId` | 查询参数 | 正整数 | 否 | 写入模板详情请求的 `X-Partner-Id` 请求头。 |
+| `token` | 查询参数 | 字符串 | 否 | 小程序初始化 Token；兼容 `authorization` 和 `Authorization`，读取后立即从 URL 删除。 |
 
-正式约定使用查询参数 `templateId`，不使用含义模糊的 `id`。Token 仍通过已有
-`auth:token` postMessage 通信传入，不放在 H5 页面 URL 中。接口返回的 `content` 会先经过
+正式约定使用查询参数 `templateId`，不使用含义模糊的 `id`。H5 生产页面的模板读取和截图上传
+统一使用 `/customer/api`，后台编辑器继续使用 `/admin/api`。接口返回的 `content` 会先经过
 统一文档校验，再交给 `CanvasDocumentViewport` 还原；没有 `templateId` 或接口失败时显示页面
-错误状态，不初始化画布，也不会使用本地模拟数据。
+错误状态，不初始化画布，也不会使用本地模拟数据。截图上传地址为
+`/customer/api/localStorage/pictures`。
 
 ## H5 文档测试运行时
 

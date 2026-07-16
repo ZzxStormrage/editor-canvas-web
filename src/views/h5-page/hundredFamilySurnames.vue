@@ -100,7 +100,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 
-import { pictureApi } from '../../api/index.js'
+import { customerPictureApi } from '../../api/index.js'
 import { loadFontFace } from '../../canvas-editor-core/src/index.js'
 import CanvasDocumentViewport from '../../components/canvas-runtime/CanvasDocumentViewport.vue'
 
@@ -405,7 +405,7 @@ function capturePrintAreaImage(editor) {
     includeMask: false,
     type: 'image/png',
     quality: 1,
-    upload: (file) => pictureApi.upload(file)
+    upload: (file) => customerPictureApi.upload(file)
   })
 }
 
