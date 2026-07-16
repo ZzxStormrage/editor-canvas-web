@@ -1,7 +1,7 @@
 <template>
   <main class="page">
     <section class="canvas-section" aria-label="生肖效果预览">
-      <div class="canvas-frame" :style="canvasFrameStyle">
+      <div v-if="!templateLoading" class="canvas-frame" :style="canvasFrameStyle">
         <CanvasDocumentViewport
           ref="canvasViewportRef"
           :document="documentData"
@@ -9,6 +9,11 @@
           @loaded="handleDocumentLoaded"
         />
       </div>
+      <div v-else class="canvas-loading" role="status" aria-live="polite">
+        <span class="save-spinner" aria-hidden="true"></span>
+        <span>模板加载中...</span>
+      </div>
+      <p v-if="templateError" class="template-error" role="alert">{{ templateError }}</p>
     </section>
 
     <section class="page-container">
@@ -75,18 +80,23 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { pictureApi } from '../../api/index.js'
 import CanvasDocumentViewport from '../../components/canvas-runtime/CanvasDocumentViewport.vue'
+import { loadCustomTemplateDocument } from '../../services/custom-template-document.js'
 
 const type = ref(1)
 const canvasViewportRef = ref(null)
+const route = useRoute()
 const year = ref('1990')
 const month = ref('01')
 const day = ref('01')
 const saving = ref(false)
 const saveStatus = ref({ type: 'success', text: '' })
+const templateLoading = ref(false)
+const templateError = ref('')
 const dateTextBindings = [
   { description: '年', value: year },
   { description: '月', value: month },
@@ -112,7 +122,7 @@ const animalList = [
   { type: 12, name: '猪', icon: 'https://xiaoxiang.ele007.com/file/image/animal12.png' }
 ]
 
-const documentData = {
+const FALLBACK_DOCUMENT = {
   version: 1,
   canvas: {
     width: 1024,
@@ -360,27 +370,108 @@ const documentData = {
   ]
 }
 
+const documentData = shallowRef(FALLBACK_DOCUMENT)
+let templateRequestId = 0
+
 const selectedAnimal = computed(() => {
   return animalList.find((item) => item.type === type.value) ?? animalList[0]
 })
 
 const describedImageMap = computed(() => {
   return new Map(
-    documentData.elements
+    documentData.value.elements
       .map((element) => [getImageDescription(element), element])
       .filter(([description]) => description)
   )
 })
 
 const canvasFrameStyle = computed(() => {
-  const width = Number(documentData.canvas.width)
-  const height = Number(documentData.canvas.height)
+  const width = Number(documentData.value.canvas.width)
+  const height = Number(documentData.value.canvas.height)
 
   return {
     '--canvas-ratio': width / height,
     aspectRatio: `${width} / ${height}`
   }
 })
+
+/**
+ * 根据当前路由加载模板，未传模板 ID 时使用模拟 JSON。
+ *
+ * @returns {Promise<void>} 模板加载完成。
+ */
+async function loadTemplateFromRoute() {
+  const requestId = ++templateRequestId
+  const templateId = resolveTemplateId(route.query.templateId)
+
+  templateError.value = ''
+
+  if (!templateId && route.query.templateId) {
+    documentData.value = FALLBACK_DOCUMENT
+    templateError.value = '模板 ID 无效，当前显示示例模板。'
+    templateLoading.value = false
+    return
+  }
+
+  if (!templateId) {
+    documentData.value = FALLBACK_DOCUMENT
+    templateLoading.value = false
+    return
+  }
+
+  templateLoading.value = true
+
+  try {
+    const { document } = await loadCustomTemplateDocument(templateId, {
+      partnerId: resolveRouteValue(route.query.partnerId)
+    })
+
+    if (requestId !== templateRequestId) {
+      return
+    }
+
+    documentData.value = document
+  } catch (error) {
+    if (requestId !== templateRequestId) {
+      return
+    }
+
+    console.error('Chinese zodiac template load failed.', error)
+    documentData.value = FALLBACK_DOCUMENT
+    templateError.value = error.message || '模板加载失败，当前显示示例模板。'
+  } finally {
+    if (requestId === templateRequestId) {
+      templateLoading.value = false
+    }
+  }
+}
+
+/**
+ * 将路由模板 ID 归一化为正整数。
+ *
+ * @param {*} value 路由参数值。
+ * @returns {number | null} 合法模板 ID。
+ */
+function resolveTemplateId(value) {
+  const rawValue = Array.isArray(value) ? value[0] : value
+  const number = Number(rawValue)
+
+  return Number.isSafeInteger(number) && number > 0 ? number : null
+}
+
+/**
+ * 读取可选的单值路由参数。
+ *
+ * @param {*} value 路由参数值。
+ * @returns {string | number | null} 单值参数。
+ */
+function resolveRouteValue(value) {
+  if (Array.isArray(value)) {
+    return value[0] ?? null
+  }
+
+  return value ?? null
+}
 
 function getImageDescription(element) {
   return typeof element.attributes?.image?.description === 'string' ? element.attributes.image.description.trim() : ''
@@ -444,6 +535,14 @@ function applyDateTextValues(editor = canvasViewportRef.value?.getEditor?.()) {
 watch([year, month, day], () => {
   applyDateTextValues()
 })
+
+watch(
+  () => [route.query.templateId, route.query.partnerId],
+  () => {
+    void loadTemplateFromRoute()
+  },
+  { immediate: true }
+)
 
 function onAdvancedEdit() {
   // TODO: 高级编辑
@@ -521,12 +620,15 @@ function capturePrintAreaImage(editor) {
 .canvas-section {
   --preview-max-height: clamp(210px, 42dvh, 380px);
 
+  position: relative;
   display: flex;
   min-height: 0;
   padding: 12px 16px;
   align-items: center;
   justify-content: center;
   flex: 0 1 auto;
+  flex-direction: column;
+  gap: 8px;
   background: #f2f3f5;
 }
 
@@ -541,6 +643,34 @@ function capturePrintAreaImage(editor) {
 .canvas-frame :deep(.canvas-document-viewport) {
   width: 100%;
   height: 100%;
+}
+
+.canvas-loading {
+  display: flex;
+  width: min(100%, var(--preview-max-height));
+  max-height: var(--preview-max-height);
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: #525252;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+.canvas-loading .save-spinner {
+  border-color: #e5e5e5;
+  border-top-color: #d61f35;
+}
+
+.template-error {
+  max-width: 100%;
+  margin: 0;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .page-container {

@@ -1,6 +1,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import { customTemplateApi } from '../api/modules/custom-template.js'
+import { resolveCustomTemplateRecord } from '../services/custom-template-document.js'
 import { setAccessToken } from '../services/auth-token.js'
 import { MESSAGE_TYPES, postBridgeMessage } from '../services/message-bridge.js'
 
@@ -67,7 +68,11 @@ export function useCustomTemplatePersistence(options) {
       }
 
       const response = await customTemplateApi.detail(routeContext.id, createRequestOptions(template))
-      const record = resolveTemplateRecord(response)
+      const record = resolveCustomTemplateRecord(response)
+
+      if (!record) {
+        throw new Error('模板详情接口未返回有效数据。')
+      }
       applyTemplateRecord(template, record, routeContext)
       await loadTemplateContent(editor, record.content)
       editor.fitArtboardToView()
@@ -133,7 +138,7 @@ export function useCustomTemplatePersistence(options) {
       const response = created
         ? await customTemplateApi.create(dto, createRequestOptions(template))
         : await customTemplateApi.update(dto, createRequestOptions(template))
-      const responseRecord = resolveOptionalTemplateRecord(response)
+      const responseRecord = resolveCustomTemplateRecord(response)
 
       if (responseRecord) {
         applyTemplateRecord(template, responseRecord, routeContext)
@@ -437,49 +442,6 @@ async function syncRouteTemplateId(route, router, id) {
 }
 
 /**
- * 从常见响应包装中提取模板记录。
- *
- * @param {*} response 服务端响应。
- * @returns {Object} 模板记录。
- */
-function resolveTemplateRecord(response) {
-  const record = resolveOptionalTemplateRecord(response)
-
-  if (!record) {
-    throw new Error('模板详情接口未返回有效数据。')
-  }
-
-  return record
-}
-
-/**
- * 从常见响应包装中可选提取模板记录。
- *
- * @param {*} value 服务端响应。
- * @param {number} [depth=0] 当前解包深度。
- * @returns {Object | null} 模板记录。
- */
-function resolveOptionalTemplateRecord(value, depth = 0) {
-  if (!isPlainObject(value) || depth > 4) {
-    return null
-  }
-
-  if (isTemplateRecord(value)) {
-    return value
-  }
-
-  for (const key of ['data', 'result', 'body']) {
-    const record = resolveOptionalTemplateRecord(value[key], depth + 1)
-
-    if (record) {
-      return record
-    }
-  }
-
-  return null
-}
-
-/**
  * 从常见新增响应中提取模板 ID。
  *
  * @param {*} value 服务端响应。
@@ -556,18 +518,6 @@ function resolveTemplateList(value, depth = 0) {
   }
 
   return []
-}
-
-/** @param {*} value 待检查值。 @returns {boolean} 是否为模板记录。 */
-function isTemplateRecord(value) {
-  return (
-    isPlainObject(value) &&
-    (value.id !== undefined ||
-      value.itemId !== undefined ||
-      value.templateName !== undefined ||
-      value.previewImgUrl !== undefined ||
-      typeof value.content === 'string')
-  )
 }
 
 /** @param {*} value 待检查值。 @returns {boolean} 是否为普通对象。 */

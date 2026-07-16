@@ -1481,6 +1481,31 @@ function onDocumentLoaded({ editor }) {
 `arrangeLayersByRole()` 和 `setElementsVisibilityByAttribute()` 只改变当前运行时状态；
 `loadDocument()` 本身始终按 JSON 顺序无损还原。
 
+### 生肖 H5 模板路由
+
+生肖生产页面使用查询参数接收模板主键：
+
+```text
+# 使用本地示例模板
+#/h5-page/chinese-zodiac
+
+# 回显模板 ID 1001
+#/h5-page/chinese-zodiac?templateId=1001
+
+# 带分销商请求头回显模板
+#/h5-page/chinese-zodiac?templateId=1001&partnerId=10
+```
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| `templateId` | 查询参数 | 正整数 | 否 | 自定义模板主键；存在时请求 `/admin/api/customTemplate/{templateId}`。 |
+| `partnerId` | 查询参数 | 正整数 | 否 | 写入模板详情请求的 `X-Partner-Id` 请求头。 |
+
+正式约定使用查询参数 `templateId`，不使用含义模糊的 `id`。Token 仍通过已有
+`auth:token` postMessage 通信传入，不放在 H5 页面 URL 中。接口返回的 `content` 会先经过
+统一文档校验，再交给 `CanvasDocumentViewport` 还原；没有 `templateId` 或接口失败时显示页面
+内置示例模板。
+
 ## H5 文档测试运行时
 
 本节 API 服务于 `H5PreviewPage` 测试页，不替代 `canvas-editor-core` 的统一文档加载。
