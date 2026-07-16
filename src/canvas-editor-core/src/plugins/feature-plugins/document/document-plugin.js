@@ -11,6 +11,7 @@ import {
   parseEditorDocument,
   visitDocumentNodePairs
 } from '../../../utils/editor-document.js';
+import { loadDocumentFonts } from '../../../utils/font.js';
 import { toCssObjectFit } from '../../../utils/image-fit.js';
 
 /**
@@ -64,7 +65,10 @@ export class DocumentPlugin {
     this._assertReady();
     const normalizedOptions = this._normalizeLoadOptions(options);
     const document = parseEditorDocument(value);
-    const imageResources = await this._preloadImages(document.elements);
+    const [imageResources] = await Promise.all([
+      this._preloadImages(document.elements),
+      this._preloadFonts(document.elements)
+    ]);
 
     this._applyDocument(document, normalizedOptions, imageResources);
     this._context.eventBus.emit('document:loaded', { document: cloneSerializable(document) });
@@ -199,6 +203,13 @@ export class DocumentPlugin {
       result.objectPosition = source.objectPosition ?? 'center center';
     }
 
+    const fontUrl = this._context.pluginManager?.get('text')?.getFontUrl?.(element);
+    if (fontUrl) {
+      result.fontUrl = fontUrl;
+    } else {
+      delete result.fontUrl;
+    }
+
     if (element.children?.length) {
       result.children = element.children.map((child) => this._serializeNode(child, artboard, false));
     } else {
@@ -223,6 +234,21 @@ export class DocumentPlugin {
       return new Map(entries);
     } catch (error) {
       throw new EditorError(error.message || 'Document image preload failed.', 'DOCUMENT_IMAGE_LOAD_FAILED');
+    }
+  }
+
+  /**
+   * 预加载文档字体，确保创建 Text 节点时字体已经注册。
+   *
+   * @private
+   * @param {Object[]} elements 文档节点。
+   * @returns {Promise<void>} 字体预加载完成。
+   */
+  async _preloadFonts(elements) {
+    try {
+      await loadDocumentFonts(elements);
+    } catch (error) {
+      throw new EditorError(error.message || 'Document font preload failed.', 'DOCUMENT_FONT_LOAD_FAILED');
     }
   }
 

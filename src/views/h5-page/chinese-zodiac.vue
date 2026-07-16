@@ -59,22 +59,10 @@
     </section>
 
     <footer class="submit-footer">
-      <p
-        v-if="saveStatus.text"
-        class="save-status"
-        :class="`is-${saveStatus.type}`"
-        role="status"
-        aria-live="polite"
-      >
+      <p v-if="saveStatus.text" class="save-status" :class="`is-${saveStatus.type}`" role="status" aria-live="polite">
         {{ saveStatus.text }}
       </p>
-      <button
-        class="submit-button"
-        type="button"
-        :disabled="saving"
-        :aria-busy="saving"
-        @click="onSubmit"
-      >
+      <button class="submit-button" type="button" :disabled="saving" :aria-busy="saving" @click="onSubmit">
         {{ saving ? '保存中...' : '立即购买' }}
       </button>
     </footer>
@@ -87,7 +75,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { pictureApi } from '../../api/index.js'
 import CanvasDocumentViewport from '../../components/canvas-runtime/CanvasDocumentViewport.vue'
@@ -99,6 +87,15 @@ const month = ref('01')
 const day = ref('01')
 const saving = ref(false)
 const saveStatus = ref({ type: 'success', text: '' })
+const dateTextBindings = [
+  { description: '年', value: year },
+  { description: '月', value: month },
+  { description: '日', value: day }
+]
+const DIANZI_DIANHEI_FONT_URL =
+  'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202301/499a3f9fb0f042b5ad5f5c05bc608712.ttf'
+const DIANZI_DANMO_FONT_URL =
+  'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202301/3e6dc58b785d499e9c5545344f3917f2.ttf'
 
 const animalList = [
   { type: 1, name: '鼠', icon: 'https://xiaoxiang.ele007.com/file/image/animal1.png' },
@@ -125,28 +122,7 @@ const documentData = {
   elements: [
     {
       tag: 'Image',
-      url: 'https://ele-aiketie.ele007.com/yinxiang/202607/466cce2b-2aac-4bab-b77c-9381657bd494.png',
-      visible: true,
-      x: 147.33227344992054,
-      y: 102.39999999999998,
-      width: 729.3354531001589,
-      height: 819.2,
-      lockRatio: true,
-      draggable: true,
-      editable: true,
-      opacity: 1,
-      elementId: 'OVXQnrMQiaiF_-SCPCCih',
-      attributes: {
-        image: {
-          description: '羊'
-        }
-      },
-      objectFit: 'fill',
-      objectPosition: 'center center'
-    },
-    {
-      tag: 'Image',
-      url: 'https://ele-aiketie.ele007.com/yinxiang/202607/909ae1dd-543c-4534-ab10-b22cfc79cf74.png',
+      url: 'https://ele-aiketie.ele007.com/yinxiang/202607/795969b2-3609-4b27-b280-7bc8d1d907cb.png',
       name: '背景图',
       visible: true,
       locked: true,
@@ -160,8 +136,7 @@ const documentData = {
       hittable: false,
       hitChildren: false,
       hitSelf: false,
-      opacity: 1,
-      elementId: 'NZ-1V9ORNTtUlFkz3NyT7',
+      elementId: 'G_bCSCtZL_HwnfweUl63N',
       attributes: {
         image: {
           role: 'background'
@@ -172,75 +147,214 @@ const documentData = {
     },
     {
       tag: 'Image',
-      url: 'https://ele-aiketie.ele007.com/yinxiang/202607/3cf1025c-78da-4114-ae1f-3729191ce83b.png',
+      url: 'https://ele-aiketie.ele007.com/yinxiang/202607/d7a0435e-aace-486f-a9cb-e4db68da48da.png',
       visible: true,
+      locked: true,
       x: 102.39999999999998,
-      y: 102.39999999999995,
+      y: 102.39999999999998,
       width: 819.2,
       height: 819.2,
       lockRatio: true,
       draggable: true,
       editable: true,
-      opacity: 1,
-      elementId: 'OY8qERyz18IC7itPqFEYA',
-      attributes: {
-        image: {
-          description: '鼠'
-        }
-      },
-      objectFit: 'fill',
-      objectPosition: 'center center'
-    },
-    {
-      tag: 'Image',
-      url: 'https://ele-aiketie.ele007.com/yinxiang/202607/5aaa01ee-5b10-4be7-8caf-854ec2ae1000.png',
-      name: '遮罩图',
-      visible: true,
-      locked: true,
-      x: 0,
-      y: 0,
-      width: 1024,
-      height: 1024,
-      lockRatio: false,
-      draggable: true,
-      editable: true,
       hittable: false,
       hitChildren: false,
       hitSelf: false,
-      opacity: 1,
-      elementId: 'JoN9kNTGXcqCxBpHhBvFr',
+      elementId: 'z_48qsZIW1WltS-dRvFDg',
       attributes: {
         image: {
-          role: 'mask'
+          description: '羊'
         }
       },
       objectFit: 'fill',
       objectPosition: 'center center'
     },
     {
-      tag: 'Rect',
-      name: '打印区域',
-      x: 136.99999999999994,
-      y: 138.00000000000006,
-      width: 750,
-      height: 750,
-      scaleX: 1,
-      scaleY: 1,
-      rotation: 0,
-      lockRatio: false,
+      tag: 'Text',
+      width: 152,
+      fill: '#EF4444',
+      text: '11',
+      fontFamily: '字由点字典黑35J',
+      fontUrl: DIANZI_DIANHEI_FONT_URL,
+      fontSize: 132,
+      fontWeight: 400,
+      italic: false,
+      textDecoration: 'none',
+      letterSpacing: 0,
+      lineHeight: 161,
+      writingMode: 'x',
+      textAlign: 'center',
+      verticalAlign: 'top',
+      locked: true,
+      x: 424,
+      y: 871,
       draggable: true,
       editable: true,
-      fill: 'rgba(124, 58, 237, 0.14)',
-      stroke: '#7c3aed',
-      strokeWidth: 2,
       editConfig: {
-        editSize: 'size',
-        lockRatio: false,
-        rotateable: false,
-        skewable: false
+        editSize: 'font-size'
       },
-      opacity: 1,
-      elementId: 'KnIf1dUhBMV-1VMOsxuaF',
+      elementId: 'ZJFa9TmBg7bamYXW3xZiC',
+      attributes: {
+        text: {
+          description: '月'
+        },
+        textInput: {
+          enabled: false,
+          characterSet: 'any',
+          allowManualNewline: true,
+          allowSymbols: true,
+          maxCharactersPerLine: null,
+          maxCharacters: null,
+          maxLines: null
+        }
+      }
+    },
+    {
+      tag: 'Text',
+      width: 147,
+      fill: '#7C3AED',
+      text: '23',
+      fontFamily: '字由点字典黑35J',
+      fontUrl: DIANZI_DIANHEI_FONT_URL,
+      fontSize: 128,
+      fontWeight: 400,
+      italic: false,
+      textDecoration: 'none',
+      letterSpacing: 0,
+      lineHeight: 156,
+      writingMode: 'x',
+      textAlign: 'center',
+      verticalAlign: 'top',
+      locked: true,
+      x: 640,
+      y: 876,
+      draggable: true,
+      editable: true,
+      editConfig: {
+        editSize: 'font-size'
+      },
+      elementId: 'ZJIWMrEkH2QVO9t_qkmAR',
+      attributes: {
+        text: {
+          description: '日'
+        },
+        textInput: {
+          enabled: false,
+          characterSet: 'any',
+          allowManualNewline: true,
+          allowSymbols: true,
+          maxCharactersPerLine: null,
+          maxCharacters: null,
+          maxLines: null
+        }
+      }
+    },
+    {
+      tag: 'Text',
+      width: 287,
+      fill: '#EF4444',
+      text: '1991',
+      fontFamily: '字由点字典黑35J',
+      fontUrl: DIANZI_DIANHEI_FONT_URL,
+      fontSize: 125,
+      fontWeight: 700,
+      italic: false,
+      textDecoration: 'none',
+      letterSpacing: 0,
+      lineHeight: 153,
+      writingMode: 'x',
+      textAlign: 'center',
+      verticalAlign: 'top',
+      locked: true,
+      x: 102.4,
+      y: 871,
+      draggable: true,
+      editable: true,
+      editConfig: {
+        editSize: 'font-size'
+      },
+      elementId: 'sJMXhEBYDdkDCtkgQeehH',
+      attributes: {
+        text: {
+          description: '年'
+        },
+        textInput: {
+          enabled: false,
+          characterSet: 'any',
+          allowManualNewline: true,
+          allowSymbols: true,
+          maxCharactersPerLine: null,
+          maxCharacters: null,
+          maxLines: null
+        }
+      }
+    },
+    {
+      tag: 'Group',
+      visible: false,
+      draggable: false,
+      editable: false,
+      hittable: false,
+      elementId: '34AQ-VLNdjVi6glygIrRz',
+      attributes: {},
+      x: 241.98580932617188,
+      y: 100.7073974609375,
+      children: [
+        {
+          tag: 'Path',
+          opacity: 0.9,
+          visible: true,
+          path: 'M -241.98580932617188 -100.70739746093744 L -241.98580932617188 923.2926025390625',
+          draggable: false,
+          editable: false,
+          hittable: false,
+          stroke: '#4A90D9',
+          strokeWidth: 1,
+          dashPattern: [6, 4],
+          elementId: '6d_qJ9kg5ZXLz3nbMJNI_',
+          attributes: {}
+        },
+        {
+          tag: 'Path',
+          opacity: 0.9,
+          visible: true,
+          path: 'M -241.98580932617188 1.692602539062591 L 782.0141906738281 1.692602539062591',
+          draggable: false,
+          editable: false,
+          hittable: false,
+          stroke: '#4A90D9',
+          strokeWidth: 1,
+          dashPattern: [6, 4],
+          elementId: 'teMwUqh0eBbJFDB4mWPGa',
+          attributes: {}
+        }
+      ]
+    },
+    {
+      tag: 'Text',
+      width: 384,
+      fill: '#7C3AED',
+      text: '端午节',
+      fontFamily: '字由点字淡墨行楷',
+      fontUrl: DIANZI_DANMO_FONT_URL,
+      fontSize: 128,
+      fontWeight: 500,
+      italic: false,
+      textDecoration: 'under',
+      letterSpacing: 0,
+      lineHeight: 156,
+      writingMode: 'x',
+      textAlign: 'center',
+      verticalAlign: 'top',
+      locked: true,
+      x: 0,
+      y: 24.400000000000006,
+      draggable: true,
+      editable: true,
+      editConfig: {
+        editSize: 'font-size'
+      },
+      elementId: 'BHfK9ON_n_eqSs70SERry',
       attributes: {}
     }
   ]
@@ -284,6 +398,7 @@ function selectType(item) {
 /** @param {Object} editor 核心编辑器实例。 @returns {void} */
 function handleCanvasReady(editor) {
   applySelectedAnimal(editor)
+  applyDateTextValues(editor)
 }
 
 /** @param {{ editor: Object }} payload 文档加载事件。 @returns {void} */
@@ -293,6 +408,7 @@ function handleDocumentLoaded(payload) {
     front: ['mask']
   })
   applySelectedAnimal(payload.editor)
+  applyDateTextValues(payload.editor)
 }
 
 /**
@@ -306,6 +422,28 @@ function applySelectedAnimal(editor = canvasViewportRef.value?.getEditor?.()) {
     exclusive: true
   })
 }
+
+/**
+ * 将年月日输入值同步到描述匹配的文字元素。
+ *
+ * @param {Object | null} [editor] 核心编辑器实例。
+ * @returns {void}
+ */
+function applyDateTextValues(editor = canvasViewportRef.value?.getEditor?.()) {
+  if (!editor) {
+    return
+  }
+
+  dateTextBindings.forEach(({ description, value }) => {
+    editor.getElementsByAttribute('text.description', description).forEach((element) => {
+      editor.replaceText(element, value.value)
+    })
+  })
+}
+
+watch([year, month, day], () => {
+  applyDateTextValues()
+})
 
 function onAdvancedEdit() {
   // TODO: 高级编辑
@@ -346,9 +484,7 @@ async function createSavePayload(editor) {
     throw new Error('无法获取当前画布 JSON。')
   }
 
-  const printAreaImage = editor.getPrintAreaProperties()
-    ? await capturePrintAreaImage(editor)
-    : null
+  const printAreaImage = editor.getPrintAreaProperties() ? await capturePrintAreaImage(editor) : null
 
   return { editorJson, printAreaImage }
 }

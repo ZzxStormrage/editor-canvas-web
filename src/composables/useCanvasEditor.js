@@ -44,12 +44,7 @@ export function useCanvasEditor(options = {}) {
   const notify = typeof options.onMessage === 'function' ? options.onMessage : null
   const textControls = useTextControls(getEditor)
   const artboardControls = useArtboardControls(getEditor, notify)
-  const assetControls = useAssetControls(
-    getEditor,
-    artboardControls.getArtboardBounds,
-    textControls.fontFamily,
-    notify
-  )
+  const assetControls = useAssetControls(getEditor, artboardControls.getArtboardBounds, textControls.fontFamily, notify)
   const layerMenuControls = useLayerMenu(getEditor, canvasRef)
   const selectionToolbarControls = useSelectionToolbar(getEditor, canvasRef)
   const layerControls = useLayerControls(getEditor)
@@ -214,6 +209,7 @@ export function useCanvasEditor(options = {}) {
     underline: textControls.underline,
     lineThrough: textControls.lineThrough,
     writingMode: textControls.writingMode,
+    fontListLoading: textControls.fontListLoading,
     fontOptions: textControls.fontOptions,
     loadFontList: textControls.loadFontList,
     addText: textControls.addText,

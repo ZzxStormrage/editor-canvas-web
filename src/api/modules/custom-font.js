@@ -1,6 +1,6 @@
-import { xiaoxiangClient } from '../clients/xiaoxiang-client.js';
+import { xiaoxiangClient } from '../clients/xiaoxiang-client.js'
 
-const CUSTOM_FONT_LIST_PATH = '/customer/api/customFont/list';
+const CUSTOM_FONT_LIST_PATH = '/admin/api/customFont/list'
 
 /**
  * 自定义字体接口模块。
@@ -16,6 +16,6 @@ export const customFontApi = Object.freeze({
   list() {
     return xiaoxiangClient.Get(CUSTOM_FONT_LIST_PATH, {
       name: 'customFont.list'
-    });
+    })
   }
-});
+})

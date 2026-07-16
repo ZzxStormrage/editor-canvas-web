@@ -44,6 +44,7 @@
 <script setup>
 import { reactive, watch } from 'vue';
 
+import { loadDocumentFonts } from '../../canvas-editor-core/src/index.js';
 import { resolveH5ElementType } from '../../services/h5-document.js';
 
 const props = defineProps({
@@ -54,7 +55,12 @@ const inputValues = reactive({});
 
 watch(
   () => props.document,
-  initializeInputValues,
+  (document) => {
+    initializeInputValues();
+    void loadDocumentFonts(document?.elements).catch((error) => {
+      console.warn('H5 document font loading failed.', error);
+    });
+  },
   { immediate: true, deep: true }
 );
 

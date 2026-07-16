@@ -1074,7 +1074,8 @@ const text = await editor.text.add('标题', {
   x: 40,
   y: 80,
   width: 300,
-  fontFamily: 'PingFang SC',
+  fontFamily: '字由点字典黑35J',
+  fontUrl: 'https://cdn.example.com/fonts/dianzidianhei-35j.ttf',
   fontSize: 32,
   fontWeight: 700,
   fill: '#111827',
@@ -1084,6 +1085,32 @@ const text = await editor.text.add('标题', {
   writingMode: 'x'
 })
 ```
+
+远程自定义字体必须同时传入 `fontFamily` 和 `fontUrl`。`fontFamily` 是渲染名称，`fontUrl`
+是浏览器可访问且允许跨域加载的字体文件地址。系统字体不需要 `fontUrl`。
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `fontFamily` | `string` | 否 | `PingFang SC` | 字体名称；包含空格时内核自动处理 CSS 引号。 |
+| `fontUrl` | `string` | 远程字体是 | 无 | 字体文件地址，支持浏览器 `FontFace` 可加载的格式。 |
+
+`editor.text.add()` 会先等待字体注册，再创建和测量文本。`editor.loadDocument()` 也会在还原
+场景树前递归预加载 JSON 中的全部字体，因此 `#/editor` 与使用 `CanvasDocumentViewport` 的
+H5 页面采用相同字体初始化流程。
+
+导出的文本节点会保留字体地址：
+
+```js
+{
+  tag: 'Text',
+  text: '标题',
+  fontFamily: '字由点字典黑35J',
+  fontUrl: 'https://cdn.example.com/fonts/dianzidianhei-35j.ttf'
+}
+```
+
+请始终保存 `editor.exportDocument()` 的完整结果，不要在业务层删除 `fontUrl`；否则其他页面
+只能拿到字体名称，无法下载对应字体文件。
 
 也可以将完整配置作为第一个参数：
 
@@ -1132,6 +1159,26 @@ console.log(replacedText === title) // true，仍是原节点
 该方法保留原文本节点、`elementId`、业务属性、位置、样式和固定宽度。它只替换内容，
 文本实际排版高度仍由 Leafer 根据内容、宽度、字号和行高计算。未严格单选文本时抛出
 `TEXT_SELECTION_REQUIRED`。
+
+### `editor.replaceText(target, content)`
+
+替换指定文本节点，不要求先选中，也不会改变当前选区。适合 H5 表单根据文字描述更新模板：
+
+```js
+const yearElements = editor.getElementsByAttribute('text.description', '年')
+
+yearElements.forEach((element) => {
+  editor.replaceText(element, '1990')
+})
+```
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `target` | `Text` | 是 | 无 | `getElementsByAttribute()` 等查询 API 返回的文本节点。 |
+| `content` | `string \| number` | 是 | 无 | 新文本内容，数字会转换为字符串。 |
+
+该方法保留 `elementId`、自定义属性、位置、样式和固定宽度，并返回原文本节点。目标不是文本
+节点时抛出 `TEXT_TARGET_INVALID`。
 
 ### 编辑和读取
 

@@ -31,6 +31,7 @@ export function normalizeTextOptions(text = {}, baseText = {}) {
     text: normalizeTextValue(merged.text),
     placeholder: normalizeOptionalString(merged.placeholder, 'text.placeholder'),
     fontFamily: normalizeFontFamily(merged.fontFamily),
+    fontUrl: normalizeFontUrl(merged.fontUrl),
     fontSize,
     fontWeight: merged.fontWeight,
     italic: normalizeOptionalBoolean(merged.italic, 'text.italic'),
@@ -87,6 +88,12 @@ function normalizeFontFamily(value) {
   }
 
   return /\s/.test(fontFamily) ? `"${fontFamily}"` : fontFamily
+}
+
+function normalizeFontUrl(value) {
+  const fontUrl = normalizeOptionalString(value, 'text.fontUrl')?.trim()
+
+  return fontUrl || undefined
 }
 
 function normalizeOptionalBoolean(value, key) {

@@ -4,8 +4,10 @@ import '@leafer-in/text-editor'
 
 import { EditorError } from '../../../errors/editor-error.js'
 import { getElementDataContainer } from '../../../utils/element-data.js'
+import { loadFontFace } from '../../../utils/font.js'
 import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
 
+const FONT_URL_KEY = '__canvasEditorFontUrl'
 const RAW_TEXT_KEY = '__canvasEditorRawText'
 const MIN_TEXT_PIXEL = 1
 const VISUAL_ITALIC_KEY = '__canvasEditorVisualItalic'
@@ -96,6 +98,7 @@ export class TextPlugin {
       const { contentLayer, eventBus, state } = this._context
       const inputOptions = this._getAddInputOptions(content, options)
       const textOptions = this._normalizeAddOptions(inputOptions, state)
+      await loadFontFace(textOptions.fontFamily, textOptions.fontUrl)
       const { renderOptions, rawText } = this._getRenderableTextOptions(textOptions)
       this._applyTextEditConfig(renderOptions)
       this._applyMeasuredAddWidth(renderOptions, rawText, inputOptions, state)
@@ -106,6 +109,7 @@ export class TextPlugin {
       })
 
       getElementDataContainer(text, true)
+      this._setFontUrl(text, textOptions.fontUrl)
       this._setRawText(text, rawText)
       this._applyVisualItalic(text, renderOptions)
       text.forceUpdate?.()
@@ -133,31 +137,42 @@ export class TextPlugin {
    *
    * @param {LeaferText | Object} [target] 文本节点或更新配置。
    * @param {Object} [options] 更新配置。
+   * @param {{ select?: boolean }} [behavior={}] 更新后的选区行为。
    * @returns {LeaferText} 更新后的文本节点。
    * @throws {EditorError} 当没有可更新文本节点或配置非法时抛出。
    */
-  update(target, options) {
+  update(target, options, behavior = {}) {
     this._assertReady()
 
     const text = this._resolveUpdateTarget(target, options)
     const updateOptions = options === undefined ? target : options
     const normalizedOptions = TextPlugin.normalizeOptions(updateOptions ?? {})
+    const previousFontFamily = text.fontFamily ?? text.__?.fontFamily
 
     const { renderOptions, rawText } = this._getRenderableTextOptions(normalizedOptions, text)
     this._applyTextEditConfig(renderOptions)
     this._applyMeasuredUpdateWidth(text, renderOptions, rawText, normalizedOptions)
 
     text.set?.(renderOptions)
+    this._syncFontUrl(text, normalizedOptions, previousFontFamily)
     this._setRawText(text, rawText)
     this._applyTextPatchFallback(text, renderOptions)
     this._applyVisualItalic(text, renderOptions)
     text.forceUpdate?.()
     text.updateLayout?.()
-    this._activeText = text
-    this._context.innerEditor?.select(text)
-    this._refreshSelectedEditBox()
+
+    if (behavior.select !== false) {
+      this._activeText = text
+      this._context.innerEditor?.select(text)
+      this._refreshSelectedEditBox()
+    }
+
     this._context.eventBus.emit('text:updated', { text, options: normalizedOptions })
-    this._emitSelected(text)
+    this._refreshAfterFontLoad(text, normalizedOptions)
+
+    if (behavior.select !== false) {
+      this._emitSelected(text)
+    }
 
     return text
   }
@@ -175,8 +190,39 @@ export class TextPlugin {
     }
 
     this._setRawText(target, source.text ?? target.text ?? '')
+    this._setFontUrl(target, source.fontUrl)
     this._ensureTextEditConfig(target)
     return target
+  }
+
+  /**
+   * 替换指定文本节点的内容，并保留原节点样式、位置和固定宽度。
+   *
+   * @param {LeaferText} target 指定文本节点。
+   * @param {string | number} content 新文本内容。
+   * @param {{ select?: boolean }} [options={}] 是否在替换后选中节点。
+   * @returns {LeaferText} 已替换内容的原文本节点。
+   * @throws {EditorError} 目标不是文本节点时抛出。
+   */
+  replace(target, content, options = {}) {
+    this._assertReady()
+
+    if (!isTextElement(target)) {
+      throw new EditorError('text.replace(target, content) requires a Text node.', 'TEXT_TARGET_INVALID')
+    }
+
+    const width = Number(target.width ?? target.__?.width)
+    const updateOptions = {
+      text: content ?? '',
+      ...(Number.isFinite(width) && width > 0 ? { width } : {})
+    }
+    const updatedText = this.update(target, updateOptions, { select: options.select === true })
+
+    this._context.eventBus.emit('text:replaced', {
+      text: updatedText,
+      content: String(content ?? '')
+    })
+    return updatedText
   }
 
   /**
@@ -195,18 +241,7 @@ export class TextPlugin {
       throw new EditorError('Select one text element before replacing it.', 'TEXT_SELECTION_REQUIRED')
     }
 
-    const width = Number(text.width ?? text.__?.width)
-    const updateOptions = {
-      text: content ?? '',
-      ...(Number.isFinite(width) && width > 0 ? { width } : {})
-    }
-    const updatedText = this.update(text, updateOptions)
-
-    this._context.eventBus.emit('text:replaced', {
-      text: updatedText,
-      content: String(content ?? '')
-    })
-    return updatedText
+    return this.replace(text, content, { select: true })
   }
 
   /**
@@ -251,6 +286,7 @@ export class TextPlugin {
     const options = TextPlugin.normalizeOptions({
       text: this._getRawText(text),
       fontFamily: this._stripFontFamilyQuotes(text.fontFamily ?? data.fontFamily),
+      fontUrl: this.getFontUrl(text) ?? undefined,
       fontSize: this._normalizePixelValue(text.fontSize ?? data.fontSize),
       fontWeight: text.fontWeight ?? data.fontWeight,
       italic: Boolean(data.italic ?? text.italic),
@@ -289,6 +325,21 @@ export class TextPlugin {
     }
 
     return this._isUsableText(this._activeText) ? this._activeText : null
+  }
+
+  /**
+   * 获取文本节点关联的远程字体地址。
+   *
+   * @param {LeaferText} target 文本节点。
+   * @returns {string | null} 字体地址；系统字体或非文本节点返回 null。
+   */
+  getFontUrl(target) {
+    if (!isTextElement(target)) {
+      return null
+    }
+
+    const fontUrl = target[FONT_URL_KEY]
+    return typeof fontUrl === 'string' && fontUrl.trim() ? fontUrl : null
   }
 
   /**
@@ -531,6 +582,7 @@ export class TextPlugin {
 
   _getRenderableTextOptions(options, target) {
     const renderOptions = { ...options }
+    delete renderOptions.fontUrl
     const hasText = Object.prototype.hasOwnProperty.call(renderOptions, 'text')
     const hasWritingMode = Object.prototype.hasOwnProperty.call(renderOptions, 'writingMode')
     const writingMode = renderOptions.writingMode ?? target?.writingMode ?? target?.__?.writingMode ?? 'x'
@@ -541,6 +593,75 @@ export class TextPlugin {
     }
 
     return { renderOptions, rawText }
+  }
+
+  /**
+   * 根据更新参数同步文本字体地址。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @param {Object} options 本次归一化配置。
+   * @param {string | undefined} previousFontFamily 更新前字体名称。
+   * @returns {void}
+   */
+  _syncFontUrl(text, options, previousFontFamily) {
+    if (Object.prototype.hasOwnProperty.call(options, 'fontUrl')) {
+      this._setFontUrl(text, options.fontUrl)
+      return
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(options, 'fontFamily') &&
+      this._stripFontFamilyQuotes(options.fontFamily) !== this._stripFontFamilyQuotes(previousFontFamily)
+    ) {
+      this._setFontUrl(text, null)
+    }
+  }
+
+  /**
+   * 字体异步注册完成后刷新文本尺寸和选区。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @param {Object} options 本次归一化配置。
+   * @returns {void}
+   */
+  _refreshAfterFontLoad(text, options) {
+    if (!options.fontUrl) {
+      return
+    }
+
+    void loadFontFace(options.fontFamily ?? text.fontFamily, options.fontUrl)
+      .then(() => {
+        if (!this._isUsableText(text)) {
+          return
+        }
+
+        const width = this._measureTextWidth(this._getRawText(text), this.getStyle(text) ?? {})
+        if (width > 0) {
+          text.set?.({ width })
+        }
+        text.forceUpdate?.()
+        text.updateLayout?.()
+        this._refreshSelectedEditBox()
+      })
+      .catch((error) => {
+        console.warn(`Font loading failed: ${options.fontFamily ?? text.fontFamily}`, error)
+      })
+  }
+
+  /**
+   * 保存不属于 Leafer 渲染属性的字体地址。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @param {string | null | undefined} fontUrl 字体地址。
+   * @returns {void}
+   */
+  _setFontUrl(text, fontUrl) {
+    if (text) {
+      text[FONT_URL_KEY] = typeof fontUrl === 'string' && fontUrl.trim() ? fontUrl.trim() : null
+    }
   }
 
   /**

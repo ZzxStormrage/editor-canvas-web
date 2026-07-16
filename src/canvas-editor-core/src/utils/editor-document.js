@@ -6,6 +6,7 @@ export const DOCUMENT_NODE_SOURCE_KEY = '__canvasEditorDocumentSource';
 const DOCUMENT_METADATA_KEYS = new Set([
   'attributes',
   'elementId',
+  'fontUrl',
   'objectFit',
   'objectPosition',
   'sourceHeight',
@@ -188,6 +189,10 @@ function validateDocumentNode(element) {
 
   if (element.children !== undefined && !Array.isArray(element.children)) {
     throw new EditorError('Document node children must be an array.', 'DOCUMENT_NODE_CHILDREN_INVALID');
+  }
+
+  if (element.fontUrl !== undefined && typeof element.fontUrl !== 'string') {
+    throw new EditorError('Document text fontUrl must be a string.', 'DOCUMENT_FONT_URL_INVALID');
   }
 
   (element.children ?? []).forEach((child) => validateDocumentNode(child));
