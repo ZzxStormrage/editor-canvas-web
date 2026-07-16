@@ -1,16 +1,16 @@
 import { Text as LeaferText } from 'leafer-ui'
 import { EditorEvent, EditorScaleEvent, InnerEditorEvent } from '@leafer-in/editor'
+import '@leafer-in/text-editor'
 
 import { EditorError } from '../../../errors/editor-error.js'
 import { getElementDataContainer } from '../../../utils/element-data.js'
 import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
-import { applyTextEditorStyleLater } from '../../../utils/dom.js'
-import { installTextEditorAdapter } from './text-editor-adapter.js'
 
 const RAW_TEXT_KEY = '__canvasEditorRawText'
 const MIN_TEXT_PIXEL = 1
 const VISUAL_ITALIC_KEY = '__canvasEditorVisualItalic'
 const VISUAL_ITALIC_SKEW_X = -12
+const NATIVE_DOUBLE_CLICK_TOLERANCE = 4
 const DIMENSION_TEXT_KEYS = new Set([
   'text',
   'fontFamily',
@@ -33,6 +33,9 @@ export class TextPlugin {
     this._context = null
     /** @private @type {LeaferText | null} */
     this._activeText = null
+    /** @private @type {HTMLElement | HTMLCanvasElement | null} */
+    this._view = null
+    this._handleNativeDoubleClick = this._handleNativeDoubleClick.bind(this)
   }
 
   /**
@@ -69,11 +72,13 @@ export class TextPlugin {
    * @returns {void}
    */
   bootstrap(context) {
-    installTextEditorAdapter()
     this._context = context
+    this._view = context.leafer?.view ?? null
     context.innerEditor?.on_(EditorEvent.SELECT, this._handleSelect, this)
     context.innerEditor?.on_(EditorScaleEvent.SCALE, this._handleScale, this)
+    context.innerEditor?.on_(InnerEditorEvent.OPEN, this._handleInnerOpen, this)
     context.innerEditor?.on_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
+    this._view?.addEventListener('dblclick', this._handleNativeDoubleClick)
   }
 
   /**
@@ -151,11 +156,27 @@ export class TextPlugin {
     this._activeText = text
     this._context.innerEditor?.select(text)
     this._refreshSelectedEditBox()
-    applyTextEditorStyleLater(this.getStyle(text))
     this._context.eventBus.emit('text:updated', { text, options: normalizedOptions })
     this._emitSelected(text)
 
     return text
+  }
+
+  /**
+   * 恢复文档文本的编辑器运行时状态。
+   *
+   * @param {Object} target Leafer 文本节点。
+   * @param {Object} source 文档文本数据。
+   * @returns {Object} 原文本节点。
+   */
+  restoreDocumentState(target, source) {
+    if (!isTextElement(target)) {
+      return target
+    }
+
+    this._setRawText(target, source.text ?? target.text ?? '')
+    this._ensureTextEditConfig(target)
+    return target
   }
 
   /**
@@ -206,7 +227,6 @@ export class TextPlugin {
     this._activeText = text
     this._restoreRawTextForEditing(text)
     this._context.innerEditor?.openInnerEditor(text, 'TextEditor', true)
-    applyTextEditorStyleLater(this.getStyle(text))
 
     return text
   }
@@ -237,10 +257,7 @@ export class TextPlugin {
       fill: typeof text.fill === 'string' ? text.fill : data.fill,
       textAlign: text.textAlign ?? data.textAlign,
       textDecoration: text.textDecoration ?? data.textDecoration,
-      letterSpacing: this._normalizePixelValue(
-        text.letterSpacing ?? data.letterSpacing ?? data.__letterSpacing,
-        0
-      ),
+      letterSpacing: this._normalizePixelValue(text.letterSpacing ?? data.letterSpacing ?? data.__letterSpacing, 0),
       lineHeight: this._normalizePixelValue(text.lineHeight ?? data.lineHeight ?? data.__lineHeight),
       writingMode: text.writingMode ?? data.writingMode,
       width: text.width ?? data.width,
@@ -280,11 +297,14 @@ export class TextPlugin {
    * @returns {void}
    */
   destroy() {
+    this._view?.removeEventListener('dblclick', this._handleNativeDoubleClick)
     this._context?.innerEditor?.off_(EditorEvent.SELECT, this._handleSelect, this)
     this._context?.innerEditor?.off_(EditorScaleEvent.SCALE, this._handleScale, this)
+    this._context?.innerEditor?.off_(InnerEditorEvent.OPEN, this._handleInnerOpen, this)
     this._context?.innerEditor?.off_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
     this._context = null
     this._activeText = null
+    this._view = null
   }
 
   /**
@@ -299,9 +319,7 @@ export class TextPlugin {
   }
 
   _getAddInputOptions(content, options) {
-    return this._isOptionsObject(content)
-      ? { ...content, ...(options ?? {}) }
-      : { ...(options ?? {}), text: content }
+    return this._isOptionsObject(content) ? { ...content, ...(options ?? {}) } : { ...(options ?? {}), text: content }
   }
 
   _normalizeAddOptions(inputOptions, state) {
@@ -377,12 +395,14 @@ export class TextPlugin {
    * @private
    */
   _getOperationBounds(state) {
-    return this._context?.artboard?.getContentBounds?.() ?? {
-      x: 0,
-      y: 0,
-      width: state.width,
-      height: state.height
-    }
+    return (
+      this._context?.artboard?.getContentBounds?.() ?? {
+        x: 0,
+        y: 0,
+        width: state.width,
+        height: state.height
+      }
+    )
   }
 
   /**
@@ -418,7 +438,9 @@ export class TextPlugin {
     const fontWeight = options.fontWeight && options.fontWeight !== 'normal' ? `${options.fontWeight} ` : ''
     const italic = options.italic ? 'italic ' : ''
     const letterSpacing = options.letterSpacing ?? 0
-    const lines = String(rawText ?? '').replace(/\r\n?/g, '\n').split('\n')
+    const lines = String(rawText ?? '')
+      .replace(/\r\n?/g, '\n')
+      .split('\n')
     const writingMode = options.writingMode ?? 'x'
 
     context.font = `${italic}${fontWeight}${fontSize}px ${fontFamily}`
@@ -806,9 +828,8 @@ export class TextPlugin {
    * @private
    */
   _refreshSelectedEditBoxLater() {
-    const schedule = typeof requestAnimationFrame === 'function'
-      ? requestAnimationFrame
-      : (callback) => setTimeout(callback, 0)
+    const schedule =
+      typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (callback) => setTimeout(callback, 0)
 
     schedule(() => {
       const innerEditor = this._context?.innerEditor
@@ -858,6 +879,80 @@ export class TextPlugin {
     }
   }
 
+  /**
+   * 使用浏览器原生 dblclick 补足触控板双击事件。
+   *
+   * Leafer 仍负责常规 double_tap；仅当它尚未打开内部编辑器时，才使用
+   * 当前单选文本和官方 EditBox 边界进入编辑，避免 Vue 层参与画布命中。
+   *
+   * @param {MouseEvent} event 浏览器双击事件。
+   * @returns {void}
+   * @private
+   */
+  _handleNativeDoubleClick(event) {
+    const innerEditor = this._context?.innerEditor
+    const text = this._getSelectedTextOnly()
+
+    if (innerEditor?.innerEditing || event.button !== 0 || !text || text.locked) {
+      return
+    }
+
+    if (this._isPointInsideEditBox(event.clientX, event.clientY)) {
+      this.edit(text)
+    }
+  }
+
+  /**
+   * 判断浏览器坐标是否位于官方 EditBox 内。
+   *
+   * @param {number} clientX 浏览器横坐标。
+   * @param {number} clientY 浏览器纵坐标。
+   * @returns {boolean} 是否位于当前选区。
+   * @private
+   */
+  _isPointInsideEditBox(clientX, clientY) {
+    const worldPoint = this._context?.skyLeafer?.getWorldPointByClient?.({ clientX, clientY }, true)
+    const editBounds = this._context?.innerEditor?.editBox?.rect?.worldBoxBounds
+
+    if (!worldPoint || !editBounds) {
+      return false
+    }
+
+    const gap = NATIVE_DOUBLE_CLICK_TOLERANCE
+
+    return (
+      worldPoint.x >= editBounds.x - gap &&
+      worldPoint.x <= editBounds.x + editBounds.width + gap &&
+      worldPoint.y >= editBounds.y - gap &&
+      worldPoint.y <= editBounds.y + editBounds.height + gap
+    )
+  }
+
+  /**
+   * 打开官方 TextEditor 后确保输入层获得焦点。
+   *
+   * @param {import('@leafer-in/interface').IInnerEditorEvent} event 内部编辑器事件。
+   * @returns {void}
+   * @private
+   */
+  _handleInnerOpen(event) {
+    const text = event?.editTarget
+
+    if (!isTextElement(text)) {
+      return
+    }
+
+    this._activeText = text
+    event.innerEditor?.editDom?.focus?.({ preventScroll: true })
+  }
+
+  /**
+   * 提交官方 TextEditor 的输入结果并同步编辑器状态。
+   *
+   * @param {import('@leafer-in/interface').IInnerEditorEvent} event 内部编辑器关闭事件。
+   * @returns {void}
+   * @private
+   */
   _handleInnerClose(event) {
     const text = event?.editTarget
 
@@ -873,6 +968,11 @@ export class TextPlugin {
     }
 
     this._applyWritingModeText(text)
+    this._context?.eventBus.emit('text:updated', {
+      text,
+      options: { text: this._getRawText(text) }
+    })
+    this._emitSelected(text)
   }
 
   _emitSelected(text) {

@@ -94,6 +94,29 @@ export function useElementDataControls(getEditor) {
     return editor.elementData.setById(elementId, nextAttributes, { replace: true })
   }
 
+  /**
+   * 根据自定义属性路径和值获取元素。
+   *
+   * @param {string} path 属性路径。
+   * @param {*} value 匹配值。
+   * @returns {Object[]} 匹配元素。
+   */
+  function getElementsByAttribute(path, value) {
+    return getEditor()?.getElementsByAttribute(path, value) ?? []
+  }
+
+  /**
+   * 根据自定义属性路径和值切换元素显隐。
+   *
+   * @param {string} path 属性路径。
+   * @param {*} value 当前匹配值。
+   * @param {{ exclusive?: boolean }} [options={}] 显隐选项。
+   * @returns {Object[]} 当前匹配元素。
+   */
+  function setElementsVisibilityByAttribute(path, value, options = {}) {
+    return getEditor()?.setElementsVisibilityByAttribute(path, value, options) ?? []
+  }
+
   return {
     getSelectedElementAttributes,
     setSelectedElementAttributes,
@@ -102,6 +125,8 @@ export function useElementDataControls(getEditor) {
     exportElementAttributes,
     getElementAttributesById,
     setElementAttributesById,
-    removeElementAttributesById
+    removeElementAttributesById,
+    getElementsByAttribute,
+    setElementsVisibilityByAttribute
   }
 }

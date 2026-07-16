@@ -23,6 +23,7 @@ import { useTextControls } from './canvas-editor/useTextControls.js'
  */
 export function useCanvasEditor(options = {}) {
   const canvasRef = ref(null)
+  const ready = ref(false)
   const zoom = ref(1)
   const zoomPercent = computed(() => Math.round(zoom.value * 100))
   let editor = null
@@ -119,6 +120,7 @@ export function useCanvasEditor(options = {}) {
     artboardControls.syncPrintAreaControls()
     layerControls.refreshLayers()
     imageControls.syncImageProperties()
+    ready.value = true
   }
 
   /** 销毁事件桥接及 Editor 管理的全部 Leafer 资源。 */
@@ -128,6 +130,7 @@ export function useCanvasEditor(options = {}) {
     selectionToolbarControls.stopSelectionToolbar()
     editor?.destroy()
     editor = null
+    ready.value = false
   }
 
   /** 放大画布。 */
@@ -153,12 +156,50 @@ export function useCanvasEditor(options = {}) {
     editor?.centerArtboard()
   }
 
+  /**
+   * 按当前容器适配并居中画板。
+   *
+   * @param {number | Object} [fitOptions] 画板适配选项。
+   * @returns {void}
+   */
+  function fitArtboardToView(fitOptions) {
+    editor?.fitArtboardToView(fitOptions)
+    syncZoom()
+  }
+
+  /**
+   * 通过核心文档插件加载统一 JSON。
+   *
+   * @param {string | Object} document JSON 字符串或文档对象。
+   * @param {Object} [loadOptions={}] 核心加载选项。
+   * @returns {Promise<Object | null>} 已加载文档。
+   */
+  async function loadDocument(document, loadOptions = {}) {
+    if (!editor) {
+      return null
+    }
+
+    const loadedDocument = await editor.loadDocument(document, loadOptions)
+    artboardControls.syncArtboardControls()
+    artboardControls.syncPrintAreaControls()
+    layerControls.refreshLayers()
+    imageControls.syncImageProperties()
+    selectionToolbarControls.syncSelectionToolbar()
+    return loadedDocument
+  }
+
+  /** @returns {Object | null} 当前统一编辑器文档。 */
+  function exportDocument() {
+    return editor?.exportDocument() ?? null
+  }
+
   onMounted(initCanvas)
   onBeforeUnmount(destroyCanvas)
 
   return {
     getEditor,
     canvasRef,
+    ready,
     zoom,
     zoomPercent,
     textValue: textControls.textValue,
@@ -176,7 +217,6 @@ export function useCanvasEditor(options = {}) {
     fontOptions: textControls.fontOptions,
     loadFontList: textControls.loadFontList,
     addText: textControls.addText,
-    handleCanvasDoubleClick: textControls.handleCanvasDoubleClick,
     backgroundInputRef: artboardControls.backgroundInputRef,
     backgroundUploading: artboardControls.backgroundUploading,
     maskInputRef: artboardControls.maskInputRef,
@@ -236,9 +276,14 @@ export function useCanvasEditor(options = {}) {
     getElementAttributesById: elementDataControls.getElementAttributesById,
     setElementAttributesById: elementDataControls.setElementAttributesById,
     removeElementAttributesById: elementDataControls.removeElementAttributesById,
+    getElementsByAttribute: elementDataControls.getElementsByAttribute,
+    setElementsVisibilityByAttribute: elementDataControls.setElementsVisibilityByAttribute,
+    loadDocument,
+    exportDocument,
     zoomIn,
     zoomOut,
     resetZoom,
-    centerArtboard
+    centerArtboard,
+    fitArtboardToView
   }
 }

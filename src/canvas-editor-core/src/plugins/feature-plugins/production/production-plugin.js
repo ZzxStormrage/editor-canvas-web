@@ -89,6 +89,30 @@ export class ProductionPlugin {
   }
 
   /**
+   * 恢复文档节点的生产辅助运行时标记。
+   *
+   * @param {Object} target Leafer 节点。
+   * @param {Object} source 文档节点数据。
+   * @returns {Object} 原节点。
+   */
+  restoreDocumentState(target, source) {
+    const attributes = getElementDataContainer(target)?.attributes ?? {};
+    const label = source.customType ?? source.name;
+
+    if (attributes.image?.role === 'mask') {
+      target[MASK_SOURCE_KEY] = source.url ?? null;
+    }
+
+    if (label === PRINT_AREA_LABEL) {
+      target[PRINT_AREA_KEY] = true;
+      target.customType = PRINT_AREA_LABEL;
+      target.name = source.name ?? PRINT_AREA_LABEL;
+    }
+
+    return target;
+  }
+
+  /**
    * 创建或重置唯一打印区域。
    *
    * @param {{ x?: number, y?: number, width?: number, height?: number }} [options={}] 画板相对位置和尺寸。

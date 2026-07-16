@@ -16,6 +16,7 @@
 | 替换图片或文字 | “图片” → “文本” → “H5 文档运行时” |
 | 开发图层面板 | “图层” → “选择” → “元素业务属性” |
 | 查询元素或截图 | “元素业务属性” → “生产遮罩与打印区域” |
+| 通过后台打开模板 | “自定义模板路由” → “统一编辑器文档” |
 | 排查问题 | “错误处理” → 对应模块 |
 
 ## 快速开始
@@ -152,6 +153,73 @@ if (coreEditor) {
 
 `getEditor()` 在组件挂载前和卸载后会返回 `null`。
 
+### 编辑器、业务页面和 H5 测试页
+
+三个入口必须区分，不能互相复制渲染逻辑。
+
+| 使用场景 | Vue 入口 | 渲染实现 | JSON 用途 |
+| --- | --- | --- | --- |
+| 完整编辑器 | `CanvasWorkspace` + `useCanvasEditor` | `canvas-editor-core` | 无损加载、编辑和导出 |
+| 生产业务页面 | `CanvasDocumentViewport` | `canvas-editor-core` | 无损加载，再调用 API 应用页面策略 |
+| H5 功能测试页 | `H5PreviewPage` + `H5CanvasRenderer` | HTML/CSS | 仅测试 H5 DTO、替换和输入规则 |
+
+`H5PreviewPage` 不是生产页面，也不是编辑器还原入口。生产页面需要与编辑器保持一致时，
+使用 `CanvasDocumentViewport`，不要直接操作 Leafer 节点。
+
+## 自定义模板路由
+
+完整编辑器页面通过 `#/editor` 接收模板上下文。`id` 存在时会请求模板详情并调用
+`editor.loadDocument()` 还原 JSON；没有 `id` 时作为新模板。
+
+```text
+# 新建模板
+#/editor?itemId=2001&templateName=生肖模板&partnerId=10
+
+# 编辑已有模板，两种 id 写法均支持
+#/editor/1001?itemId=2001&partnerId=10
+#/editor?id=1001&itemId=2001&partnerId=10
+```
+
+路由参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `number` | 编辑时是 | 自定义模板 ID，可放在路径或查询参数。 |
+| `itemId` | `number` | 保存时是 | 商品 ID，优先使用路由值，否则使用详情接口值。 |
+| `templateName` | `string` | 否 | 模板名；未传且详情中没有时保存为“未命名模板”。 |
+| `previewImgUrl` | `string` | 否 | 预览图地址；编辑已有模板时默认保留接口值。 |
+| `userId` | `number` | 否 | 新增后回查模板 ID 时用于缩小列表范围。 |
+| `partnerId` | `number` | 否 | 写入 `X-Partner-Id` 请求头；兼容 `xPartnerId` 和 `X-Partner-Id`。 |
+| `token` | `string` | 否 | 兼容路由鉴权，也支持 `authorization`。读取后会立即从地址栏删除。 |
+
+Token 优先通过 `postMessage` 的 `auth:token` 发送，避免出现在浏览器历史、截图或宿主日志中。
+
+页面使用独立的 `useCustomTemplatePersistence()` 管理持久化，不会把 HTTP 逻辑写入
+`canvas-editor-core`。“立即保存”的请求规则：
+
+| 状态 | 请求 | 地址 | 行为 |
+| --- | --- | --- | --- |
+| 带 `id` 初始化 | `GET` | `https://xiaoxiang.ele007.com/admin/api/customTemplate/{id}` | 读取 `content` 并还原编辑器。 |
+| 没有 `id` 保存 | `POST` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 新增模板，返回 ID 后写回路由。 |
+| 已有 `id` 保存 | `PUT` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 修改当前模板。 |
+| 模板列表 | `GET` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 按条件查询模板，也用于新增后补齐 ID。 |
+
+保存时 `content` 是 `editor.exportDocument()` 结果的 JSON 字符串：
+
+```js
+{
+  content: JSON.stringify(editor.exportDocument()),
+  id: 1001,
+  itemId: 2001,
+  previewImgUrl: 'https://cdn.example.com/template-preview.png',
+  templateName: '生肖模板'
+}
+```
+
+接口域名使用 `VITE_XIAOXIANG_API_BASE_URL`，默认为
+`https://xiaoxiang.ele007.com`；路径可通过 `VITE_CUSTOM_TEMPLATE_API_PATH` 覆盖。
+`Authorization` 由 Alova 拦截器统一添加，`X-Partner-Id` 由模板 API 模块添加。
+
 ## postMessage 跨端通信
 
 项目通过 `src/services/message-bridge.js` 统一处理编辑器与后台管理系统、iframe、
@@ -160,7 +228,8 @@ if (coreEditor) {
 
 ### 自动初始化
 
-应用入口已经自动启动消息桥，并在编辑器加载时发送 `editor:ready`：
+应用入口已经自动启动消息桥，并在通信层加载时发送 `editor:ready`。模板页面会继续发送
+初始化、加载和保存生命周期消息：
 
 ```js
 import {
@@ -172,7 +241,11 @@ import {
 startMessageBridge()
 
 postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
-  capabilities: [MESSAGE_TYPES.AUTH_TOKEN]
+  capabilities: [
+    MESSAGE_TYPES.EDITOR_INITIALIZED,
+    MESSAGE_TYPES.TEMPLATE_SAVED,
+    MESSAGE_TYPES.TEMPLATE_SAVE_FAILED
+  ]
 })
 ```
 
@@ -184,7 +257,15 @@ postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
 | 常量 | 实际值 | 方向 | 说明 |
 | --- | --- | --- | --- |
 | `MESSAGE_TYPES.EDITOR_READY` | `'editor:ready'` | 编辑器 → 宿主 | 编辑器通信层已就绪，`payload.capabilities` 表示支持的能力。 |
+| `MESSAGE_TYPES.EDITOR_INITIALIZED` | `'editor:initialized'` | 编辑器 → 宿主 | 当前编辑器页面和模板上下文初始化完成，可以开始交互。 |
 | `MESSAGE_TYPES.AUTH_TOKEN` | `'auth:token'` | 双向 | 传递登录 Token；编辑器接收后会用于后续 API 请求。 |
+| `MESSAGE_TYPES.AUTH_EXPIRED` | `'auth:expired'` | 编辑器 → 宿主 | 接口返回 401，宿主应清理登录态并引导重新登录。 |
+| `MESSAGE_TYPES.TEMPLATE_LOADING` | `'template:loading'` | 编辑器 → 宿主 | 开始请求模板详情。 |
+| `MESSAGE_TYPES.TEMPLATE_LOADED` | `'template:loaded'` | 编辑器 → 宿主 | 模板 JSON 已成功还原到编辑器。 |
+| `MESSAGE_TYPES.TEMPLATE_LOAD_FAILED` | `'template:load-failed'` | 编辑器 → 宿主 | 模板详情请求或 JSON 还原失败。 |
+| `MESSAGE_TYPES.TEMPLATE_SAVING` | `'template:saving'` | 编辑器 → 宿主 | 开始调用新增或修改接口。 |
+| `MESSAGE_TYPES.TEMPLATE_SAVED` | `'template:saved'` | 编辑器 → 宿主 | 保存接口成功，包含模板 ID 和统一 JSON。 |
+| `MESSAGE_TYPES.TEMPLATE_SAVE_FAILED` | `'template:save-failed'` | 编辑器 → 宿主 | 保存接口或 JSON 导出失败。 |
 
 自定义消息类型可以使用任意非空字符串，推荐采用 `模块:动作` 格式，例如
 `document:saved`、`selection:changed`。`'*'` 只允许用于订阅全部消息，不能作为发送类型。
@@ -273,7 +354,8 @@ console.log(result.channels)
 
 ### 编辑器向后台管理系统发送
 
-编辑器作为 iframe 嵌入后台时，使用 `parent` 通道：
+编辑器作为 iframe 嵌入后台时，使用 `parent` 通道。正式页面的保存成功通信已经由
+`EditorPage` 自动发送，后台只需要监听 `template:saved`：
 
 ```js
 postBridgeMessage('document:saved', {
@@ -298,11 +380,64 @@ window.addEventListener('message', (event) => {
   const message = event.data
   if (message?.channel !== 'ele-editor' || message.version !== 1) return
 
-  if (message.type === 'document:saved') {
-    console.log('编辑器 JSON', message.payload.json)
+  if (message.type === 'template:saved') {
+    const { id, itemId } = message.payload.template
+    console.log('模板保存成功', { id, itemId, json: message.payload.document })
   }
 })
 ```
+
+### 模板生命周期通信示例
+
+初始化时先收到 `editor:ready`，模板页面完成新建或详情还原后收到
+`editor:initialized`。保存流程依次为 `template:saving`，成功时为 `template:saved`，失败时为
+`template:save-failed`。所有错误事件的 `payload.error` 都是普通对象，方便管理端序列化日志。
+
+```js
+const eventHandlers = {
+  'editor:initialized': ({ template }) => {
+    setEditorLoading(false)
+    setCurrentTemplate(template)
+  },
+  'template:loading': () => setEditorLoading(true),
+  'template:saving': () => setSaveLoading(true),
+  'template:saved': ({ template, document }) => {
+    setSaveLoading(false)
+    refreshTemplateList(template.id)
+    closeEditorLoading()
+    console.log('保存后的统一 JSON', document)
+  },
+  'template:load-failed': ({ error }) => showError(error.message),
+  'template:save-failed': ({ error }) => {
+    setSaveLoading(false)
+    showError(error.message)
+  },
+  'auth:expired': () => redirectToLogin()
+}
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== editorOrigin || event.source !== editorFrame.contentWindow) return
+
+  const message = event.data
+  if (message?.channel !== 'ele-editor' || message.version !== 1) return
+
+  const handler = eventHandlers[message.type]
+  handler?.(message.payload, message)
+})
+```
+
+消息 payload 约定：
+
+| 消息 | 关键字段 |
+| --- | --- |
+| `editor:initialized` | `mode`、`template`。`mode` 为 `'create'` 或 `'edit'`。 |
+| `template:loading` | `mode`、`template`。 |
+| `template:loaded` | `mode`、`template`。不重复发送完整 JSON。 |
+| `template:saving` | `action`、`template`。`action` 为 `'create'` 或 `'update'`。 |
+| `template:saved` | `success: true`、`action`、`template`、`document`。 |
+| `template:load-failed` / `template:save-failed` | `error.code`、`error.message`、`error.status`。 |
+
+生命周期消息只通知宿主，不改变编辑器保存结果；即使宿主未监听或发送失败，模板接口请求仍然继续。
 
 ### 后台管理系统向编辑器传 Token
 
@@ -560,6 +695,7 @@ const editor = createEditor({
 | `editor.image` | 图片插件。 |
 | `editor.text` | 文本插件。 |
 | `editor.layer` | 图层插件。 |
+| `editor.document` | 统一 JSON 加载、导出和清空插件。 |
 | `editor.elementData` | 元素业务属性插件。 |
 | `editor.production` | 遮罩识别、打印区域和区域截图插件。 |
 | `editor.artboard` | 白色画板管理器。 |
@@ -905,6 +1041,30 @@ const imageUrl = await editor.capturePrintArea()
 截图始终排除打印区域边框和吸附辅助线。截图使用离屏克隆场景，不会隐藏当前画布元素或
 产生闪烁。
 
+### 保存与截图相互独立
+
+“立即保存”只调用 `exportDocument()` 获取统一 JSON，不检测打印区域，也不会自动截图或上传：
+
+```js
+const editorJson = editor.exportDocument()
+```
+
+打印区域截图是独立的可选业务操作。调用方根据自己的流程决定是否执行：
+
+```js
+let printAreaImage = null
+
+if (shouldCapturePrintArea) {
+  printAreaImage = await editor.capturePrintArea({
+    includeBackground: false,
+    includeMask: false
+  })
+}
+```
+
+只有调用截图 API 时才需要检查打印区域并展示 Loading。截图不包含背景图、遮罩图、打印区域
+边框和吸附辅助线。
+
 ## 文本
 
 ### 添加文本
@@ -1175,7 +1335,92 @@ const records = editor.elementData.export()
 默认忽略空属性元素；传入 `{ includeEmpty: true }` 可包含全部元素。该方法只导出业务属性，
 不等于完整场景序列化。
 
-## H5 文档运行时
+## 统一编辑器文档
+
+统一文档由 `canvas-editor-core` 的 `DocumentPlugin` 管理。`version=1` 文档可保留画板、
+图层顺序、组合层级、锁定状态、交互状态、变换、稳定 `elementId` 和自定义属性。
+
+```js
+const editor = createEditor({ view: container })
+
+await editor.loadDocument(documentJson)
+const savedDocument = editor.exportDocument()
+```
+
+### `editor.loadDocument(document, options)`
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `document` | `object \| string` | 是 | 无 | `version=1` 文档对象或 JSON 字符串。 |
+| `options.interactive` | `boolean` | 否 | 保留 JSON | 统一覆盖节点的 `draggable`、`editable`、`hittable`。 |
+| `options.productionVisibility` | `'preserve' \| 'hidden'` | 否 | `'preserve'` | 保留或隐藏打印区域等生产辅助节点。 |
+
+图片会在替换场景前预加载。任意图片加载失败时，原文档保持不变。
+
+### `editor.exportDocument()`
+
+返回可再次传给 `loadDocument()` 的普通对象。顶层元素坐标以画板左上角为原点，组合子元素
+继续使用组合内部坐标。
+
+```js
+const json = JSON.stringify(editor.exportDocument(), null, 2)
+```
+
+### 完整编辑器中加载
+
+`CanvasWorkspace` 只监听 props 并调用 composable，不解析 JSON。
+
+```vue
+<CanvasWorkspace
+  :editor="editor"
+  :document="documentData"
+  :document-options="{ productionVisibility: 'preserve' }"
+  :fit-options="{ viewportRatio: 0.8, expandZoomRange: true }"
+/>
+```
+
+也可以直接调用：
+
+```js
+await editor.loadDocument(documentData)
+editor.fitArtboardToView({ viewportRatio: 0.8, expandZoomRange: true })
+```
+
+### 生产业务页面中加载
+
+`CanvasDocumentViewport` 只创建核心实例、调用文档 API 并负责容器尺寸适配。是否允许选择、
+拖动和缩放由调用方通过文档字段或 `loadOptions.interactive` 决定。
+
+```vue
+<CanvasDocumentViewport
+  ref="viewportRef"
+  :document="documentData"
+  :load-options="{ productionVisibility: 'hidden' }"
+  @loaded="onDocumentLoaded"
+/>
+```
+
+业务页面通过核心 API 应用自己的展示策略：
+
+```js
+function onDocumentLoaded({ editor }) {
+  editor.arrangeLayersByRole({
+    back: ['background'],
+    front: ['mask']
+  })
+
+  editor.setElementsVisibilityByAttribute('image.description', '鼠', {
+    exclusive: true
+  })
+}
+```
+
+`arrangeLayersByRole()` 和 `setElementsVisibilityByAttribute()` 只改变当前运行时状态；
+`loadDocument()` 本身始终按 JSON 顺序无损还原。
+
+## H5 文档测试运行时
+
+本节 API 服务于 `H5PreviewPage` 测试页，不替代 `canvas-editor-core` 的统一文档加载。
 
 H5 页面不创建 Leafer 编辑器实例，而是渲染可序列化文档。运行时替换通过
 `src/services/h5-document.js` 的纯文档 API 完成，返回新文档，不直接修改传入对象。
@@ -1329,12 +1574,17 @@ const layers = editor.layer.getList()
 editor.layer.reorder(layers.map((item) => item.id))
 editor.layer.toggleLock(layers[0].id)
 editor.layer.remove(layers[0].id)
+
+editor.arrangeLayersByRole({ back: ['background'], front: ['mask'] })
 ```
 
 ### 自定义属性面板
 
 ```js
 const current = editor.elementData.getSelected() ?? {}
+
+const ratImages = editor.getElementsByAttribute('image.description', '鼠')
+editor.setElementsVisibilityByAttribute('image.description', '鼠', { exclusive: true })
 
 editor.elementData.setSelected({
   ...current,

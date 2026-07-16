@@ -7,6 +7,7 @@ const LAYER_EVENT = 'layers:changed'
 const OBSERVED_PROPERTIES = new Set([
   'locked',
   'hittable',
+  'visible',
   'hitSelf',
   'hitChildren',
   'name',
@@ -182,6 +183,39 @@ export class LayerPlugin {
       action: 'reorder',
       selected: this._context.innerEditor?.list ?? []
     })
+  }
+
+  /**
+   * 按业务 role 将顶层元素移动到最底层或最顶层。
+   *
+   * 未命中的普通图层保持原始相对顺序，适合页面在无损加载后显式应用展示策略。
+   *
+   * @param {{ back?: string[], front?: string[] }} [options={}] role 排列配置。
+   * @returns {void}
+   */
+  arrangeByRole(options = {}) {
+    const contentLayer = this._context?.contentLayer
+    const backRoles = new Set(this._normalizeRoleList(options.back))
+    const frontRoles = new Set(this._normalizeRoleList(options.front))
+    const backNodes = []
+    const middleNodes = []
+    const frontNodes = []
+
+    ;(contentLayer?.children ?? []).forEach((node) => {
+      const role = this._getImageRole(getElementDataContainer(node)?.attributes)
+
+      if (backRoles.has(role)) {
+        backNodes.push(node)
+      } else if (frontRoles.has(role)) {
+        frontNodes.push(node)
+      } else {
+        middleNodes.push(node)
+      }
+    })
+
+    ;[...backNodes, ...middleNodes, ...frontNodes].forEach((node, index) => contentLayer?.add(node, index))
+    this._context.artboard?.syncAllElements?.()
+    this._emitChanged()
   }
 
   /** @param {string} id 图层 ID。 */
@@ -422,6 +456,19 @@ export class LayerPlugin {
     }
 
     return count
+  }
+
+  /**
+   * 规范化 role 列表。
+   *
+   * @private
+   * @param {*} roles role 输入。
+   * @returns {string[]} 非空 role。
+   */
+  _normalizeRoleList(roles) {
+    return Array.isArray(roles)
+      ? roles.filter((role) => typeof role === 'string' && role.trim()).map((role) => role.trim())
+      : []
   }
 
   /** @private */

@@ -94,6 +94,10 @@ export class Editor {
   get elementData() {
     return this.#pluginManager.get('elementData')
   }
+  /** @returns {import('../plugins/feature-plugins/document/document-plugin.js').DocumentPlugin} 统一文档插件。 */
+  get document() {
+    return this.#pluginManager.get('document')
+  }
   /** @returns {import('../plugins/feature-plugins/production/production-plugin.js').ProductionPlugin} 生产辅助插件。 */
   get production() {
     return this.#pluginManager.get('production')
@@ -309,6 +313,64 @@ export class Editor {
    */
   getElementsByType(type) {
     return this.elementData?.getElementsByType?.(type) ?? []
+  }
+
+  /**
+   * 根据自定义属性路径和值获取元素。
+   *
+   * @param {string} path 属性路径。
+   * @param {*} value 匹配值。
+   * @returns {Object[]} 匹配元素。
+   */
+  getElementsByAttribute(path, value) {
+    return this.elementData?.getElementsByAttribute?.(path, value) ?? []
+  }
+
+  /**
+   * 根据自定义属性路径和值切换元素显隐。
+   *
+   * @param {string} path 属性路径。
+   * @param {*} value 当前匹配值。
+   * @param {{ exclusive?: boolean }} [options={}] 显隐选项。
+   * @returns {Object[]} 当前匹配元素。
+   */
+  setElementsVisibilityByAttribute(path, value, options = {}) {
+    return this.elementData?.setVisibilityByAttribute?.(path, value, options) ?? []
+  }
+
+  /**
+   * 按业务 role 调整顶层图层位置。
+   *
+   * @param {{ back?: string[], front?: string[] }} [options={}] role 排列配置。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  arrangeLayersByRole(options = {}) {
+    this.layer?.arrangeByRole?.(options)
+    return this
+  }
+
+  // ═══════════════════ 统一文档（委托给 DocumentPlugin） ═══════════════════
+
+  /**
+   * 加载统一编辑器文档。
+   *
+   * @param {string | Object} document JSON 字符串或文档对象。
+   * @param {Object} [options={}] 加载选项。
+   * @returns {Promise<Object> | undefined} 已加载文档。
+   */
+  loadDocument(document, options = {}) {
+    return this.document?.load?.(document, options)
+  }
+
+  /** @returns {Object | null} 当前统一编辑器文档。 */
+  exportDocument() {
+    return this.document?.export?.() ?? null
+  }
+
+  /** @returns {Editor} 当前编辑器实例。 */
+  clearDocument() {
+    this.document?.clear?.()
+    return this
   }
 
   // ═══════════════════ 生产辅助（委托给 ProductionPlugin） ═══════════════════

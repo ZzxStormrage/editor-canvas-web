@@ -4,12 +4,7 @@ import App from './App.vue'
 import { configureApiClient } from './api/index.js'
 import { createVuetifyPlugin } from './plugins/vuetify.js'
 import { router } from './router/index.js'
-import {
-  clearAccessToken,
-  getAccessToken,
-  installAuthTokenBridge,
-  notifyAuthExpired
-} from './services/auth-token.js'
+import { clearAccessToken, getAccessToken, installAuthTokenBridge, notifyAuthExpired } from './services/auth-token.js'
 import { MESSAGE_TYPES, postBridgeMessage, startMessageBridge } from './services/message-bridge.js'
 
 configureApiClient({
@@ -22,7 +17,17 @@ configureApiClient({
 installAuthTokenBridge()
 startMessageBridge()
 postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
-  capabilities: [MESSAGE_TYPES.AUTH_TOKEN]
+  capabilities: [
+    MESSAGE_TYPES.EDITOR_INITIALIZED,
+    MESSAGE_TYPES.AUTH_TOKEN,
+    MESSAGE_TYPES.AUTH_EXPIRED,
+    MESSAGE_TYPES.TEMPLATE_LOADING,
+    MESSAGE_TYPES.TEMPLATE_LOADED,
+    MESSAGE_TYPES.TEMPLATE_LOAD_FAILED,
+    MESSAGE_TYPES.TEMPLATE_SAVING,
+    MESSAGE_TYPES.TEMPLATE_SAVED,
+    MESSAGE_TYPES.TEMPLATE_SAVE_FAILED
+  ]
 })
 
 const app = createApp(App)

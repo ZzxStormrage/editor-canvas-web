@@ -6,12 +6,10 @@
         <strong>ELE Editor</strong>
       </div>
 
-      <div class="top-bar-title">
-        图形画布编辑器
-      </div>
+      <div class="top-bar-title">图形画布编辑器</div>
 
       <div class="top-bar-actions">
-        <span class="top-bar-status">本地编辑</span>
+        <span class="top-bar-status">{{ status }}</span>
         <v-btn
           class="top-bar-docs-button"
           color="surface"
@@ -33,10 +31,10 @@
           size="small"
           variant="tonal"
           :loading="saving"
-          :disabled="saving"
+          :disabled="saving || disabled"
           @click="emit('save')"
         >
-          保存
+          立即保存
         </v-btn>
         <v-btn
           class="top-bar-preview-button"
@@ -45,6 +43,7 @@
           prepend-icon="mdi-cellphone-eye"
           size="small"
           variant="flat"
+          :disabled="disabled"
           @click="emit('preview')"
         >
           H5 预览
@@ -59,8 +58,16 @@ defineProps({
   saving: {
     type: Boolean,
     default: false
+  },
+  disabled: {
+    type: Boolean,
+    default: false
+  },
+  status: {
+    type: String,
+    default: '新建模板'
   }
-});
+})
 
-const emit = defineEmits(['save', 'preview']);
+const emit = defineEmits(['save', 'preview'])
 </script>

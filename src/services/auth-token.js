@@ -2,7 +2,7 @@ import { MESSAGE_TYPES, postBridgeMessage, subscribeBridgeMessage } from './mess
 
 // 临时回退 Token，宿主发送 auth:token 后会立即被内存中的新 Token 替换。
 const TEMPORARY_ACCESS_TOKEN =
-  'eyJhbGciOiJIUzUxMiJ9.eyJqdGkiOiJkNDI1ZDJjMDdlYjk0ZWNmOTc2OTBjZjcwZjM4MzM0NiIsInN1YiI6ImFkbWluIn0.UyLSEdr1TvhJCfYiL2kfGR49Ue7R0n6mYBks0I-1Qggc04060G-yQJzxc5wklQjCjQbKLnPJaBt4TIewBNj8Nw'
+  'eyJhbGciOiJIUzUxMiJ9.eyJqdGkiOiI2Nzk4OWMwYjExOTI0MjJhYWIxMGZhOWMwOWY1ZDU3YSIsInN1YiI6ImFkbWluIn0.2e9aE_Naw2JvJWBMab6VFRSp8xuh7n7LqvHYAcAnOA7i-khEfghpq7bp82sOin1hj-msrI9wUix-Uh0wrUFJJw'
 let accessToken = TEMPORARY_ACCESS_TOKEN
 let removeTokenSubscription = null
 const authExpiredSubscribers = new Set()
@@ -58,6 +58,16 @@ export function subscribeAuthExpired(handler) {
  * @returns {void}
  */
 export function notifyAuthExpired(error) {
+  try {
+    postBridgeMessage(MESSAGE_TYPES.AUTH_EXPIRED, {
+      code: error?.code ?? 'AUTH_EXPIRED',
+      message: error?.message || '登录已过期，请重新登录。',
+      status: error?.status ?? 401
+    })
+  } catch (bridgeError) {
+    console.warn('Auth expired message failed.', bridgeError)
+  }
+
   authExpiredSubscribers.forEach((handler) => {
     try {
       handler(error)

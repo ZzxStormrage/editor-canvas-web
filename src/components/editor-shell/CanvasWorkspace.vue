@@ -79,7 +79,6 @@
           :ref="setCanvasRef"
           class="canvas-view"
           @pointerdown.self="editor.closeLayerMenu"
-          @dblclick="editor.handleCanvasDoubleClick"
         ></div>
         <SelectionActionToolbar
           :editor="editor"
@@ -95,6 +94,8 @@
 </template>
 
 <script setup>
+import { watch } from 'vue';
+
 import SelectionActionToolbar from './SelectionActionToolbar.vue';
 import SelectionLayerMenu from './SelectionLayerMenu.vue';
 
@@ -102,8 +103,42 @@ const props = defineProps({
   editor: {
     type: Object,
     required: true
+  },
+  document: {
+    type: [Object, String],
+    default: null
+  },
+  documentOptions: {
+    type: Object,
+    default: () => ({})
+  },
+  fitOptions: {
+    type: [Object, Number, Boolean],
+    default: false
   }
 });
+
+const emit = defineEmits(['document-loaded', 'document-error']);
+
+watch(
+  [() => props.editor?.ready?.value, () => props.document],
+  async ([isReady, document]) => {
+    if (!isReady || !document) {
+      return;
+    }
+
+    try {
+      const loadedDocument = await props.editor.loadDocument(document, props.documentOptions);
+      if (props.fitOptions !== false) {
+        props.editor.fitArtboardToView(props.fitOptions);
+      }
+      emit('document-loaded', loadedDocument);
+    } catch (error) {
+      emit('document-error', error);
+    }
+  },
+  { immediate: true }
+);
 
 /**
  * 把画布挂载节点交给 canvas-editor-core 初始化。

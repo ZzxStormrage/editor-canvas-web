@@ -1,14 +1,22 @@
-export const MESSAGE_BRIDGE_CHANNEL = 'ele-editor';
-export const MESSAGE_BRIDGE_VERSION = 1;
+export const MESSAGE_BRIDGE_CHANNEL = 'ele-editor'
+export const MESSAGE_BRIDGE_VERSION = 1
 export const MESSAGE_TYPES = Object.freeze({
   EDITOR_READY: 'editor:ready',
-  AUTH_TOKEN: 'auth:token'
-});
+  EDITOR_INITIALIZED: 'editor:initialized',
+  AUTH_TOKEN: 'auth:token',
+  AUTH_EXPIRED: 'auth:expired',
+  TEMPLATE_LOADING: 'template:loading',
+  TEMPLATE_LOADED: 'template:loaded',
+  TEMPLATE_LOAD_FAILED: 'template:load-failed',
+  TEMPLATE_SAVING: 'template:saving',
+  TEMPLATE_SAVED: 'template:saved',
+  TEMPLATE_SAVE_FAILED: 'template:save-failed'
+})
 
-const MESSAGE_TARGETS = new Set(['auto', 'parent', 'opener', 'mini-program']);
-const subscribers = new Map();
-let stopWindowListener = null;
-let previousGlobalBridge;
+const MESSAGE_TARGETS = new Set(['auto', 'parent', 'opener', 'mini-program'])
+const subscribers = new Map()
+let stopWindowListener = null
+let previousGlobalBridge
 
 /**
  * 创建统一的跨端消息结构。
@@ -21,7 +29,7 @@ let previousGlobalBridge;
  * @returns {Object} 可被结构化克隆的消息对象。
  */
 export function createBridgeMessage(type, payload = {}, options = {}) {
-  assertMessageType(type);
+  assertMessageType(type)
 
   return {
     channel: MESSAGE_BRIDGE_CHANNEL,
@@ -31,7 +39,7 @@ export function createBridgeMessage(type, payload = {}, options = {}) {
     sender: options.sender ?? 'editor',
     timestamp: Date.now(),
     payload
-  };
+  }
 }
 
 /**
@@ -47,35 +55,35 @@ export function createBridgeMessage(type, payload = {}, options = {}) {
  * @returns {{ message: Object, channels: string[] }} 消息和成功调用的通道。
  */
 export function postBridgeMessage(type, payload = {}, options = {}) {
-  const message = createBridgeMessage(type, payload, options);
-  const channels = [];
+  const message = createBridgeMessage(type, payload, options)
+  const channels = []
 
   if (typeof window === 'undefined') {
-    return { message, channels };
+    return { message, channels }
   }
   if (options.targetWindow) {
-    postToWindow(options.targetWindow, options.targetOrigin, message);
-    return { message, channels: ['window'] };
+    postToWindow(options.targetWindow, options.targetOrigin, message)
+    return { message, channels: ['window'] }
   }
 
-  const target = options.target ?? 'auto';
-  assertMessageTarget(target);
+  const target = options.target ?? 'auto'
+  assertMessageTarget(target)
   if ((target === 'auto' || target === 'mini-program') && postToMiniProgram(message)) {
-    return { message, channels: ['mini-program'] };
+    return { message, channels: ['mini-program'] }
   }
   if ((target === 'auto' || target === 'parent') && window.parent !== window) {
-    postToWindow(window.parent, options.targetOrigin, message);
-    channels.push('parent');
+    postToWindow(window.parent, options.targetOrigin, message)
+    channels.push('parent')
     if (target === 'auto') {
-      return { message, channels };
+      return { message, channels }
     }
   }
   if ((target === 'auto' || target === 'opener') && window.opener && !window.opener.closed) {
-    postToWindow(window.opener, options.targetOrigin, message);
-    channels.push('opener');
+    postToWindow(window.opener, options.targetOrigin, message)
+    channels.push('opener')
   }
 
-  return { message, channels };
+  return { message, channels }
 }
 
 /**
@@ -86,21 +94,21 @@ export function postBridgeMessage(type, payload = {}, options = {}) {
  * @returns {() => void} 取消订阅方法。
  */
 export function subscribeBridgeMessage(type, handler) {
-  assertMessageType(type, true);
+  assertMessageType(type, true)
   if (typeof handler !== 'function') {
-    throw new TypeError('Message bridge handler must be a function.');
+    throw new TypeError('Message bridge handler must be a function.')
   }
 
-  const typeSubscribers = subscribers.get(type) ?? new Set();
-  typeSubscribers.add(handler);
-  subscribers.set(type, typeSubscribers);
+  const typeSubscribers = subscribers.get(type) ?? new Set()
+  typeSubscribers.add(handler)
+  subscribers.set(type, typeSubscribers)
 
   return () => {
-    typeSubscribers.delete(handler);
+    typeSubscribers.delete(handler)
     if (typeSubscribers.size === 0) {
-      subscribers.delete(type);
+      subscribers.delete(type)
     }
-  };
+  }
 }
 
 /**
@@ -111,27 +119,22 @@ export function subscribeBridgeMessage(type, handler) {
  * @returns {boolean} 是否识别并派发了消息。
  */
 export function receiveBridgeMessage(rawMessage, context = {}) {
-  const message = normalizeBridgeMessage(rawMessage);
+  const message = normalizeBridgeMessage(rawMessage)
   if (!message) {
-    return false;
+    return false
   }
 
-  const handlers = [
-    ...(subscribers.get(message.type) ?? []),
-    ...(subscribers.get('*') ?? [])
-  ];
+  const handlers = [...(subscribers.get(message.type) ?? []), ...(subscribers.get('*') ?? [])]
 
   handlers.forEach((handler) => {
     try {
-      Promise.resolve(
-        handler({ message, payload: message.payload, context })
-      ).catch(logHandlerError);
+      Promise.resolve(handler({ message, payload: message.payload, context })).catch(logHandlerError)
     } catch (error) {
-      logHandlerError(error);
+      logHandlerError(error)
     }
-  });
+  })
 
-  return handlers.length > 0;
+  return handlers.length > 0
 }
 
 /**
@@ -143,33 +146,33 @@ export function receiveBridgeMessage(rawMessage, context = {}) {
  */
 export function startMessageBridge(options = {}) {
   if (typeof window === 'undefined') {
-    return () => {};
+    return () => {}
   }
   if (stopWindowListener) {
-    return stopWindowListener;
+    return stopWindowListener
   }
 
-  const allowedOrigins = resolveAllowedOrigins(options.allowedOrigins);
+  const allowedOrigins = resolveAllowedOrigins(options.allowedOrigins)
   const handleWindowMessage = (event) => {
     if (isAllowedOrigin(event.origin, allowedOrigins)) {
       receiveBridgeMessage(event.data, {
         origin: event.origin,
         source: event.source,
         transport: 'window'
-      });
+      })
     }
-  };
+  }
 
-  window.addEventListener('message', handleWindowMessage);
-  exposeGlobalBridge();
+  window.addEventListener('message', handleWindowMessage)
+  exposeGlobalBridge()
 
   stopWindowListener = () => {
-    window.removeEventListener('message', handleWindowMessage);
-    restoreGlobalBridge();
-    stopWindowListener = null;
-  };
+    window.removeEventListener('message', handleWindowMessage)
+    restoreGlobalBridge()
+    stopWindowListener = null
+  }
 
-  return stopWindowListener;
+  return stopWindowListener
 }
 
 /**
@@ -181,7 +184,7 @@ export function startMessageBridge(options = {}) {
  * @returns {void}
  */
 function postToWindow(targetWindow, targetOrigin, message) {
-  targetWindow.postMessage(message, targetOrigin || resolveDefaultTargetOrigin());
+  targetWindow.postMessage(message, targetOrigin || resolveDefaultTargetOrigin())
 }
 
 /**
@@ -191,13 +194,13 @@ function postToWindow(targetWindow, targetOrigin, message) {
  * @returns {boolean} 是否调用了小程序通道。
  */
 function postToMiniProgram(message) {
-  const bridge = resolveMiniProgramBridge();
+  const bridge = resolveMiniProgramBridge()
   if (!bridge) {
-    return false;
+    return false
   }
 
-  bridge.postMessage({ data: message });
-  return true;
+  bridge.postMessage({ data: message })
+  return true
 }
 
 /**
@@ -214,9 +217,9 @@ function resolveMiniProgramBridge() {
     window.swan?.webView,
     window.tt?.miniProgram,
     window.jd?.miniProgram
-  ];
+  ]
 
-  return candidates.find((bridge) => typeof bridge?.postMessage === 'function') ?? null;
+  return candidates.find((bridge) => typeof bridge?.postMessage === 'function') ?? null
 }
 
 /**
@@ -226,16 +229,16 @@ function resolveMiniProgramBridge() {
  * @returns {Set<string>} 来源集合。
  */
 function resolveAllowedOrigins(configuredOrigins) {
-  const origins = normalizeOriginList(configuredOrigins);
-  origins.push(...normalizeOriginList(import.meta.env?.VITE_MESSAGE_ALLOWED_ORIGINS));
-  origins.push(window.location.origin);
+  const origins = normalizeOriginList(configuredOrigins)
+  origins.push(...normalizeOriginList(import.meta.env?.VITE_MESSAGE_ALLOWED_ORIGINS))
+  origins.push(window.location.origin)
 
-  const referrerOrigin = resolveReferrerOrigin();
+  const referrerOrigin = resolveReferrerOrigin()
   if (referrerOrigin) {
-    origins.push(referrerOrigin);
+    origins.push(referrerOrigin)
   }
 
-  return new Set(origins);
+  return new Set(origins)
 }
 
 /**
@@ -245,8 +248,8 @@ function resolveAllowedOrigins(configuredOrigins) {
  * @returns {string[]} 来源数组。
  */
 function normalizeOriginList(value) {
-  const values = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
-  return values.map(normalizeOrigin).filter(Boolean);
+  const values = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : []
+  return values.map(normalizeOrigin).filter(Boolean)
 }
 
 /**
@@ -257,18 +260,18 @@ function normalizeOriginList(value) {
  */
 function normalizeOrigin(value) {
   if (typeof value !== 'string' || !value.trim()) {
-    return null;
+    return null
   }
 
-  const origin = value.trim();
+  const origin = value.trim()
   if (origin === '*') {
-    return origin;
+    return origin
   }
 
   try {
-    return new URL(origin).origin;
+    return new URL(origin).origin
   } catch {
-    return null;
+    return null
   }
 }
 
@@ -280,7 +283,7 @@ function normalizeOrigin(value) {
  * @returns {boolean} 是否允许。
  */
 function isAllowedOrigin(origin, allowedOrigins) {
-  return allowedOrigins.has('*') || allowedOrigins.has(origin);
+  return allowedOrigins.has('*') || allowedOrigins.has(origin)
 }
 
 /**
@@ -289,10 +292,11 @@ function isAllowedOrigin(origin, allowedOrigins) {
  * @returns {string} 目标源。
  */
 function resolveDefaultTargetOrigin() {
-  const configuredOrigins = normalizeOriginList(import.meta.env?.VITE_MESSAGE_ALLOWED_ORIGINS)
-    .filter((origin) => origin !== '*');
+  const configuredOrigins = normalizeOriginList(import.meta.env?.VITE_MESSAGE_ALLOWED_ORIGINS).filter(
+    (origin) => origin !== '*'
+  )
 
-  return resolveReferrerOrigin() || configuredOrigins[0] || window.location.origin;
+  return resolveReferrerOrigin() || configuredOrigins[0] || window.location.origin
 }
 
 /**
@@ -302,13 +306,13 @@ function resolveDefaultTargetOrigin() {
  */
 function resolveReferrerOrigin() {
   if (!document.referrer) {
-    return null;
+    return null
   }
 
   try {
-    return new URL(document.referrer).origin;
+    return new URL(document.referrer).origin
   } catch {
-    return null;
+    return null
   }
 }
 
@@ -319,10 +323,10 @@ function resolveReferrerOrigin() {
  * @returns {Object | null} 标准消息。
  */
 function normalizeBridgeMessage(rawMessage) {
-  let message = parseMessageValue(rawMessage);
+  let message = parseMessageValue(rawMessage)
 
   if (message?.data?.channel === MESSAGE_BRIDGE_CHANNEL) {
-    message = message.data;
+    message = message.data
   }
   if (
     !message ||
@@ -330,10 +334,10 @@ function normalizeBridgeMessage(rawMessage) {
     message.version !== MESSAGE_BRIDGE_VERSION ||
     typeof message.type !== 'string'
   ) {
-    return null;
+    return null
   }
 
-  return message;
+  return message
 }
 
 /**
@@ -344,13 +348,13 @@ function normalizeBridgeMessage(rawMessage) {
  */
 function parseMessageValue(value) {
   if (typeof value !== 'string') {
-    return value && typeof value === 'object' ? value : null;
+    return value && typeof value === 'object' ? value : null
   }
 
   try {
-    return JSON.parse(value);
+    return JSON.parse(value)
   } catch {
-    return null;
+    return null
   }
 }
 
@@ -360,14 +364,14 @@ function parseMessageValue(value) {
  * @returns {void}
  */
 function exposeGlobalBridge() {
-  previousGlobalBridge = window.EleEditorBridge;
+  previousGlobalBridge = window.EleEditorBridge
   window.EleEditorBridge = Object.freeze({
     channel: MESSAGE_BRIDGE_CHANNEL,
     version: MESSAGE_BRIDGE_VERSION,
     postMessage: postBridgeMessage,
     receiveMessage: receiveBridgeMessage,
     subscribe: subscribeBridgeMessage
-  });
+  })
 }
 
 /**
@@ -377,11 +381,11 @@ function exposeGlobalBridge() {
  */
 function restoreGlobalBridge() {
   if (previousGlobalBridge === undefined) {
-    delete window.EleEditorBridge;
+    delete window.EleEditorBridge
   } else {
-    window.EleEditorBridge = previousGlobalBridge;
+    window.EleEditorBridge = previousGlobalBridge
   }
-  previousGlobalBridge = undefined;
+  previousGlobalBridge = undefined
 }
 
 /**
@@ -390,8 +394,7 @@ function restoreGlobalBridge() {
  * @returns {string} 消息 ID。
  */
 function createMessageId() {
-  return globalThis.crypto?.randomUUID?.() ??
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 
 /**
@@ -403,7 +406,7 @@ function createMessageId() {
  */
 function assertMessageType(type, allowWildcard = false) {
   if (typeof type !== 'string' || !type.trim() || (!allowWildcard && type === '*')) {
-    throw new TypeError('Message bridge type must be a non-empty string.');
+    throw new TypeError('Message bridge type must be a non-empty string.')
   }
 }
 
@@ -415,7 +418,7 @@ function assertMessageType(type, allowWildcard = false) {
  */
 function assertMessageTarget(target) {
   if (!MESSAGE_TARGETS.has(target)) {
-    throw new TypeError(`Unsupported message bridge target: ${target}.`);
+    throw new TypeError(`Unsupported message bridge target: ${target}.`)
   }
 }
 
@@ -426,5 +429,5 @@ function assertMessageTarget(target) {
  * @returns {void}
  */
 function logHandlerError(error) {
-  console.error('Message bridge handler failed.', error);
+  console.error('Message bridge handler failed.', error)
 }

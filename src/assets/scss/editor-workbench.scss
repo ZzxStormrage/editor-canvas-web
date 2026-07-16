@@ -27,6 +27,7 @@
 }
 
 .editor-workbench {
+  position: relative;
   display: grid;
   grid-template-columns: 54px 328px minmax(0, 1fr);
   width: 100vw;

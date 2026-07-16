@@ -3,7 +3,6 @@ import { nextTick, ref, watch } from 'vue'
 import { customFontApi } from '../../api/modules/custom-font.js'
 import {
   getDefaultLineHeight,
-  isPointInElementBounds,
   normalizeFontWeightForUI,
   normalizePixelForUI,
   resolveTextDecoration
@@ -162,27 +161,6 @@ export function useTextControls(getEditor) {
     })
   }
 
-  /**
-   * 处理部分触控板无法触发 Leafer 文本双击编辑的兜底路径。
-   *
-   * @param {MouseEvent} event DOM 双击事件。
-   * @returns {void}
-   */
-  function handleCanvasDoubleClick(event) {
-    const editor = getEditor()
-
-    if (!editor || editor.editor?.innerEditing) {
-      return
-    }
-
-    const worldPoint = getWorldPointFromDomEvent(editor, event)
-    const text = worldPoint ? findTopTextElementAtPoint(editor, worldPoint) : null
-
-    if (text) {
-      editor.text.edit(text)
-    }
-  }
-
   watch(fontSize, (nextFontSize, previousFontSize) => {
     if (isSyncingControls) {
       return
@@ -228,46 +206,6 @@ export function useTextControls(getEditor) {
     loadFontList,
     getTextOptions,
     applyTextOptionsToUI,
-    addText,
-    handleCanvasDoubleClick
+    addText
   }
-}
-
-/**
- * 把浏览器坐标转换为 Leafer 世界坐标。
- *
- * @param {Object} editor Editor 外观实例。
- * @param {MouseEvent} event DOM 双击事件。
- * @returns {{ x: number, y: number } | null} 世界坐标。
- */
-function getWorldPointFromDomEvent(editor, event) {
-  const clientPoint = {
-    clientX: event.clientX,
-    clientY: event.clientY
-  }
-  const tree = editor.leafer?.tree
-
-  return tree?.getWorldPointByClient?.(clientPoint, true) ?? tree?.interaction?.getLocal?.(clientPoint, true) ?? null
-}
-
-/**
- * 按场景树层级从上向下查找可编辑文本。
- *
- * @param {Object} editor Editor 外观实例。
- * @param {{ x: number, y: number }} worldPoint 世界坐标。
- * @returns {Object | null} 命中的文本节点。
- */
-function findTopTextElementAtPoint(editor, worldPoint) {
-  const children = editor.contentLayer?.children ?? []
-
-  for (let index = children.length - 1; index >= 0; index -= 1) {
-    const child = children[index]
-    const isText = child?.tag === 'Text' || child?.constructor?.name === 'Text'
-
-    if (isText && child.editable !== false && isPointInElementBounds(child, worldPoint)) {
-      return child
-    }
-  }
-
-  return null
 }

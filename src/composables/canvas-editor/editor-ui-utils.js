@@ -61,26 +61,3 @@ export function resolveTextDecoration({ underline, lineThrough }) {
 
   return lineThrough ? 'delete' : 'none'
 }
-
-/**
- * 判断世界坐标是否落在元素外框内。
- *
- * @param {Object} element Leafer 节点。
- * @param {{ x: number, y: number }} worldPoint Leafer 世界坐标。
- * @param {number} [tolerance=6] 命中容差。
- * @returns {boolean} 是否命中元素外框。
- */
-export function isPointInElementBounds(element, worldPoint, tolerance = 6) {
-  const bounds = element?.worldBoxBounds
-
-  if (!bounds || !Number.isFinite(worldPoint?.x) || !Number.isFinite(worldPoint?.y)) {
-    return false
-  }
-
-  return (
-    worldPoint.x >= bounds.x - tolerance &&
-    worldPoint.x <= bounds.x + bounds.width + tolerance &&
-    worldPoint.y >= bounds.y - tolerance &&
-    worldPoint.y <= bounds.y + bounds.height + tolerance
-  )
-}

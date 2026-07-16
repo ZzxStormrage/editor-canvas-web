@@ -10,6 +10,7 @@ import { Editor } from './Editor.js'
 import { ViewportManager } from '../viewport/ViewportManager.js'
 import { CommandManager } from '../commands/CommandManager.js'
 import { EditorActionButtons } from '../plugins/action-buttons.js'
+import { EditorError } from '../errors/editor-error.js'
 
 import { normalizeInitOptions } from '../utils/options.js'
 import { resolveView, resolveSize } from '../utils/view.js'
@@ -92,60 +93,22 @@ export class EditorBuilder {
       sky: userSkyOptions ?? { hittable: true },
       editor: this.#createOfficialEditorConfig(snapHooks)
     })
-    this.#resolveOfficialEditorLayers(userTreeOptions, userSkyOptions)
+    this.#resolveOfficialEditorLayers()
     return this
   }
 
   /**
    * 解析官方 App({ editor }) 创建出的 tree / sky / editor。
    *
-   * 当前项目依赖里部分 Leafer 包版本不完全一致，某些版本不会把 tree / sky
-   * 挂到 app 同名属性上；这里仍然使用官方 App({ editor }) 创建 Editor，
-   * 只做分层引用的兼容解析，避免把业务内容层误加到 Editor 覆盖层。
-   *
-   * @param {Object} userTreeOptions tree 层配置。
-   * @param {Object} userSkyOptions sky 层配置。
    * @returns {void}
    */
-  #resolveOfficialEditorLayers(userTreeOptions, userSkyOptions) {
-    const layers = this.#leafer.children ?? []
-    const skyLayer = this.#leafer.sky ?? layers.find((layer) => layer.children?.includes(this.#leafer.editor))
-
-    this.#innerEditor = this.#leafer.editor ?? skyLayer?.children?.[0]
-    this.#skyLeafer = skyLayer ?? this.#leafer.addLeafer?.(userSkyOptions ?? { hittable: true })
-    this.#treeLeafer = this.#leafer.tree ?? layers.find((layer) => layer !== this.#skyLeafer)
-
-    if (!this.#treeLeafer?.add) {
-      this.#treeLeafer = this.#leafer.addLeafer?.(userTreeOptions ?? { type: 'design' })
-    }
-
-    if (this.#innerEditor && this.#skyLeafer && this.#innerEditor.parent !== this.#skyLeafer) {
-      this.#skyLeafer.add(this.#innerEditor)
-    }
-
-    this.#bindOfficialEditorApp()
+  #resolveOfficialEditorLayers() {
+    this.#treeLeafer = this.#leafer.tree
+    this.#skyLeafer = this.#leafer.sky
+    this.#innerEditor = this.#leafer.editor
 
     if (!this.#treeLeafer?.add || !this.#skyLeafer?.add || !this.#innerEditor) {
-      throw new Error('Leafer official App({ editor }) initialization failed.')
-    }
-  }
-
-  /**
-   * 补齐官方 Editor 运行时需要的 App 引用。
-   *
-   * @returns {void}
-   */
-  #bindOfficialEditorApp() {
-    this.#leafer.tree = this.#treeLeafer
-    this.#leafer.sky = this.#skyLeafer
-    this.#leafer.editor = this.#innerEditor
-
-    if (this.#skyLeafer) {
-      this.#skyLeafer.parent = this.#leafer
-    }
-
-    if (this.#treeLeafer) {
-      this.#treeLeafer.parent = this.#leafer
+      throw new EditorError('Leafer official App({ editor }) initialization failed.', 'LEAFER_EDITOR_INIT_FAILED')
     }
   }
 
@@ -222,22 +185,12 @@ export class EditorBuilder {
     this.#pluginManager = new PluginManager()
     registerDefaultPlugins(this.#pluginManager)
 
-    this.#viewport = new ViewportManager(
-      this.#leafer,
-      this.#view,
-      this.#stage,
-      this.#state.proxy,
-      this.#eventBus
-    )
+    this.#viewport = new ViewportManager(this.#leafer, this.#view, this.#stage, this.#state.proxy, this.#eventBus)
 
     this.#commandManager = new CommandManager(this.#state.proxy, this.#eventBus)
 
     // 操作按钮（锁定、复制、删除）
-    this.#actionButtons = new EditorActionButtons(
-      this.#innerEditor,
-      this.#options.editor.theme,
-      this.#eventBus
-    )
+    this.#actionButtons = new EditorActionButtons(this.#innerEditor, this.#options.editor.theme, this.#eventBus)
 
     this.#bindAreaState()
 
@@ -288,7 +241,8 @@ export class EditorBuilder {
       innerEditor: this.#innerEditor,
       eventBus: this.#eventBus,
       state: this.#state.proxy,
-      actionButtons: this.#actionButtons
+      actionButtons: this.#actionButtons,
+      pluginManager: this.#pluginManager
     }
 
     // Bootstrap plugins

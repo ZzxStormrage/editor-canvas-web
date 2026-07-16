@@ -123,6 +123,60 @@ export class ElementDataPlugin {
   }
 
   /**
+   * 根据自定义属性路径和值获取元素。
+   *
+   * @param {string} path 属性路径，例如 image.description。
+   * @param {*} value 需要精确匹配的值。
+   * @returns {Object[]} 匹配的 Leafer 元素数组。
+   */
+  getElementsByAttribute(path, value) {
+    const keys = this._normalizeAttributePath(path)
+
+    return this._getAllElements().filter((element) => {
+      const attributes = getElementDataContainer(element)?.attributes
+      return this._getValueByPath(attributes, keys) === value
+    })
+  }
+
+  /**
+   * 根据自定义属性切换元素显隐。
+   *
+   * exclusive=true 时，同一路径存在值但不匹配的元素会被隐藏；未配置该路径的背景、
+   * 遮罩和普通元素保持原状态。
+   *
+   * @param {string} path 属性路径，例如 image.description。
+   * @param {*} value 当前匹配值。
+   * @param {{ exclusive?: boolean }} [options={}] 显隐选项。
+   * @returns {Object[]} 当前匹配并显示的元素。
+   */
+  setVisibilityByAttribute(path, value, options = {}) {
+    const keys = this._normalizeAttributePath(path)
+    const exclusive = options.exclusive !== false
+    const matched = []
+
+    this._getAllElements().forEach((element) => {
+      const attributes = getElementDataContainer(element)?.attributes
+      const currentValue = this._getValueByPath(attributes, keys)
+
+      if (currentValue === undefined) {
+        return
+      }
+
+      const isMatched = currentValue === value
+      if (isMatched) {
+        element.visible = true
+        matched.push(element)
+      } else if (exclusive) {
+        element.visible = false
+      }
+    })
+
+    this._context?.artboard?.syncAllElements?.()
+    this._context?.eventBus.emit('element-data:visibility-changed', { path, value, matched })
+    return matched
+  }
+
+  /**
    * 写入元素业务属性。
    *
    * 默认合并一层字段；replace=true 时整体替换。所有数据必须可以 JSON 序列化。
@@ -357,6 +411,35 @@ export class ElementDataPlugin {
     return [element?.customType, element?.tag, element?.constructor?.name]
       .filter((value) => typeof value === 'string' && value.trim())
       .map((value) => value.trim().toLowerCase())
+  }
+
+  /**
+   * 规范化业务属性路径。
+   *
+   * @private
+   * @param {string} path 点分隔属性路径。
+   * @returns {string[]} 路径字段。
+   */
+  _normalizeAttributePath(path) {
+    const keys = typeof path === 'string' ? path.split('.').map((key) => key.trim()).filter(Boolean) : []
+
+    if (!keys.length || keys.some((key) => ['__proto__', 'prototype', 'constructor'].includes(key))) {
+      throw new EditorError('Element attribute path is invalid.', 'ELEMENT_DATA_PATH_INVALID')
+    }
+
+    return keys
+  }
+
+  /**
+   * 按路径读取业务属性值。
+   *
+   * @private
+   * @param {Object | undefined} value 业务属性。
+   * @param {string[]} keys 路径字段。
+   * @returns {*} 路径对应值。
+   */
+  _getValueByPath(value, keys) {
+    return keys.reduce((current, key) => current?.[key], value)
   }
 }
 

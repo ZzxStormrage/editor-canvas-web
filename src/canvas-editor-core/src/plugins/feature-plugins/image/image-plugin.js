@@ -227,6 +227,37 @@ export class ImagePlugin {
   }
 
   /**
+   * 恢复文档图片的适配方式和原始像素尺寸。
+   *
+   * @param {Object} target Leafer 图片节点。
+   * @param {Object} source 文档图片数据。
+   * @param {{ width?: number, height?: number }} [resource] 已预加载图片资源。
+   * @returns {Object} 原图片节点。
+   */
+  restoreDocumentState(target, source, resource) {
+    if (!(target instanceof LeaferImage)) {
+      return target;
+    }
+
+    const fit = normalizeImageReplacementFit(source.objectFit === 'fill' ? 'stretch' : source.objectFit ?? 'stretch');
+    const url = source.url ?? target.url;
+
+    target.set?.({
+      url,
+      fill: {
+        type: 'image',
+        mode: toLeaferImageMode(fit),
+        align: this._resolveDocumentImageAlign(source.objectPosition),
+        url
+      }
+    });
+    target[ORIGINAL_WIDTH_KEY] = Number(source.sourceWidth ?? resource?.width ?? target.width ?? 0);
+    target[ORIGINAL_HEIGHT_KEY] = Number(source.sourceHeight ?? resource?.height ?? target.height ?? 0);
+    target[IMAGE_FIT_KEY] = fit;
+    return target;
+  }
+
+  /**
    * 获取当前单选图片的可编辑属性快照。
    *
    * 位置以画板左上角为原点，尺寸为用户实际看到的显示尺寸，缩放比例以图片
@@ -382,6 +413,29 @@ export class ImagePlugin {
     }
 
     return { fit: normalizeImageReplacementFit(options.fit) };
+  }
+
+  /**
+   * 将 CSS object-position 转换为 Leafer 图片对齐值。
+   *
+   * @private
+   * @param {string | undefined} objectPosition CSS 图片位置。
+   * @returns {string} Leafer 对齐值。
+   */
+  _resolveDocumentImageAlign(objectPosition) {
+    const alignMap = {
+      'left top': 'top-left',
+      'center top': 'top',
+      'right top': 'top-right',
+      'left center': 'left',
+      'center center': 'center',
+      'right center': 'right',
+      'left bottom': 'bottom-left',
+      'center bottom': 'bottom',
+      'right bottom': 'bottom-right'
+    };
+
+    return alignMap[objectPosition] ?? 'center';
   }
 
   /**

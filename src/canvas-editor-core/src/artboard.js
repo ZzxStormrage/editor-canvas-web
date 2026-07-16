@@ -1,5 +1,5 @@
 import { Frame, Group, Rect } from 'leafer-ui'
-import { EditorEvent, EditorMoveEvent, EditorRotateEvent, EditorScaleEvent } from '@leafer-in/editor'
+import { EditorEvent, EditorMoveEvent, EditorRotateEvent, EditorScaleEvent, InnerEditorEvent } from '@leafer-in/editor'
 
 import { EditorError } from './errors/editor-error.js'
 
@@ -170,6 +170,20 @@ export class ArtboardManager {
   }
 
   /**
+   * 设置画板填充色。
+   *
+   * @param {string} fill CSS 颜色。
+   * @returns {void}
+   */
+  setFill(fill) {
+    const nextFill = normalizeOptionalString(fill, 'artboard.fill') ?? '#ffffff'
+    this.#options.fill = nextFill
+    this.#node.fill = nextFill
+    this.#syncState()
+    this.#eventBus?.emit('artboard:fill-changed', { fill: nextFill })
+  }
+
+  /**
    * 同步所有内容元素的超出透明度。
    *
    * @returns {void}
@@ -288,7 +302,9 @@ export class ArtboardManager {
       [EditorEvent.AFTER_SELECT, this.#handleEditorChange, this],
       [EditorMoveEvent.MOVE, this.#handleEditorChange, this],
       [EditorScaleEvent.SCALE, this.#handleEditorChange, this],
-      [EditorRotateEvent.ROTATE, this.#handleEditorChange, this]
+      [EditorRotateEvent.ROTATE, this.#handleEditorChange, this],
+      [InnerEditorEvent.OPEN, this.#handleEditorChange, this],
+      [InnerEditorEvent.CLOSE, this.#handleEditorChange, this]
     ])
   }
 
@@ -408,7 +424,7 @@ export class ArtboardManager {
    */
   #getContentCloneSources() {
     return (this.#contentLayer?.children ?? []).filter((child) => {
-      return child?.visible !== false && !child[ARTBOARD_OVERFLOW_KEY] && !child.__snapGuide
+      return child?.visible !== false && !child.textEditing && !child[ARTBOARD_OVERFLOW_KEY] && !child.__snapGuide
     })
   }
 
@@ -426,8 +442,34 @@ export class ArtboardManager {
     }
 
     clone[ARTBOARD_OVERFLOW_KEY] = true
+    this.#syncEditingVisibility(source, clone)
     this.#disableOverlayHit(clone)
     return clone
+  }
+
+  /**
+   * 在预览副本树中隐藏正在使用官方 TextEditor 编辑的文本。
+   *
+   * @param {Object} source 真实内容节点。
+   * @param {Object} clone 与真实节点结构一致的预览副本。
+   * @returns {void}
+   */
+  #syncEditingVisibility(source, clone) {
+    if (source?.textEditing) {
+      clone.visible = false
+      return
+    }
+
+    const sourceChildren = source?.children ?? []
+    const cloneChildren = clone?.children ?? []
+
+    sourceChildren.forEach((sourceChild, index) => {
+      const cloneChild = cloneChildren[index]
+
+      if (cloneChild) {
+        this.#syncEditingVisibility(sourceChild, cloneChild)
+      }
+    })
   }
 
   /**
@@ -499,7 +541,6 @@ export class ArtboardManager {
       ...this.getContentBounds()
     }
   }
-
 }
 
 /**
