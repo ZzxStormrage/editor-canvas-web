@@ -2,7 +2,7 @@ import { MESSAGE_TYPES, postBridgeMessage, subscribeBridgeMessage } from './mess
 
 // 临时回退 Token，宿主发送 auth:token 后会立即被内存中的新 Token 替换。
 const TEMPORARY_ACCESS_TOKEN =
-  'eyJhbGciOiJIUzUxMiJ9.eyJqdGkiOiI2Nzk4OWMwYjExOTI0MjJhYWIxMGZhOWMwOWY1ZDU3YSIsInN1YiI6ImFkbWluIn0.2e9aE_Naw2JvJWBMab6VFRSp8xuh7n7LqvHYAcAnOA7i-khEfghpq7bp82sOin1hj-msrI9wUix-Uh0wrUFJJw'
+  'eyJhbGciOiJIUzUxMiJ9.eyJqdGkiOiI2ZDhlZWM2N2MzZGE0ZDc0YjBkYjVlZWNiMzljMGU0MyIsInN1YiI6ImFkbWluIn0.WPOMKzkpYbQqAbhj8g0CqCTck16GA-acCYuot_L9cq8wz3ckz1Cp4YwBy7KbDC9IzAzgf-k5fb1vXkne06FPQQ'
 let accessToken = TEMPORARY_ACCESS_TOKEN
 let removeTokenSubscription = null
 const authExpiredSubscribers = new Set()

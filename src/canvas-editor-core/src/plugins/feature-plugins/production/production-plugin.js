@@ -293,9 +293,63 @@ export class ProductionPlugin {
     }
 
     const bounds = this._getNodeBoundsInContent(printArea);
+    return this._captureBounds(bounds, options, {
+      includeBackground: false,
+      includeMask: false,
+      fileNamePrefix: 'print-area',
+      errorCode: 'PRINT_AREA_CAPTURE_FAILED',
+      errorMessage: '打印区域截图失败。'
+    });
+  }
+
+  /**
+   * 截取完整画板，转为 File，并可通过调用方注入的上传方法返回接口结果。
+   *
+   * 默认包含背景图和遮罩图，但始终排除打印区域边框与吸附辅助线。
+   *
+   * @param {{
+   *   includeBackground?: boolean,
+   *   includeMask?: boolean,
+   *   type?: string,
+   *   quality?: number,
+   *   pixelRatio?: number,
+   *   fileName?: string,
+   *   fill?: string,
+   *   upload?: ((file: File) => Promise<*> | *)
+   * }} [options={}] 截图选项。
+   * @returns {Promise<File | *>} File 或上传接口结果。
+   */
+  async captureCanvas(options = {}) {
+    this._assertReady();
+    return this._captureBounds(this._getArtboardBounds(), options, {
+      includeBackground: true,
+      includeMask: true,
+      fileNamePrefix: 'canvas',
+      fill: this._context.artboard?.options?.fill ?? '#ffffff',
+      errorCode: 'CANVAS_CAPTURE_FAILED',
+      errorMessage: '完整画板截图失败。'
+    });
+  }
+
+  /**
+   * 按指定画板坐标范围执行离屏截图。
+   *
+   * @private
+   * @param {{ x: number, y: number, width: number, height: number }} bounds 截图范围。
+   * @param {Object} options 调用方截图选项。
+   * @param {Object} defaults 截图默认值和错误信息。
+   * @returns {Promise<File | *>} File 或上传接口结果。
+   */
+  async _captureBounds(bounds, options, defaults) {
+    const captureOptions = {
+      includeBackground: defaults.includeBackground,
+      includeMask: defaults.includeMask,
+      fill: defaults.fill,
+      ...options
+    };
     const format = this._normalizeImageFormat(options.type);
     const mimeType = `image/${format === 'jpg' ? 'jpeg' : format}`;
-    const exportRoot = this._createCaptureRoot(options);
+    const exportRoot = this._createCaptureRoot(captureOptions);
 
     try {
       await import('@leafer-in/export');
@@ -304,21 +358,21 @@ export class ProductionPlugin {
         quality: this._quality(options.quality),
         pixelRatio: this._positive(options.pixelRatio, 1),
         screenshot: bounds,
-        fill: options.fill
+        fill: captureOptions.fill
       });
 
       if (result.error || !(result.data instanceof Blob)) {
         throw result.error ?? new Error('截图没有生成有效文件。');
       }
 
-      const fileName = options.fileName || `print-area-${Date.now()}.${format}`;
+      const fileName = options.fileName || `${defaults.fileNamePrefix}-${Date.now()}.${format}`;
       const file = new File([result.data], fileName, { type: mimeType });
       return typeof options.upload === 'function' ? await options.upload(file) : file;
     } catch (error) {
       if (error instanceof EditorError) {
         throw error;
       }
-      throw new EditorError(error.message || '打印区域截图失败。', 'PRINT_AREA_CAPTURE_FAILED');
+      throw new EditorError(error.message || defaults.errorMessage, defaults.errorCode);
     } finally {
       exportRoot.destroy();
     }

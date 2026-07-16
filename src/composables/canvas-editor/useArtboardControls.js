@@ -301,6 +301,29 @@ export function useArtboardControls(getEditor, notify = null) {
     })
   }
 
+  /**
+   * 截取完整画板，转成 File，通过图片接口上传并返回接口结果。
+   *
+   * @param {Object} [options={}] 截图选项，默认包含背景图和遮罩图。
+   * @returns {Promise<*>} 图片上传接口结果。
+   */
+  async function captureCanvas(options = {}) {
+    const editor = getEditor()
+
+    if (!editor) {
+      throw new Error('编辑器尚未初始化。')
+    }
+
+    return editor.captureCanvas({
+      includeBackground: true,
+      includeMask: true,
+      type: 'image/png',
+      quality: 1,
+      ...options,
+      upload: options.upload ?? pictureApi.upload
+    })
+  }
+
   /** @returns {void} */
   function updatePrintArea() {
     const editor = getEditor()
@@ -368,6 +391,7 @@ export function useArtboardControls(getEditor, notify = null) {
     deletePrintArea,
     detectPrintAreaFromMask,
     capturePrintArea,
+    captureCanvas,
     syncPrintAreaControls
   }
 }

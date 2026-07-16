@@ -10,7 +10,8 @@ export const MESSAGE_TYPES = Object.freeze({
   TEMPLATE_LOAD_FAILED: 'template:load-failed',
   TEMPLATE_SAVING: 'template:saving',
   TEMPLATE_SAVED: 'template:saved',
-  TEMPLATE_SAVE_FAILED: 'template:save-failed'
+  TEMPLATE_SAVE_FAILED: 'template:save-failed',
+  H5_PAGE_SAVED: 'h5:page-saved'
 })
 
 const MESSAGE_TARGETS = new Set(['auto', 'parent', 'opener', 'mini-program'])

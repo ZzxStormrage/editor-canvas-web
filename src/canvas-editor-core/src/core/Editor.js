@@ -470,6 +470,16 @@ export class Editor {
     return this.production?.capturePrintArea?.(options)
   }
 
+  /**
+   * 截取完整画板并生成 File；传入 upload 时返回上传接口结果。
+   *
+   * @param {Object} [options={}] 截图和上传选项。
+   * @returns {Promise<File | *>} File 或上传结果。
+   */
+  captureCanvas(options = {}) {
+    return this.production?.captureCanvas?.(options)
+  }
+
   // ═══════════════════ 缩放（委托给 ViewportManager） ═══════════════════
 
   /**

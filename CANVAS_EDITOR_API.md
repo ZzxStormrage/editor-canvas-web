@@ -266,6 +266,7 @@ postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
 | `MESSAGE_TYPES.TEMPLATE_SAVING` | `'template:saving'` | 编辑器 → 宿主 | 开始调用新增或修改接口。 |
 | `MESSAGE_TYPES.TEMPLATE_SAVED` | `'template:saved'` | 编辑器 → 宿主 | 保存接口成功，包含模板 ID 和统一 JSON。 |
 | `MESSAGE_TYPES.TEMPLATE_SAVE_FAILED` | `'template:save-failed'` | 编辑器 → 宿主 | 保存接口或 JSON 导出失败。 |
+| `MESSAGE_TYPES.H5_PAGE_SAVED` | `'h5:page-saved'` | H5 → 小程序 | H5 业务页面保存完成，包含页面标识、模板 JSON 和截图结果。 |
 
 自定义消息类型可以使用任意非空字符串，推荐采用 `模块:动作` 格式，例如
 `document:saved`、`selection:changed`。`'*'` 只允许用于订阅全部消息，不能作为发送类型。
@@ -528,19 +529,48 @@ postBridgeMessage('document:saved', {
 Page({
   handleEditorMessage(event) {
     const messages = event.detail.data || []
-    const message = messages[messages.length - 1]
+    const message = [...messages]
+      .reverse()
+      .find((item) => item?.type === 'h5:page-saved')
 
     if (message?.channel !== 'ele-editor' || message.version !== 1) return
 
-    if (message.type === 'document:saved') {
-      console.log(message.payload.json)
-    }
+    const { page, templateId, json, printAreaImage } = message.payload || {}
+    if (page !== 'chinese-zodiac') return
+
+    console.log('生肖 H5 保存结果', {
+      templateId,
+      json,
+      printAreaImage
+    })
+
+    wx.setStorageSync('chinese-zodiac-result', message.payload)
   }
 })
 ```
 
-不同小程序的 `web-view` 消息触发时机可能不同，宿主端应按对应平台文档处理页面返回、
-分享或销毁时机。
+生肖页面保存成功后会按以下顺序处理：
+
+```js
+const result = postBridgeMessage(MESSAGE_TYPES.H5_PAGE_SAVED, {
+  page: 'chinese-zodiac',
+  templateId,
+  json: editorJson,
+  printAreaImage
+}, {
+  target: 'mini-program',
+  sender: 'h5-page'
+})
+
+if (result.channels.includes('mini-program')) {
+  wxAPI.navigateBack({ delta: 1 })
+}
+```
+
+`wxAPI` 来自 `src/services/wx-api.js`。项目在 `index.html` 中加载微信官方
+`jweixin-1.3.2.js`，由其提供 `window.wx.miniProgram`。微信的 `bindmessage` 通常在 web-view
+返回、分享或销毁时把消息交给小程序页面，所以生肖 H5 在成功发送后立即调用
+`wx.miniProgram.navigateBack()`；普通浏览器没有微信桥时不会自动返回。
 
 ### 编辑器订阅宿主消息
 
@@ -1041,6 +1071,42 @@ const imageUrl = await editor.capturePrintArea()
 截图始终排除打印区域边框和吸附辅助线。截图使用离屏克隆场景，不会隐藏当前画布元素或
 产生闪烁。
 
+### `editor.captureCanvas(options)`
+
+截取完整画板范围，不要求存在打印区域。该方法同样使用离屏克隆，不会改变当前编辑器画面，
+返回值规则与 `capturePrintArea()` 一致：未传 `upload` 时返回 `File`，传入后返回上传接口结果。
+
+```js
+const file = await editor.captureCanvas({
+  includeBackground: true,
+  includeMask: true,
+  type: 'image/png',
+  pixelRatio: 1
+})
+```
+
+上传完整画板：
+
+```js
+const imageUrl = await editor.captureCanvas({
+  upload: (file) => pictureApi.upload(file)
+})
+```
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `includeBackground` | `true` | 是否包含标记为背景图的图片。 |
+| `includeMask` | `true` | 是否包含遮罩图。 |
+| `type` | `image/png` | 支持 PNG、JPEG 和 WebP。 |
+| `quality` | `1` | JPEG/WebP 图片质量，范围 `0-1`。 |
+| `pixelRatio` | `1` | 输出像素倍率。 |
+| `fileName` | 自动生成 | 文件名，默认以 `canvas-` 开头。 |
+| `fill` | 画板背景色 | 没有不透明背景图片时使用的输出底色。 |
+| `upload` | 无 | 接收 `File` 的上传函数。 |
+
+完整画板截图始终排除打印区域边框和吸附辅助线；如果需要透明 PNG，可显式传入
+`{ fill: undefined }`。通过 `useCanvasEditor()` 调用时，Vue 封装默认使用 `pictureApi.upload`。
+
 ### 保存与截图相互独立
 
 “立即保存”只调用 `exportDocument()` 获取统一 JSON，不检测打印区域，也不会自动截图或上传：
@@ -1486,9 +1552,6 @@ function onDocumentLoaded({ editor }) {
 生肖生产页面使用查询参数接收模板主键：
 
 ```text
-# 使用本地示例模板
-#/h5-page/chinese-zodiac
-
 # 回显模板 ID 1001
 #/h5-page/chinese-zodiac?templateId=1001
 
@@ -1498,13 +1561,13 @@ function onDocumentLoaded({ editor }) {
 
 | 参数 | 位置 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
-| `templateId` | 查询参数 | 正整数 | 否 | 自定义模板主键；存在时请求 `/admin/api/customTemplate/{templateId}`。 |
+| `templateId` | 查询参数 | 正整数 | 是 | 自定义模板主键；请求 `/admin/api/customTemplate/{templateId}`。 |
 | `partnerId` | 查询参数 | 正整数 | 否 | 写入模板详情请求的 `X-Partner-Id` 请求头。 |
 
 正式约定使用查询参数 `templateId`，不使用含义模糊的 `id`。Token 仍通过已有
 `auth:token` postMessage 通信传入，不放在 H5 页面 URL 中。接口返回的 `content` 会先经过
 统一文档校验，再交给 `CanvasDocumentViewport` 还原；没有 `templateId` 或接口失败时显示页面
-内置示例模板。
+错误状态，不初始化画布，也不会使用本地模拟数据。
 
 ## H5 文档测试运行时
 
@@ -1751,6 +1814,7 @@ try {
 | `MASK_AREA_OUTSIDE_ARTBOARD` | 识别区域不在画板范围内。 |
 | `PRINT_AREA_REQUIRED` | 截图前没有打印区域。 |
 | `PRINT_AREA_CAPTURE_FAILED` | 打印区域导出或文件生成失败。 |
+| `CANVAS_CAPTURE_FAILED` | 完整画板导出或文件生成失败。 |
 
 ## API 速查
 
@@ -1770,6 +1834,7 @@ try {
 | 更新打印区域 | `editor.updatePrintArea(properties)` |
 | 识别遮罩透明区域 | `await editor.detectPrintAreaFromMask(options)` |
 | 截图并上传打印区域 | `await editor.capturePrintArea(options)` |
+| 截图并上传完整画板 | `await editor.captureCanvas(options)` |
 | 添加文字 | `await editor.text.add(content, options)` |
 | 更新文字 | `editor.text.update(target, options)` |
 | 更新指定文字样式 | `editor.updateText(target, options)` |

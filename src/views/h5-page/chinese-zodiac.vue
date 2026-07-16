@@ -1,7 +1,7 @@
 <template>
   <main class="page">
     <section class="canvas-section" aria-label="生肖效果预览">
-      <div v-if="!templateLoading" class="canvas-frame" :style="canvasFrameStyle">
+      <div v-if="documentData && !templateLoading" class="canvas-frame" :style="canvasFrameStyle">
         <CanvasDocumentViewport
           ref="canvasViewportRef"
           :document="documentData"
@@ -9,11 +9,13 @@
           @loaded="handleDocumentLoaded"
         />
       </div>
-      <div v-else class="canvas-loading" role="status" aria-live="polite">
+      <div v-else-if="templateLoading" class="canvas-loading" role="status" aria-live="polite">
         <span class="save-spinner" aria-hidden="true"></span>
         <span>模板加载中...</span>
       </div>
-      <p v-if="templateError" class="template-error" role="alert">{{ templateError }}</p>
+      <div v-else class="canvas-loading canvas-empty" role="alert">
+        {{ templateError || '请提供有效的模板 ID。' }}
+      </div>
     </section>
 
     <section class="page-container">
@@ -67,7 +69,13 @@
       <p v-if="saveStatus.text" class="save-status" :class="`is-${saveStatus.type}`" role="status" aria-live="polite">
         {{ saveStatus.text }}
       </p>
-      <button class="submit-button" type="button" :disabled="saving" :aria-busy="saving" @click="onSubmit">
+      <button
+        class="submit-button"
+        type="button"
+        :disabled="saving || templateLoading || !documentData"
+        :aria-busy="saving"
+        @click="onSubmit"
+      >
         {{ saving ? '保存中...' : '立即购买' }}
       </button>
     </footer>
@@ -86,6 +94,8 @@ import { useRoute } from 'vue-router'
 import { pictureApi } from '../../api/index.js'
 import CanvasDocumentViewport from '../../components/canvas-runtime/CanvasDocumentViewport.vue'
 import { loadCustomTemplateDocument } from '../../services/custom-template-document.js'
+import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
+import { wxAPI } from '../../services/wx-api.js'
 
 const type = ref(1)
 const canvasViewportRef = ref(null)
@@ -102,11 +112,6 @@ const dateTextBindings = [
   { description: '月', value: month },
   { description: '日', value: day }
 ]
-const DIANZI_DIANHEI_FONT_URL =
-  'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202301/499a3f9fb0f042b5ad5f5c05bc608712.ttf'
-const DIANZI_DANMO_FONT_URL =
-  'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202301/3e6dc58b785d499e9c5545344f3917f2.ttf'
-
 const animalList = [
   { type: 1, name: '鼠', icon: 'https://xiaoxiang.ele007.com/file/image/animal1.png' },
   { type: 2, name: '牛', icon: 'https://xiaoxiang.ele007.com/file/image/animal2.png' },
@@ -122,255 +127,7 @@ const animalList = [
   { type: 12, name: '猪', icon: 'https://xiaoxiang.ele007.com/file/image/animal12.png' }
 ]
 
-const FALLBACK_DOCUMENT = {
-  version: 1,
-  canvas: {
-    width: 1024,
-    height: 1024,
-    background: '#ffffff'
-  },
-  elements: [
-    {
-      tag: 'Image',
-      url: 'https://ele-aiketie.ele007.com/yinxiang/202607/795969b2-3609-4b27-b280-7bc8d1d907cb.png',
-      name: '背景图',
-      visible: true,
-      locked: true,
-      x: 0,
-      y: 0,
-      width: 1024,
-      height: 1024,
-      lockRatio: false,
-      draggable: true,
-      editable: true,
-      hittable: false,
-      hitChildren: false,
-      hitSelf: false,
-      elementId: 'G_bCSCtZL_HwnfweUl63N',
-      attributes: {
-        image: {
-          role: 'background'
-        }
-      },
-      objectFit: 'fill',
-      objectPosition: 'center center'
-    },
-    {
-      tag: 'Image',
-      url: 'https://ele-aiketie.ele007.com/yinxiang/202607/d7a0435e-aace-486f-a9cb-e4db68da48da.png',
-      visible: true,
-      locked: true,
-      x: 102.39999999999998,
-      y: 102.39999999999998,
-      width: 819.2,
-      height: 819.2,
-      lockRatio: true,
-      draggable: true,
-      editable: true,
-      hittable: false,
-      hitChildren: false,
-      hitSelf: false,
-      elementId: 'z_48qsZIW1WltS-dRvFDg',
-      attributes: {
-        image: {
-          description: '羊'
-        }
-      },
-      objectFit: 'fill',
-      objectPosition: 'center center'
-    },
-    {
-      tag: 'Text',
-      width: 152,
-      fill: '#EF4444',
-      text: '11',
-      fontFamily: '字由点字典黑35J',
-      fontUrl: DIANZI_DIANHEI_FONT_URL,
-      fontSize: 132,
-      fontWeight: 400,
-      italic: false,
-      textDecoration: 'none',
-      letterSpacing: 0,
-      lineHeight: 161,
-      writingMode: 'x',
-      textAlign: 'center',
-      verticalAlign: 'top',
-      locked: true,
-      x: 424,
-      y: 871,
-      draggable: true,
-      editable: true,
-      editConfig: {
-        editSize: 'font-size'
-      },
-      elementId: 'ZJFa9TmBg7bamYXW3xZiC',
-      attributes: {
-        text: {
-          description: '月'
-        },
-        textInput: {
-          enabled: false,
-          characterSet: 'any',
-          allowManualNewline: true,
-          allowSymbols: true,
-          maxCharactersPerLine: null,
-          maxCharacters: null,
-          maxLines: null
-        }
-      }
-    },
-    {
-      tag: 'Text',
-      width: 147,
-      fill: '#7C3AED',
-      text: '23',
-      fontFamily: '字由点字典黑35J',
-      fontUrl: DIANZI_DIANHEI_FONT_URL,
-      fontSize: 128,
-      fontWeight: 400,
-      italic: false,
-      textDecoration: 'none',
-      letterSpacing: 0,
-      lineHeight: 156,
-      writingMode: 'x',
-      textAlign: 'center',
-      verticalAlign: 'top',
-      locked: true,
-      x: 640,
-      y: 876,
-      draggable: true,
-      editable: true,
-      editConfig: {
-        editSize: 'font-size'
-      },
-      elementId: 'ZJIWMrEkH2QVO9t_qkmAR',
-      attributes: {
-        text: {
-          description: '日'
-        },
-        textInput: {
-          enabled: false,
-          characterSet: 'any',
-          allowManualNewline: true,
-          allowSymbols: true,
-          maxCharactersPerLine: null,
-          maxCharacters: null,
-          maxLines: null
-        }
-      }
-    },
-    {
-      tag: 'Text',
-      width: 287,
-      fill: '#EF4444',
-      text: '1991',
-      fontFamily: '字由点字典黑35J',
-      fontUrl: DIANZI_DIANHEI_FONT_URL,
-      fontSize: 125,
-      fontWeight: 700,
-      italic: false,
-      textDecoration: 'none',
-      letterSpacing: 0,
-      lineHeight: 153,
-      writingMode: 'x',
-      textAlign: 'center',
-      verticalAlign: 'top',
-      locked: true,
-      x: 102.4,
-      y: 871,
-      draggable: true,
-      editable: true,
-      editConfig: {
-        editSize: 'font-size'
-      },
-      elementId: 'sJMXhEBYDdkDCtkgQeehH',
-      attributes: {
-        text: {
-          description: '年'
-        },
-        textInput: {
-          enabled: false,
-          characterSet: 'any',
-          allowManualNewline: true,
-          allowSymbols: true,
-          maxCharactersPerLine: null,
-          maxCharacters: null,
-          maxLines: null
-        }
-      }
-    },
-    {
-      tag: 'Group',
-      visible: false,
-      draggable: false,
-      editable: false,
-      hittable: false,
-      elementId: '34AQ-VLNdjVi6glygIrRz',
-      attributes: {},
-      x: 241.98580932617188,
-      y: 100.7073974609375,
-      children: [
-        {
-          tag: 'Path',
-          opacity: 0.9,
-          visible: true,
-          path: 'M -241.98580932617188 -100.70739746093744 L -241.98580932617188 923.2926025390625',
-          draggable: false,
-          editable: false,
-          hittable: false,
-          stroke: '#4A90D9',
-          strokeWidth: 1,
-          dashPattern: [6, 4],
-          elementId: '6d_qJ9kg5ZXLz3nbMJNI_',
-          attributes: {}
-        },
-        {
-          tag: 'Path',
-          opacity: 0.9,
-          visible: true,
-          path: 'M -241.98580932617188 1.692602539062591 L 782.0141906738281 1.692602539062591',
-          draggable: false,
-          editable: false,
-          hittable: false,
-          stroke: '#4A90D9',
-          strokeWidth: 1,
-          dashPattern: [6, 4],
-          elementId: 'teMwUqh0eBbJFDB4mWPGa',
-          attributes: {}
-        }
-      ]
-    },
-    {
-      tag: 'Text',
-      width: 384,
-      fill: '#7C3AED',
-      text: '端午节',
-      fontFamily: '字由点字淡墨行楷',
-      fontUrl: DIANZI_DANMO_FONT_URL,
-      fontSize: 128,
-      fontWeight: 500,
-      italic: false,
-      textDecoration: 'under',
-      letterSpacing: 0,
-      lineHeight: 156,
-      writingMode: 'x',
-      textAlign: 'center',
-      verticalAlign: 'top',
-      locked: true,
-      x: 0,
-      y: 24.400000000000006,
-      draggable: true,
-      editable: true,
-      editConfig: {
-        editSize: 'font-size'
-      },
-      elementId: 'BHfK9ON_n_eqSs70SERry',
-      attributes: {}
-    }
-  ]
-}
-
-const documentData = shallowRef(FALLBACK_DOCUMENT)
+const documentData = shallowRef(null)
 let templateRequestId = 0
 
 const selectedAnimal = computed(() => {
@@ -379,15 +136,22 @@ const selectedAnimal = computed(() => {
 
 const describedImageMap = computed(() => {
   return new Map(
-    documentData.value.elements
+    (documentData.value?.elements ?? [])
       .map((element) => [getImageDescription(element), element])
       .filter(([description]) => description)
   )
 })
 
 const canvasFrameStyle = computed(() => {
-  const width = Number(documentData.value.canvas.width)
-  const height = Number(documentData.value.canvas.height)
+  const width = Number(documentData.value?.canvas?.width)
+  const height = Number(documentData.value?.canvas?.height)
+
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+    return {
+      '--canvas-ratio': 1,
+      aspectRatio: '1 / 1'
+    }
+  }
 
   return {
     '--canvas-ratio': width / height,
@@ -396,25 +160,26 @@ const canvasFrameStyle = computed(() => {
 })
 
 /**
- * 根据当前路由加载模板，未传模板 ID 时使用模拟 JSON。
+ * 根据当前路由的模板 ID 加载模板文档。
  *
  * @returns {Promise<void>} 模板加载完成。
  */
 async function loadTemplateFromRoute() {
   const requestId = ++templateRequestId
+  const rawTemplateId = resolveRouteValue(route.query.templateId)
   const templateId = resolveTemplateId(route.query.templateId)
 
+  documentData.value = null
   templateError.value = ''
 
-  if (!templateId && route.query.templateId) {
-    documentData.value = FALLBACK_DOCUMENT
-    templateError.value = '模板 ID 无效，当前显示示例模板。'
+  if (rawTemplateId === null || rawTemplateId === '') {
+    templateError.value = '缺少模板 ID。'
     templateLoading.value = false
     return
   }
 
   if (!templateId) {
-    documentData.value = FALLBACK_DOCUMENT
+    templateError.value = '模板 ID 必须是正整数。'
     templateLoading.value = false
     return
   }
@@ -437,8 +202,8 @@ async function loadTemplateFromRoute() {
     }
 
     console.error('Chinese zodiac template load failed.', error)
-    documentData.value = FALLBACK_DOCUMENT
-    templateError.value = error.message || '模板加载失败，当前显示示例模板。'
+    documentData.value = null
+    templateError.value = error.message || '模板加载失败。'
   } finally {
     if (requestId === templateRequestId) {
       templateLoading.value = false
@@ -550,7 +315,7 @@ function onAdvancedEdit() {
 
 /** @returns {Promise<void>} 保存当前 JSON，并按需获取打印区域截图。 */
 async function onSubmit() {
-  if (saving.value) {
+  if (saving.value || templateLoading.value || !documentData.value) {
     return
   }
 
@@ -560,6 +325,15 @@ async function onSubmit() {
   try {
     const savePayload = await createSavePayload(canvasViewportRef.value?.getEditor?.())
     console.log('生肖页面保存数据：', JSON.stringify(savePayload, null, 2))
+    const bridgeResult = postChineseZodiacSaveMessage(savePayload)
+
+    if (bridgeResult.channels.includes('mini-program') && wxAPI.isSupported()) {
+      saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
+      if (wxAPI.navigateBack({ delta: 1 })) {
+        return
+      }
+    }
+
     saveStatus.value = { type: 'success', text: '保存数据已生成' }
   } catch (error) {
     console.error('Chinese zodiac save failed.', error)
@@ -567,6 +341,28 @@ async function onSubmit() {
   } finally {
     saving.value = false
   }
+}
+
+/**
+ * 向微信小程序发送生肖页面保存结果。
+ *
+ * @param {{ editorJson: Object, printAreaImage: * }} savePayload 保存数据。
+ * @returns {{ message: Object, channels: string[] }} 通信结果。
+ */
+function postChineseZodiacSaveMessage(savePayload) {
+  return postBridgeMessage(
+    MESSAGE_TYPES.H5_PAGE_SAVED,
+    {
+      page: 'chinese-zodiac',
+      templateId: resolveRouteValue(route.query.templateId),
+      json: savePayload.editorJson,
+      printAreaImage: savePayload.printAreaImage
+    },
+    {
+      target: 'mini-program',
+      sender: 'h5-page'
+    }
+  )
 }
 
 /**
@@ -662,15 +458,6 @@ function capturePrintAreaImage(editor) {
 .canvas-loading .save-spinner {
   border-color: #e5e5e5;
   border-top-color: #d61f35;
-}
-
-.template-error {
-  max-width: 100%;
-  margin: 0;
-  color: #b42318;
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: center;
 }
 
 .page-container {

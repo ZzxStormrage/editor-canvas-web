@@ -235,6 +235,7 @@ export function useCanvasEditor(options = {}) {
     deletePrintArea: artboardControls.deletePrintArea,
     detectPrintAreaFromMask: artboardControls.detectPrintAreaFromMask,
     capturePrintArea: artboardControls.capturePrintArea,
+    captureCanvas: artboardControls.captureCanvas,
     imageInputRef: assetControls.imageInputRef,
     imageUploading: assetControls.imageUploading,
     imageProperties: imageControls.imageProperties,
