@@ -39,20 +39,25 @@
             <span v-else>{{ hasImageTarget ? '待上传' : '未配置' }}</span>
           </div>
 
-          <label
-            class="secondary-button"
-            :class="{ 'is-disabled': !canReplaceImage }"
-            :aria-disabled="!canReplaceImage"
-          >
+          <div class="upload-actions">
             <input
-              ref="fileInputRef"
+              ref="albumInputRef"
+              class="file-input"
               type="file"
               accept="image/*"
-              :disabled="!canReplaceImage"
+              aria-label="从手机相册选择图片"
+              :disabled="!canPickImage"
               @change="handleImageChange"
             />
-            {{ imageReplacing ? '上传中...' : imagePreviewUrl ? '切换图片' : '选择图片' }}
-          </label>
+            <button
+              type="button"
+              class="secondary-button"
+              :disabled="!canPickImage"
+              @click="openImagePicker"
+            >
+              {{ imageReplacing ? '上传中...' : '上传图片' }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -130,7 +135,7 @@ const props = defineProps({
 const route = useRoute()
 const router = useRouter()
 const canvasViewportRef = ref(null)
-const fileInputRef = ref(null)
+const albumInputRef = ref(null)
 const canvasLoaded = ref(false)
 const imageReplacing = ref(false)
 const imagePreviewUrl = ref('')
@@ -175,8 +180,8 @@ const canvasFrameStyle = computed(() => {
   }
 })
 
-const canReplaceImage = computed(() => {
-  return canvasLoaded.value && hasImageTarget.value && !imageReplacing.value && !saving.value
+const canPickImage = computed(() => {
+  return canvasLoaded.value && !imageReplacing.value && !saving.value
 })
 
 const canSubmit = computed(() => {
@@ -235,6 +240,19 @@ function handleCanvasError(error) {
 }
 
 /**
+ * 在用户点击事件中直接打开系统图片选择器。
+ *
+ * @returns {void}
+ */
+function openImagePicker() {
+  if (!canPickImage.value) {
+    return
+  }
+
+  albumInputRef.value?.click()
+}
+
+/**
  * @param {Event} event 文件选择事件。
  * @returns {Promise<void>} 图片上传和替换完成。
  */
@@ -242,7 +260,15 @@ async function handleImageChange(event) {
   const file = event.target.files?.[0]
   const editor = canvasViewportRef.value?.getEditor?.()
 
-  if (!file || !editor || !canReplaceImage.value) {
+  if (!file || !editor || !canPickImage.value) {
+    return
+  }
+  if (!hasImageTarget.value) {
+    operationStatus.value = {
+      type: 'warning',
+      text: `模板未配置“${props.imageDescription}”标记。`
+    }
+    event.target.value = ''
     return
   }
 
@@ -265,8 +291,8 @@ async function handleImageChange(event) {
     operationStatus.value = { type: 'error', text: error.message || '图片上传失败，请重试。' }
   } finally {
     imageReplacing.value = false
-    if (fileInputRef.value) {
-      fileInputRef.value.value = ''
+    if (event.target instanceof HTMLInputElement) {
+      event.target.value = ''
     }
   }
 }
@@ -461,6 +487,13 @@ watch(
   font-size: 12px;
 }
 
+.upload-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .secondary-button {
   display: inline-flex;
   min-width: 76px;
@@ -482,19 +515,23 @@ watch(
   background: #fff1f3;
 }
 
-.secondary-button.is-disabled {
+.secondary-button:disabled {
   border-color: #c9c9c9;
   color: #8c8c8c;
   background: #f5f5f5;
   cursor: not-allowed;
 }
 
-.secondary-button input {
+.file-input {
   position: absolute;
   width: 1px;
   height: 1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
+}
+
+.secondary-button {
+  appearance: none;
 }
 
 .text-input {
