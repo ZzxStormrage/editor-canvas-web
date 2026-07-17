@@ -78,6 +78,9 @@
     </section>
 
     <footer class="submit-footer">
+      <p v-if="saveStatus.text" class="save-status" :class="`is-${saveStatus.type}`" role="status" aria-live="polite">
+        {{ saveStatus.text }}
+      </p>
       <button
         class="submit-button"
         type="button"
@@ -100,17 +103,10 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { MESSAGE_TYPES, postBridgeMessage } from '../../../services/message-bridge.js'
 import CanvasDocumentViewport from './CanvasDocumentViewport.vue'
 import { customerPictureApi } from '../api/customer-picture.js'
+import { useH5PageSave } from '../composables/useH5PageSave.js'
 import { useH5TemplateDocument } from '../composables/useH5TemplateDocument.js'
-import { saveH5CustomDesign } from '../services/custom-design.js'
-import {
-  navigateToH5RedirectPath,
-  readH5RedirectPath,
-  readRouteValue
-} from '../services/route-navigation.js'
-import { wxAPI } from '../services/wx-api.js'
 
 const props = defineProps({
   pageTitle: {
@@ -141,7 +137,6 @@ const imagePreviewUrl = ref('')
 const textValue = ref('')
 const hasImageTarget = ref(false)
 const hasTextTarget = ref(false)
-const saving = ref(false)
 const operationStatus = ref({ type: 'success', text: '' })
 const {
   documentData,
@@ -150,6 +145,21 @@ const {
   handleCanvasError: handleTemplateCanvasError,
   loadTemplateFromRoute
 } = useH5TemplateDocument({ errorLabel: props.pageId })
+const {
+  saving,
+  saveStatus,
+  resetSaveStatus,
+  savePage
+} = useH5PageSave({
+  route,
+  router,
+  pageId: props.pageId,
+  defaultDesignName: props.pageTitle,
+  getEditor: () => canvasViewportRef.value?.getEditor?.(),
+  onBeforeNavigateBack: () => {
+    saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
+  }
+})
 
 const canvasFrameStyle = computed(() => {
   const width = Number(documentData.value?.canvas?.width)
@@ -187,6 +197,7 @@ function resetPageState() {
   hasImageTarget.value = false
   hasTextTarget.value = false
   operationStatus.value = { type: 'success', text: '' }
+  resetSaveStatus()
 }
 
 /**
@@ -204,6 +215,7 @@ function handleDocumentLoaded(payload) {
   imagePreviewUrl.value = String(imageTargets[0]?.url ?? '')
   textValue.value = String(textTargets[0]?.text ?? '')
   canvasLoaded.value = true
+  templateError.value = ''
 
   if (!hasImageTarget.value || !hasTextTarget.value) {
     operationStatus.value = {
@@ -278,56 +290,8 @@ async function onSubmit() {
     return
   }
 
-  saving.value = true
   operationStatus.value = { type: 'success', text: '' }
-  try {
-    const payload = await saveH5CustomDesign(editor, {
-      templateId: route.query.templateId,
-      designName: readRouteValue(route.query.designName) || props.pageTitle,
-      partnerId: route.query.partnerId
-    })
-    const bridgeResult = postSaveMessage(payload)
-
-    console.log(`${props.pageTitle}保存数据：`, JSON.stringify(payload, null, 2))
-
-    if (await navigateToH5RedirectPath(readH5RedirectPath(route), router)) {
-      return
-    }
-
-    if (bridgeResult.channels.includes('mini-program') && wxAPI.isSupported()) {
-      operationStatus.value = { type: 'success', text: '保存成功，正在返回' }
-      if (wxAPI.navigateBack({ delta: 1 })) {
-        return
-      }
-    }
-
-    operationStatus.value = { type: 'success', text: '保存数据已生成' }
-  } catch (error) {
-    console.error(`${props.pageId} save failed.`, error)
-    operationStatus.value = { type: 'error', text: error.message || '保存失败，请稍后重试。' }
-  } finally {
-    saving.value = false
-  }
-}
-
-/**
- * @param {Object} payload 保存数据。
- * @returns {{ message: Object, channels: string[] }} 通信结果。
- */
-function postSaveMessage(payload) {
-  return postBridgeMessage(
-    MESSAGE_TYPES.H5_PAGE_SAVED,
-    {
-      page: props.pageId,
-      templateId: readRouteValue(route.query.templateId),
-      json: payload.editorJson,
-      previewImgUrl: payload.previewImgUrl,
-      productImgUrl: payload.productImgUrl,
-      printAreaImage: payload.productImgUrl,
-      design: payload.response
-    },
-    { target: 'mini-program', sender: 'h5-page' }
-  )
+  await savePage()
 }
 
 /** @param {Object} editor 核心编辑器实例。 @returns {Object[]} 图片替换节点。 */
@@ -582,6 +546,19 @@ watch(
   border-top: 1px solid #ededed;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(8px);
+}
+
+.save-status {
+  margin: 0 0 8px;
+  color: #26734d;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.save-status.is-error {
+  color: #a22b31;
 }
 
 .submit-button {

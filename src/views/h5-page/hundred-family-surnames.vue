@@ -1,13 +1,24 @@
 <template>
   <main class="page">
     <section class="canvas-section" aria-label="百家姓效果预览">
-      <div class="canvas-frame" :style="canvasFrameStyle">
+      <div v-if="documentData && !templateLoading" class="canvas-frame" :style="canvasFrameStyle">
         <CanvasDocumentViewport
           ref="canvasViewportRef"
           :document="documentData"
-          @ready="handleCanvasReady"
           @loaded="handleDocumentLoaded"
+          @error="handleCanvasError"
         />
+        <div v-if="!canvasLoaded" class="canvas-runtime-loading" role="status" aria-live="polite">
+          <span class="save-spinner" aria-hidden="true"></span>
+          <span>画布加载中...</span>
+        </div>
+      </div>
+      <div v-else-if="templateLoading" class="canvas-loading" role="status" aria-live="polite">
+        <span class="save-spinner" aria-hidden="true"></span>
+        <span>模板加载中...</span>
+      </div>
+      <div v-else class="canvas-loading canvas-empty" role="alert">
+        {{ templateError || '请提供有效的模板 ID。' }}
       </div>
     </section>
 
@@ -82,7 +93,7 @@
       <button
         class="submit-button"
         type="button"
-        :disabled="saving || !surname"
+        :disabled="saving || templateLoading || !documentData || !canvasLoaded || !surname"
         :aria-busy="saving"
         @click="onSubmit"
       >
@@ -102,13 +113,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { loadFontFace } from '../../canvas-editor-core/src/index.js'
-import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
 import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
-import { saveH5CustomDesign } from './services/custom-design.js'
-import { navigateToH5RedirectPath, readH5RedirectPath } from './services/route-navigation.js'
+import { useH5PageSave } from './composables/useH5PageSave.js'
+import { useH5TemplateDocument } from './composables/useH5TemplateDocument.js'
 
-const BACKGROUND_IMAGE_URL =
-  'https://ele-aiketie.ele007.com/yinxiang/202607/ba7f4d19-5ec2-4b01-9a33-900e292660eb.jpg'
 const FONT_STYLE_MOCKS = [
   {
     id: 'jinshu',
@@ -135,132 +143,55 @@ const FONT_STYLE_MOCKS = [
     fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202301/3e6dc58b785d499e9c5545344f3917f2.ttf'
   }
 ]
-const DEFAULT_FONT_STYLE = FONT_STYLE_MOCKS[0]
-
 const canvasViewportRef = ref(null)
 const route = useRoute()
 const router = useRouter()
-const surname = ref('王')
-const givenName = ref('小明')
+const surname = ref('')
+const givenName = ref('')
 const fontStyles = ref([])
-const selectedFontId = ref(DEFAULT_FONT_STYLE.id)
+const selectedFontId = ref(null)
 const fontStylesLoading = ref(false)
 const fontStylesError = ref('')
-const saving = ref(false)
-const saveStatus = ref({ type: 'success', text: '' })
+const canvasLoaded = ref(false)
 const nameTextBindings = [
   { description: '姓', value: surname },
   { description: '名', value: givenName }
 ]
 
-const documentData = {
-  version: 1,
-  canvas: {
-    width: 1024,
-    height: 1024,
-    background: '#ffffff'
-  },
-  elements: [
-    {
-      tag: 'Image',
-      url: BACKGROUND_IMAGE_URL,
-      name: '背景图',
-      visible: true,
-      locked: true,
-      x: 0,
-      y: 0,
-      width: 1024,
-      height: 1024,
-      lockRatio: false,
-      draggable: true,
-      editable: true,
-      hittable: false,
-      hitChildren: false,
-      hitSelf: false,
-      opacity: 1,
-      elementId: 'hundred-family-background',
-      attributes: {
-        image: {
-          role: 'background'
-        }
-      },
-      objectFit: 'fill',
-      objectPosition: 'center center'
-    },
-    {
-      tag: 'Text',
-      name: '姓氏',
-      text: surname.value,
-      fontFamily: DEFAULT_FONT_STYLE.fontName,
-      fontUrl: DEFAULT_FONT_STYLE.fontUrl,
-      fontSize: 164,
-      fontWeight: 400,
-      fill: '#c3262e',
-      textAlign: 'center',
-      verticalAlign: 'top',
-      textDecoration: 'none',
-      letterSpacing: 0,
-      lineHeight: 190,
-      writingMode: 'x',
-      width: 280,
-      x: 372,
-      y: 78,
-      locked: true,
-      draggable: true,
-      editable: true,
-      opacity: 1,
-      editConfig: {
-        editSize: 'font-size'
-      },
-      elementId: 'hundred-family-surname',
-      attributes: {
-        text: {
-          description: '姓'
-        }
-      }
-    },
-    {
-      tag: 'Text',
-      name: '名字',
-      text: givenName.value,
-      fontFamily: DEFAULT_FONT_STYLE.fontName,
-      fontUrl: DEFAULT_FONT_STYLE.fontUrl,
-      fontSize: 84,
-      fontWeight: 400,
-      fill: '#262626',
-      textAlign: 'center',
-      verticalAlign: 'top',
-      textDecoration: 'none',
-      letterSpacing: 6,
-      lineHeight: 106,
-      writingMode: 'x',
-      width: 420,
-      x: 302,
-      y: 286,
-      locked: true,
-      draggable: true,
-      editable: true,
-      opacity: 1,
-      editConfig: {
-        editSize: 'font-size'
-      },
-      elementId: 'hundred-family-given-name',
-      attributes: {
-        text: {
-          description: '名'
-        }
-      }
-    }
-  ]
-}
+const {
+  documentData,
+  templateLoading,
+  templateError,
+  handleCanvasError: handleTemplateCanvasError,
+  loadTemplateFromRoute
+} = useH5TemplateDocument({ errorLabel: 'Hundred family surnames' })
+const {
+  saving,
+  saveStatus,
+  resetSaveStatus,
+  savePage
+} = useH5PageSave({
+  route,
+  router,
+  pageId: 'hundred-family-surnames',
+  defaultDesignName: '百家姓定制',
+  getEditor: () => canvasViewportRef.value?.getEditor?.(),
+  onBeforeNavigateBack: () => {
+    saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
+  }
+})
 
 const selectedFontStyle = computed(() => {
-  return fontStyles.value.find((style) => style.id === selectedFontId.value) ?? DEFAULT_FONT_STYLE
+  return fontStyles.value.find((style) => style.id === selectedFontId.value) ?? null
 })
 
 const canvasFrameStyle = computed(() => {
-  const width = Number(documentData.canvas.width)
-  const height = Number(documentData.canvas.height)
+  const width = Number(documentData.value?.canvas?.width)
+  const height = Number(documentData.value?.canvas?.height)
+
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+    return { '--canvas-ratio': 1, aspectRatio: '1 / 1' }
+  }
 
   return {
     '--canvas-ratio': width / height,
@@ -280,9 +211,8 @@ async function loadFontStyles() {
 
   try {
     fontStyles.value = await fetchFontStyles()
-    selectedFontId.value = fontStyles.value[0]?.id ?? DEFAULT_FONT_STYLE.id
     void Promise.allSettled(fontStyles.value.map((style) => loadFontFace(style.fontName, style.fontUrl)))
-    applySelectedFontStyle()
+    syncSelectedFontFromEditor()
   } catch (error) {
     console.error('Hundred family font styles failed.', error)
     fontStylesError.value = '字体风格加载失败，请稍后重试。'
@@ -291,17 +221,30 @@ async function loadFontStyles() {
   }
 }
 
-/** @param {Object} editor 核心编辑器实例。 @returns {void} */
-function handleCanvasReady(editor) {
-  applyNameTextValues(editor)
-  applySelectedFontStyle(editor)
-}
-
 /** @param {{ editor: Object }} payload 文档加载事件。 @returns {void} */
 function handleDocumentLoaded(payload) {
-  payload.editor.arrangeLayersByRole({ back: ['background'] })
+  syncNameValuesFromEditor(payload.editor)
+  syncSelectedFontFromEditor(payload.editor)
+  payload.editor.arrangeLayersByRole({ back: ['background'], front: ['mask'] })
   applyNameTextValues(payload.editor)
-  applySelectedFontStyle(payload.editor)
+  canvasLoaded.value = true
+  templateError.value = ''
+}
+
+/** @param {*} error 画布加载错误。 @returns {void} */
+function handleCanvasError(error) {
+  canvasLoaded.value = false
+  handleTemplateCanvasError(error)
+}
+
+/** @param {Object} editor 核心编辑器实例。 @returns {void} */
+function syncNameValuesFromEditor(editor) {
+  nameTextBindings.forEach(({ description, value }) => {
+    const element = editor.getElementsByAttribute('text.description', description)[0]
+    if (element) {
+      value.value = String(element.text ?? '')
+    }
+  })
 }
 
 /**
@@ -335,19 +278,34 @@ function selectFontStyle(styleId) {
  * @returns {void}
  */
 function applySelectedFontStyle(editor = canvasViewportRef.value?.getEditor?.()) {
-  if (!editor) {
+  const style = selectedFontStyle.value
+  if (!editor || !style) {
     return
   }
 
   nameTextBindings.forEach(({ description }) => {
     editor.getElementsByAttribute('text.description', description).forEach((element) => {
       editor.updateText(element, {
-        fontFamily: selectedFontStyle.value.fontName,
-        fontUrl: selectedFontStyle.value.fontUrl,
+        fontFamily: style.fontName,
+        fontUrl: style.fontUrl,
         width: Number(element.width)
       })
     })
   })
+}
+
+/** @param {Object | null} [editor] 核心编辑器实例。 @returns {void} */
+function syncSelectedFontFromEditor(editor = canvasViewportRef.value?.getEditor?.()) {
+  if (!editor || fontStyles.value.length === 0) {
+    return
+  }
+
+  const element = editor.getElementsByAttribute('text.description', '姓')[0]
+    ?? editor.getElementsByAttribute('text.description', '名')[0]
+  const style = fontStyles.value.find((item) => {
+    return item.fontName === element?.fontFamily || item.fontUrl === element?.fontUrl
+  })
+  selectedFontId.value = style?.id ?? null
 }
 
 /** @param {string} fontName 字体名称。 @returns {string} CSS 字体声明。 */
@@ -366,46 +324,22 @@ function onAdvancedEdit() {
 
 /** @returns {Promise<void>} 保存当前 JSON，并按需获取打印区域截图。 */
 async function onSubmit() {
-  if (saving.value || !surname.value) {
+  if (saving.value || templateLoading.value || !documentData.value || !canvasLoaded.value || !surname.value) {
     return
   }
 
-  saving.value = true
-  saveStatus.value = { type: 'success', text: '' }
-
-  try {
-    const savePayload = await saveH5CustomDesign(canvasViewportRef.value?.getEditor?.(), {
-      templateId: route.query.templateId,
-      designName: route.query.designName || '百家姓定制',
-      partnerId: route.query.partnerId
-    })
-    console.log('百家姓页面保存数据：', JSON.stringify(savePayload, null, 2))
-    postBridgeMessage(
-      MESSAGE_TYPES.H5_PAGE_SAVED,
-      {
-        page: 'hundred-family-surnames',
-        templateId: route.query.templateId,
-        json: savePayload.editorJson,
-        previewImgUrl: savePayload.previewImgUrl,
-        productImgUrl: savePayload.productImgUrl,
-        printAreaImage: savePayload.productImgUrl,
-        design: savePayload.response
-      },
-      { target: 'mini-program', sender: 'h5-page' }
-    )
-
-    if (await navigateToH5RedirectPath(readH5RedirectPath(route), router)) {
-      return
-    }
-
-    saveStatus.value = { type: 'success', text: '保存数据已生成' }
-  } catch (error) {
-    console.error('Hundred family save failed.', error)
-    saveStatus.value = { type: 'error', text: error.message || '保存失败，请稍后重试。' }
-  } finally {
-    saving.value = false
-  }
+  await savePage()
 }
+
+watch(
+  () => [route.query.templateId, route.query.partnerId],
+  () => {
+    canvasLoaded.value = false
+    resetSaveStatus()
+    void loadTemplateFromRoute(route.query)
+  },
+  { immediate: true }
+)
 
 onMounted(loadFontStyles)
 </script>
@@ -433,10 +367,13 @@ onMounted(loadFontStyles)
   align-items: center;
   justify-content: center;
   flex: 0 1 auto;
+  flex-direction: column;
+  gap: 8px;
   background: #f2f3f5;
 }
 
 .canvas-frame {
+  position: relative;
   width: min(100%, calc(var(--preview-max-height) * var(--canvas-ratio)));
   max-height: var(--preview-max-height);
   overflow: hidden;
@@ -447,6 +384,41 @@ onMounted(loadFontStyles)
 .canvas-frame :deep(.canvas-document-viewport) {
   width: 100%;
   height: 100%;
+}
+
+.canvas-runtime-loading {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: #525252;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+.canvas-loading {
+  display: flex;
+  width: min(100%, var(--preview-max-height));
+  max-height: var(--preview-max-height);
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: #525252;
+  background: #ffffff;
+  font-size: 13px;
+  text-align: center;
+}
+
+.canvas-runtime-loading .save-spinner,
+.canvas-loading .save-spinner {
+  border-color: #e5e5e5;
+  border-top-color: #d61f35;
 }
 
 .page-container {

@@ -19,7 +19,7 @@ const routes = [
       {
         path: 'hundred-family-surnames',
         name: 'hundred-family-surnames',
-        component: () => import('../views/h5-page/hundredFamilySurnames.vue')
+        component: () => import('../views/h5-page/hundred-family-surnames.vue')
       },
       {
         path: 'chinese-zodiac',

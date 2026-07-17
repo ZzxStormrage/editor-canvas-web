@@ -5,7 +5,6 @@
         <CanvasDocumentViewport
           ref="canvasViewportRef"
           :document="documentData"
-          @ready="handleCanvasReady"
           @loaded="handleDocumentLoaded"
           @error="handleCanvasError"
         />
@@ -94,16 +93,9 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
 import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
+import { useH5PageSave } from './composables/useH5PageSave.js'
 import { useH5TemplateDocument } from './composables/useH5TemplateDocument.js'
-import { saveH5CustomDesign } from './services/custom-design.js'
-import {
-  navigateToH5RedirectPath,
-  readH5RedirectPath,
-  readRouteValue
-} from './services/route-navigation.js'
-import { wxAPI } from './services/wx-api.js'
 
 const type = ref(1)
 const canvasViewportRef = ref(null)
@@ -112,8 +104,6 @@ const router = useRouter()
 const year = ref('')
 const month = ref('')
 const day = ref('')
-const saving = ref(false)
-const saveStatus = ref({ type: 'success', text: '' })
 const canvasLoaded = ref(false)
 const dateTextBindings = [
   { description: '年', value: year },
@@ -142,6 +132,21 @@ const {
   handleCanvasError: handleTemplateCanvasError,
   loadTemplateFromRoute
 } = useH5TemplateDocument({ errorLabel: 'Chinese zodiac' })
+const {
+  saving,
+  saveStatus,
+  resetSaveStatus,
+  savePage
+} = useH5PageSave({
+  route,
+  router,
+  pageId: 'chinese-zodiac',
+  defaultDesignName: '生肖定制',
+  getEditor: () => canvasViewportRef.value?.getEditor?.(),
+  onBeforeNavigateBack: () => {
+    saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
+  }
+})
 
 const selectedAnimal = computed(() => {
   return animalList.find((item) => item.type === type.value) ?? animalList[0]
@@ -183,12 +188,6 @@ function resolveAnimalIcon(item) {
 function selectType(item) {
   type.value = item
   applySelectedAnimal()
-}
-
-/** @param {Object} editor 核心编辑器实例。 @returns {void} */
-function handleCanvasReady(editor) {
-  applySelectedAnimal(editor)
-  applyDateTextValues(editor)
 }
 
 /** @param {{ editor: Object }} payload 文档加载事件。 @returns {void} */
@@ -272,6 +271,7 @@ watch(
   () => [route.query.templateId, route.query.partnerId],
   () => {
     canvasLoaded.value = false
+    resetSaveStatus()
     void loadTemplateFromRoute(route.query)
   },
   { immediate: true }
@@ -283,62 +283,7 @@ async function onSubmit() {
     return
   }
 
-  saving.value = true
-  saveStatus.value = { type: 'success', text: '' }
-
-  try {
-    const savePayload = await saveH5CustomDesign(canvasViewportRef.value?.getEditor?.(), {
-      templateId: route.query.templateId,
-      designName: readRouteValue(route.query.designName) || '生肖定制',
-      partnerId: route.query.partnerId
-    })
-    console.log('生肖页面保存数据：', JSON.stringify(savePayload, null, 2))
-    const bridgeResult = postChineseZodiacSaveMessage(savePayload)
-
-    const redirectPath = readH5RedirectPath(route)
-    if (await navigateToH5RedirectPath(redirectPath, router)) {
-      return
-    }
-
-    if (bridgeResult.channels.includes('mini-program') && wxAPI.isSupported()) {
-      saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
-      if (wxAPI.navigateBack({ delta: 1 })) {
-        return
-      }
-    }
-
-    saveStatus.value = { type: 'success', text: '保存数据已生成' }
-  } catch (error) {
-    console.error('Chinese zodiac save failed.', error)
-    saveStatus.value = { type: 'error', text: error.message || '保存失败，请稍后重试。' }
-  } finally {
-    saving.value = false
-  }
-}
-
-/**
- * 向微信小程序发送生肖页面保存结果。
- *
- * @param {Object} savePayload 保存数据。
- * @returns {{ message: Object, channels: string[] }} 通信结果。
- */
-function postChineseZodiacSaveMessage(savePayload) {
-  return postBridgeMessage(
-    MESSAGE_TYPES.H5_PAGE_SAVED,
-    {
-      page: 'chinese-zodiac',
-      templateId: readRouteValue(route.query.templateId),
-      json: savePayload.editorJson,
-      previewImgUrl: savePayload.previewImgUrl,
-      productImgUrl: savePayload.productImgUrl,
-      printAreaImage: savePayload.productImgUrl,
-      design: savePayload.response
-    },
-    {
-      target: 'mini-program',
-      sender: 'h5-page'
-    }
-  )
+  await savePage()
 }
 
 </script>
