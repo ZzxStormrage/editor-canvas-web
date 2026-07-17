@@ -214,7 +214,6 @@ function handleDocumentLoaded(payload) {
   const imageTargets = getImageTargets(editor)
   const textTargets = getTextTargets(editor)
 
-  editor.arrangeLayersByRole({ back: ['background'], front: ['mask'] })
   hasImageTarget.value = imageTargets.length > 0
   hasTextTarget.value = textTargets.length > 0
   imagePreviewUrl.value = String(imageTargets[0]?.url ?? '')

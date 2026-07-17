@@ -193,10 +193,6 @@ function selectType(item) {
 /** @param {{ editor: Object }} payload 文档加载事件。 @returns {void} */
 function handleDocumentLoaded(payload) {
   syncDateValuesFromEditor(payload.editor)
-  payload.editor.arrangeLayersByRole({
-    back: ['background'],
-    front: ['mask']
-  })
   applySelectedAnimal(payload.editor)
   applyDateTextValues(payload.editor)
   canvasLoaded.value = true

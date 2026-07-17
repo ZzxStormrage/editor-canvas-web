@@ -225,7 +225,6 @@ async function loadFontStyles() {
 function handleDocumentLoaded(payload) {
   syncNameValuesFromEditor(payload.editor)
   syncSelectedFontFromEditor(payload.editor)
-  payload.editor.arrangeLayersByRole({ back: ['background'], front: ['mask'] })
   applyNameTextValues(payload.editor)
   canvasLoaded.value = true
   templateError.value = ''
