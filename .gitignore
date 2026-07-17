@@ -10,9 +10,11 @@ guangjiujd_*/
 *.zip
 wufangzhai_staging/
 wufangzhai_production/
-
+production/
 node_modules
+.eslintrc-auto-import.json
 .pnpm-store/
+distproduction
 dist
 dist-ssr
 *.local
