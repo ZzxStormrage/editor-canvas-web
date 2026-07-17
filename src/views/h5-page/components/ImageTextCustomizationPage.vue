@@ -49,11 +49,22 @@
               :disabled="!canPickImage"
               @change="handleImageChange"
             />
+            <input
+              v-if="imagePickerSheet"
+              ref="cameraInputRef"
+              class="file-input"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              aria-label="使用手机摄像头拍照"
+              :disabled="!canPickImage"
+              @change="handleImageChange"
+            />
             <button
               type="button"
               class="secondary-button"
               :disabled="!canPickImage"
-              @click="openImagePicker"
+              @click="handleUploadButtonClick"
             >
               {{ imageReplacing ? '上传中...' : '上传图片' }}
             </button>
@@ -101,6 +112,47 @@
       <span class="spinner" aria-hidden="true"></span>
       <span>正在保存...</span>
     </div>
+
+    <Transition name="picker-sheet">
+      <div
+        v-if="imagePickerSheet && showImagePickerSheet"
+        class="image-picker-backdrop"
+        @click.self="closeImagePickerSheet"
+      >
+        <section
+          class="image-picker-sheet"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="image-picker-title"
+        >
+          <span class="sheet-handle" aria-hidden="true"></span>
+          <button
+            class="sheet-close"
+            type="button"
+            aria-label="关闭上传图片面板"
+            @click="closeImagePickerSheet"
+          >
+            <v-icon icon="mdi-close" size="18" />
+          </button>
+          <h2 id="image-picker-title">上传图片开始定制</h2>
+
+          <div class="image-picker-options">
+            <button type="button" class="image-picker-option" @click="openImagePicker('camera')">
+              <span class="image-picker-icon" aria-hidden="true">
+                <v-icon icon="mdi-camera-outline" size="30" />
+              </span>
+              <span>相机拍摄</span>
+            </button>
+            <button type="button" class="image-picker-option" @click="openImagePicker('album')">
+              <span class="image-picker-icon" aria-hidden="true">
+                <v-icon icon="mdi-image-outline" size="30" />
+              </span>
+              <span>相册选取</span>
+            </button>
+          </div>
+        </section>
+      </div>
+    </Transition>
   </main>
 </template>
 
@@ -129,6 +181,10 @@ const props = defineProps({
   textDescription: {
     type: String,
     default: '文本替换'
+  },
+  imagePickerSheet: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -136,9 +192,12 @@ const route = useRoute()
 const router = useRouter()
 const canvasViewportRef = ref(null)
 const albumInputRef = ref(null)
+const cameraInputRef = ref(null)
 const canvasLoaded = ref(false)
 const imageReplacing = ref(false)
 const imagePreviewUrl = ref('')
+const hasUploadedImage = ref(false)
+const showImagePickerSheet = ref(false)
 const textValue = ref('')
 const hasImageTarget = ref(false)
 const hasTextTarget = ref(false)
@@ -198,6 +257,8 @@ async function reloadTemplate() {
 function resetPageState() {
   canvasLoaded.value = false
   imagePreviewUrl.value = ''
+  hasUploadedImage.value = false
+  showImagePickerSheet.value = false
   textValue.value = ''
   hasImageTarget.value = false
   hasTextTarget.value = false
@@ -221,6 +282,10 @@ function handleDocumentLoaded(payload) {
   canvasLoaded.value = true
   templateError.value = ''
 
+  if (props.imagePickerSheet && !hasUploadedImage.value && hasImageTarget.value) {
+    showImagePickerSheet.value = true
+  }
+
   if (!hasImageTarget.value || !hasTextTarget.value) {
     operationStatus.value = {
       type: 'warning',
@@ -243,12 +308,47 @@ function handleCanvasError(error) {
  *
  * @returns {void}
  */
-function openImagePicker() {
+function handleUploadButtonClick() {
   if (!canPickImage.value) {
     return
   }
 
-  albumInputRef.value?.click()
+  if (props.imagePickerSheet) {
+    showImagePickerSheet.value = true
+    return
+  }
+
+  openImagePicker('album')
+}
+
+/**
+ * 打开指定图片来源的系统选择器。
+ *
+ * @param {'album' | 'camera'} source 图片来源。
+ * @returns {void}
+ */
+function openImagePicker(source) {
+  if (!canPickImage.value) {
+    return
+  }
+
+  if (!hasImageTarget.value) {
+    operationStatus.value = {
+      type: 'warning',
+      text: `模板未配置“${props.imageDescription}”标记。`
+    }
+    closeImagePickerSheet()
+    return
+  }
+
+  showImagePickerSheet.value = false
+  const input = source === 'camera' ? cameraInputRef.value : albumInputRef.value
+  input?.click()
+}
+
+/** @returns {void} 关闭图片选择面板。 */
+function closeImagePickerSheet() {
+  showImagePickerSheet.value = false
 }
 
 /**
@@ -284,6 +384,8 @@ async function handleImageChange(event) {
       }))
     )
     imagePreviewUrl.value = imageUrl
+    hasUploadedImage.value = true
+    showImagePickerSheet.value = false
     operationStatus.value = { type: 'success', text: '图片已更新' }
   } catch (error) {
     console.error(`${props.pageId} image replacement failed.`, error)
@@ -636,6 +738,134 @@ watch(
   backdrop-filter: blur(2px);
 }
 
+.image-picker-backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(18, 18, 18, 0.28);
+}
+
+.image-picker-sheet {
+  position: relative;
+  width: min(100%, 430px);
+  padding: 10px 20px calc(18px + env(safe-area-inset-bottom));
+  border-radius: 16px 16px 0 0;
+  color: #282828;
+  background: #ffffff;
+  box-shadow: 0 -8px 24px rgba(18, 18, 18, 0.12);
+}
+
+.sheet-handle {
+  display: block;
+  width: 34px;
+  height: 4px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  background: #d9d9d9;
+}
+
+.sheet-close {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  color: #707070;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sheet-close:hover {
+  color: #242424;
+  background: #f4f4f4;
+}
+
+.image-picker-sheet h2 {
+  margin: 0 42px 16px;
+  color: #242424;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.image-picker-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.image-picker-option {
+  display: flex;
+  min-height: 104px;
+  padding: 14px 8px 12px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid #f4dce3;
+  border-radius: 9px;
+  color: #242424;
+  background: #fff0f4;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.image-picker-option:hover {
+  border-color: #e9b9c5;
+  background: #ffe8ee;
+}
+
+.image-picker-option:active {
+  transform: translateY(1px);
+}
+
+.image-picker-option:focus-visible,
+.sheet-close:focus-visible {
+  outline: 2px solid #d61f35;
+  outline-offset: 2px;
+}
+
+.image-picker-icon {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  color: #d61f35;
+}
+
+.picker-sheet-enter-active,
+.picker-sheet-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.picker-sheet-enter-active .image-picker-sheet,
+.picker-sheet-leave-active .image-picker-sheet {
+  transition: transform 220ms ease;
+}
+
+.picker-sheet-enter-from,
+.picker-sheet-leave-to {
+  opacity: 0;
+}
+
+.picker-sheet-enter-from .image-picker-sheet,
+.picker-sheet-leave-to .image-picker-sheet {
+  transform: translateY(100%);
+}
+
 .spinner {
   width: 18px;
   height: 18px;
@@ -667,7 +897,12 @@ watch(
 
 @media (prefers-reduced-motion: reduce) {
   .secondary-button,
-  .text-input {
+  .text-input,
+  .image-picker-option,
+  .picker-sheet-enter-active,
+  .picker-sheet-leave-active,
+  .picker-sheet-enter-active .image-picker-sheet,
+  .picker-sheet-leave-active .image-picker-sheet {
     transition: none;
   }
 
