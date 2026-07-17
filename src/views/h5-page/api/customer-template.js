@@ -1,18 +1,17 @@
-import { customerXiaoxiangClient } from '../clients/customer-xiaoxiang-client.js'
-import { createCustomTemplateApi } from './custom-template.js'
+import { createCustomTemplateApi } from '../../../api/modules/custom-template.js'
+import { customerClient } from './customer-client.js'
 
-const CUSTOMER_CUSTOM_TEMPLATE_ENDPOINT =
+const CUSTOMER_TEMPLATE_ENDPOINT =
   import.meta.env?.VITE_CUSTOMER_CUSTOM_TEMPLATE_API_PATH || '/customer/api/customTemplate'
-
-const customerTemplateApi = createCustomTemplateApi(
-  CUSTOMER_CUSTOM_TEMPLATE_ENDPOINT,
+const templateApi = createCustomTemplateApi(
+  CUSTOMER_TEMPLATE_ENDPOINT,
   'customerCustomTemplate',
-  customerXiaoxiangClient
+  customerClient
 )
 
 /** H5 生产页面使用的客户侧模板接口。 */
-export const customerCustomTemplateApi = Object.freeze({
-  ...customerTemplateApi,
+export const customerTemplateApi = Object.freeze({
+  ...templateApi,
 
   /**
    * 基于后台模板保存一条用户自己的设计。
@@ -22,28 +21,22 @@ export const customerCustomTemplateApi = Object.freeze({
    * @returns {import('alova').Method} 保存请求。
    */
   createDesign(dto, options = {}) {
-    return customerTemplateApi.create(assertCustomerDesignDto(dto), options)
+    return templateApi.create(assertCustomerDesignDto(dto), options)
   }
 })
 
-/**
- * 校验用户设计保存参数。
- *
- * @param {*} dto 原始 DTO。
- * @returns {Object} 规范化 DTO。
- */
+/** @param {*} dto 原始 DTO。 @returns {Object} 规范化 DTO。 */
 function assertCustomerDesignDto(dto) {
   if (!dto || typeof dto !== 'object' || Array.isArray(dto)) {
-    throw new TypeError('customerCustomTemplate.createDesign(dto) requires an object.')
+    throw new TypeError('customerTemplate.createDesign(dto) requires an object.')
   }
 
   const templateId = Number(dto.templateId)
   if (!Number.isSafeInteger(templateId) || templateId <= 0) {
-    throw new TypeError('customerCustomTemplate.templateId must be a positive integer.')
+    throw new TypeError('customerTemplate.templateId must be a positive integer.')
   }
-
   if (typeof dto.content !== 'string' || !dto.content.trim()) {
-    throw new TypeError('customerCustomTemplate.content must be a JSON string.')
+    throw new TypeError('customerTemplate.content must be a JSON string.')
   }
 
   assertOptionalString(dto.designName, 'designName')
@@ -55,6 +48,6 @@ function assertCustomerDesignDto(dto) {
 /** @param {*} value 输入值。 @param {string} key 字段名。 @returns {void} */
 function assertOptionalString(value, key) {
   if (value !== undefined && value !== null && typeof value !== 'string') {
-    throw new TypeError(`customerCustomTemplate.${key} must be a string.`)
+    throw new TypeError(`customerTemplate.${key} must be a string.`)
   }
 }

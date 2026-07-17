@@ -1,5 +1,9 @@
-import { createAccessTokenStore, normalizeAccessToken } from './access-token-store.js'
-import { MESSAGE_TYPES, postBridgeMessage, subscribeBridgeMessage } from './message-bridge.js'
+import { createAccessTokenStore, normalizeAccessToken } from '../../../services/access-token-store.js'
+import {
+  MESSAGE_TYPES,
+  postBridgeMessage,
+  subscribeBridgeMessage
+} from '../../../services/message-bridge.js'
 
 const h5AccessTokenStore = createAccessTokenStore({
   initialToken: import.meta.env?.VITE_H5_TEMPORARY_ACCESS_TOKEN
@@ -21,7 +25,7 @@ export function waitForH5AccessToken(timeout) {
   return h5AccessTokenStore.wait(timeout)
 }
 
-/** @returns {void} */
+/** @returns {void} 清空 H5 Token。 */
 export function clearH5AccessToken() {
   h5AccessTokenStore.clear()
 }

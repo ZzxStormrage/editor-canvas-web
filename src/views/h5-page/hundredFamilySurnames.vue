@@ -102,10 +102,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { loadFontFace } from '../../canvas-editor-core/src/index.js'
-import CanvasDocumentViewport from '../../components/canvas-runtime/CanvasDocumentViewport.vue'
-import { saveH5CustomDesign } from '../../services/h5-custom-design.js'
-import { navigateToH5RedirectPath, readH5RedirectPath } from '../../services/h5-route-navigation.js'
 import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
+import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
+import { saveH5CustomDesign } from './services/custom-design.js'
+import { navigateToH5RedirectPath, readH5RedirectPath } from './services/route-navigation.js'
 
 const BACKGROUND_IMAGE_URL =
   'https://ele-aiketie.ele007.com/yinxiang/202607/ba7f4d19-5ec2-4b01-9a33-900e292660eb.jpg'

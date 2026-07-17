@@ -5,7 +5,7 @@
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { createEditor } from '../../canvas-editor-core/src/index.js'
+import { createEditor } from '../../../canvas-editor-core/src/index.js'
 
 const props = defineProps({
   document: {
@@ -31,7 +31,7 @@ const hostRef = ref(null)
 let editor = null
 let resizeObserver = null
 
-/** @returns {import('../../canvas-editor-core/src/core/Editor.js').Editor | null} 编辑器实例。 */
+/** @returns {import('../../../canvas-editor-core/src/core/Editor.js').Editor | null} 编辑器实例。 */
 function getEditor() {
   return editor
 }
@@ -66,7 +66,7 @@ function fitArtboard() {
   }
 }
 
-/** @returns {void} 创建只包含画布的核心实例。 */
+/** @returns {void} 创建 H5 页面使用的画布核心实例。 */
 function mountEditor() {
   if (!hostRef.value) {
     return

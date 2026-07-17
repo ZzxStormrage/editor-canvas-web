@@ -1,7 +1,5 @@
 /**
  * 微信小程序 web-view API 兼容层。
- *
- * index.html 通过微信 JSSDK 提供 window.wx.miniProgram，本模块只负责安全调用。
  */
 export const wxAPI = Object.freeze({
   /** @returns {boolean} 当前是否存在微信小程序桥。 */
@@ -11,8 +9,6 @@ export const wxAPI = Object.freeze({
 
   /**
    * 通过微信小程序桥发送原始数据。
-   *
-   * 标准业务消息优先使用 postBridgeMessage()，此方法只作为底层兼容能力。
    *
    * @param {*} data 可结构化克隆的数据。
    * @returns {boolean} 是否成功调用微信 API。
@@ -55,7 +51,7 @@ export const wxAPI = Object.freeze({
   },
 
   /**
-   * 返回微信小程序上一页，使 web-view 的 bindmessage 收到已发送数据。
+   * 返回微信小程序上一页。
    *
    * @param {{ delta?: number }} [options={}] 返回层级。
    * @returns {boolean} 是否成功调用微信 API。

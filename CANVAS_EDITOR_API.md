@@ -598,7 +598,7 @@ if (result.channels.includes('mini-program')) {
 }
 ```
 
-`wxAPI` 来自 `src/services/wx-api.js`。项目在 `index.html` 中加载微信官方
+`wxAPI` 来自 `src/views/h5-page/services/wx-api.js`。项目在 `index.html` 中加载微信官方
 `jweixin-1.3.2.js`，由其提供 `window.wx.miniProgram`。微信的 `bindmessage` 通常在 web-view
 返回、分享或销毁时把消息交给小程序页面，所以生肖 H5 在成功发送后立即调用
 `wx.miniProgram.navigateBack()`；普通浏览器没有微信桥时不会自动返回。
@@ -1723,7 +1723,8 @@ VITE_H5_TEMPORARY_ACCESS_TOKEN=H5_CUSTOMER_TOKEN
 ```
 
 H5 `/customer/api/localStorage/pictures` 与 `/customer/api/customTemplate` 共用
-`customerXiaoxiangClient` 和 `VITE_XIAOXIANG_API_BASE_URL`。开发环境下两者都会经过
+`src/views/h5-page/api/customer-client.js` 中的 `customerClient` 和
+`VITE_XIAOXIANG_API_BASE_URL`。开发环境下两者都会经过
 `/xiaoxiang-api` 代理，避免浏览器跨域限制；上传接口返回的相对图片地址仍按代理目标域名
 补全为可持久化的绝对 URL。
 

@@ -1,11 +1,9 @@
-import { setH5AccessToken } from './h5-auth-token.js'
+import { setH5AccessToken } from './auth-token.js'
 
 const TOKEN_QUERY_KEYS = ['token', 'authorization', 'Authorization']
 
 /**
  * 消费路由中的 Token 并立即从地址栏移除。
- *
- * 小程序可通过 web-view URL 传入 token；可注入 JavaScript 的宿主优先使用 h5:auth-token 消息。
  *
  * @param {import('vue-router').RouteLocationNormalizedLoaded} route 当前路由。
  * @param {import('vue-router').Router} router Vue Router 实例。
@@ -37,12 +35,16 @@ export async function consumeRouteAccessToken(route, router) {
  */
 export function readRouteAccessToken(route) {
   for (const key of TOKEN_QUERY_KEYS) {
-    const value = route.query?.[key]
-    const token = Array.isArray(value) ? value[0] : value
+    const token = readRouteValue(route.query?.[key])
     if (typeof token === 'string' && token.trim()) {
       return token
     }
   }
 
   return null
+}
+
+/** @param {*} value 路由参数值。 @returns {*} 单值。 */
+function readRouteValue(value) {
+  return Array.isArray(value) ? value[0] : value
 }

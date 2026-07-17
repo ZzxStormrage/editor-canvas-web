@@ -6,8 +6,8 @@
 import { onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { installH5AccessTokenBridge } from '../../services/h5-auth-token.js'
-import { consumeRouteAccessToken } from '../../services/route-auth-token.js'
+import { installH5AccessTokenBridge } from './services/auth-token.js'
+import { consumeRouteAccessToken } from './services/route-auth-token.js'
 
 const route = useRoute()
 const router = useRouter()

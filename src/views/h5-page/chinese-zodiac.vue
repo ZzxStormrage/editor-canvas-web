@@ -91,15 +91,19 @@
 </template>
 
 <script setup>
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import CanvasDocumentViewport from '../../components/canvas-runtime/CanvasDocumentViewport.vue'
-import { loadCustomerTemplateDocument } from '../../services/custom-template-document.js'
-import { saveH5CustomDesign } from '../../services/h5-custom-design.js'
 import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
-import { navigateToH5RedirectPath, readH5RedirectPath } from '../../services/h5-route-navigation.js'
-import { wxAPI } from '../../services/wx-api.js'
+import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
+import { useH5TemplateDocument } from './composables/useH5TemplateDocument.js'
+import { saveH5CustomDesign } from './services/custom-design.js'
+import {
+  navigateToH5RedirectPath,
+  readH5RedirectPath,
+  readRouteValue
+} from './services/route-navigation.js'
+import { wxAPI } from './services/wx-api.js'
 
 const type = ref(1)
 const canvasViewportRef = ref(null)
@@ -110,8 +114,6 @@ const month = ref('')
 const day = ref('')
 const saving = ref(false)
 const saveStatus = ref({ type: 'success', text: '' })
-const templateLoading = ref(false)
-const templateError = ref('')
 const canvasLoaded = ref(false)
 const dateTextBindings = [
   { description: '年', value: year },
@@ -133,8 +135,13 @@ const animalList = [
   { type: 12, name: '猪', icon: 'https://xiaoxiang.ele007.com/file/image/animal12.png' }
 ]
 
-const documentData = shallowRef(null)
-let templateRequestId = 0
+const {
+  documentData,
+  templateLoading,
+  templateError,
+  handleCanvasError: handleTemplateCanvasError,
+  loadTemplateFromRoute
+} = useH5TemplateDocument({ errorLabel: 'Chinese zodiac' })
 
 const selectedAnimal = computed(() => {
   return animalList.find((item) => item.type === type.value) ?? animalList[0]
@@ -164,86 +171,6 @@ const canvasFrameStyle = computed(() => {
     aspectRatio: `${width} / ${height}`
   }
 })
-
-/**
- * 根据当前路由的模板 ID 加载模板文档。
- *
- * @returns {Promise<void>} 模板加载完成。
- */
-async function loadTemplateFromRoute() {
-  const requestId = ++templateRequestId
-  const rawTemplateId = resolveRouteValue(route.query.templateId)
-  const templateId = resolveTemplateId(route.query.templateId)
-
-  documentData.value = null
-  canvasLoaded.value = false
-  templateError.value = ''
-
-  if (rawTemplateId === null || rawTemplateId === '') {
-    templateError.value = '缺少模板 ID。'
-    templateLoading.value = false
-    return
-  }
-
-  if (!templateId) {
-    templateError.value = '模板 ID 必须是正整数。'
-    templateLoading.value = false
-    return
-  }
-
-  templateLoading.value = true
-
-  try {
-    const { document } = await loadCustomerTemplateDocument(templateId, {
-      partnerId: resolveRouteValue(route.query.partnerId)
-    })
-
-    if (requestId !== templateRequestId) {
-      return
-    }
-
-    documentData.value = document
-  } catch (error) {
-    if (requestId !== templateRequestId) {
-      return
-    }
-
-    console.error('Chinese zodiac template load failed.', error)
-    documentData.value = null
-    templateError.value = error.message || '模板加载失败。'
-  } finally {
-    if (requestId === templateRequestId) {
-      templateLoading.value = false
-    }
-  }
-}
-
-/**
- * 将路由模板 ID 归一化为正整数。
- *
- * @param {*} value 路由参数值。
- * @returns {number | null} 合法模板 ID。
- */
-function resolveTemplateId(value) {
-  const rawValue = Array.isArray(value) ? value[0] : value
-  const number = Number(rawValue)
-
-  return Number.isSafeInteger(number) && number > 0 ? number : null
-}
-
-/**
- * 读取可选的单值路由参数。
- *
- * @param {*} value 路由参数值。
- * @returns {string | number | null} 单值参数。
- */
-function resolveRouteValue(value) {
-  if (Array.isArray(value)) {
-    return value[0] ?? null
-  }
-
-  return value ?? null
-}
 
 function getImageDescription(element) {
   return typeof element.attributes?.image?.description === 'string' ? element.attributes.image.description.trim() : ''
@@ -285,8 +212,7 @@ function handleDocumentLoaded(payload) {
  */
 function handleCanvasError(error) {
   canvasLoaded.value = false
-  documentData.value = null
-  templateError.value = error?.message || '画布加载失败。'
+  handleTemplateCanvasError(error)
 }
 
 /**
@@ -345,7 +271,8 @@ watch([year, month, day], () => {
 watch(
   () => [route.query.templateId, route.query.partnerId],
   () => {
-    void loadTemplateFromRoute()
+    canvasLoaded.value = false
+    void loadTemplateFromRoute(route.query)
   },
   { immediate: true }
 )
@@ -362,7 +289,7 @@ async function onSubmit() {
   try {
     const savePayload = await saveH5CustomDesign(canvasViewportRef.value?.getEditor?.(), {
       templateId: route.query.templateId,
-      designName: resolveRouteValue(route.query.designName) || '生肖定制',
+      designName: readRouteValue(route.query.designName) || '生肖定制',
       partnerId: route.query.partnerId
     })
     console.log('生肖页面保存数据：', JSON.stringify(savePayload, null, 2))
@@ -400,7 +327,7 @@ function postChineseZodiacSaveMessage(savePayload) {
     MESSAGE_TYPES.H5_PAGE_SAVED,
     {
       page: 'chinese-zodiac',
-      templateId: resolveRouteValue(route.query.templateId),
+      templateId: readRouteValue(route.query.templateId),
       json: savePayload.editorJson,
       previewImgUrl: savePayload.previewImgUrl,
       productImgUrl: savePayload.productImgUrl,

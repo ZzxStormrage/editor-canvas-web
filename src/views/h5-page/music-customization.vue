@@ -3,5 +3,5 @@
 </template>
 
 <script setup>
-import ImageTextCustomizationPage from '../../components/h5-page/ImageTextCustomizationPage.vue'
+import ImageTextCustomizationPage from './components/ImageTextCustomizationPage.vue'
 </script>

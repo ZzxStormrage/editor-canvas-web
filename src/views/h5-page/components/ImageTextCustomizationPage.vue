@@ -97,16 +97,20 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { customerPictureApi } from '../../api/index.js'
-import CanvasDocumentViewport from '../canvas-runtime/CanvasDocumentViewport.vue'
-import { loadCustomerTemplateDocument } from '../../services/custom-template-document.js'
-import { saveH5CustomDesign } from '../../services/h5-custom-design.js'
-import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
-import { navigateToH5RedirectPath, readH5RedirectPath } from '../../services/h5-route-navigation.js'
-import { wxAPI } from '../../services/wx-api.js'
+import { MESSAGE_TYPES, postBridgeMessage } from '../../../services/message-bridge.js'
+import CanvasDocumentViewport from './CanvasDocumentViewport.vue'
+import { customerPictureApi } from '../api/customer-picture.js'
+import { useH5TemplateDocument } from '../composables/useH5TemplateDocument.js'
+import { saveH5CustomDesign } from '../services/custom-design.js'
+import {
+  navigateToH5RedirectPath,
+  readH5RedirectPath,
+  readRouteValue
+} from '../services/route-navigation.js'
+import { wxAPI } from '../services/wx-api.js'
 
 const props = defineProps({
   pageTitle: {
@@ -131,9 +135,6 @@ const route = useRoute()
 const router = useRouter()
 const canvasViewportRef = ref(null)
 const fileInputRef = ref(null)
-const documentData = shallowRef(null)
-const templateLoading = ref(false)
-const templateError = ref('')
 const canvasLoaded = ref(false)
 const imageReplacing = ref(false)
 const imagePreviewUrl = ref('')
@@ -142,7 +143,13 @@ const hasImageTarget = ref(false)
 const hasTextTarget = ref(false)
 const saving = ref(false)
 const operationStatus = ref({ type: 'success', text: '' })
-let templateRequestId = 0
+const {
+  documentData,
+  templateLoading,
+  templateError,
+  handleCanvasError: handleTemplateCanvasError,
+  loadTemplateFromRoute
+} = useH5TemplateDocument({ errorLabel: props.pageId })
 
 const canvasFrameStyle = computed(() => {
   const width = Number(documentData.value?.canvas?.width)
@@ -167,42 +174,14 @@ const canSubmit = computed(() => {
 })
 
 /** @returns {Promise<void>} 根据路由模板 ID 加载 customer 模板。 */
-async function loadTemplateFromRoute() {
-  const requestId = ++templateRequestId
-  const templateId = resolveTemplateId(route.query.templateId)
-
+async function reloadTemplate() {
   resetPageState()
-  if (!templateId) {
-    templateError.value = '模板 ID 必须是正整数。'
-    return
-  }
-
-  templateLoading.value = true
-  try {
-    const { document } = await loadCustomerTemplateDocument(templateId, {
-      partnerId: resolveRouteValue(route.query.partnerId)
-    })
-
-    if (requestId === templateRequestId) {
-      documentData.value = document
-    }
-  } catch (error) {
-    if (requestId === templateRequestId) {
-      console.error(`${props.pageId} template load failed.`, error)
-      templateError.value = error.message || '模板加载失败。'
-    }
-  } finally {
-    if (requestId === templateRequestId) {
-      templateLoading.value = false
-    }
-  }
+  await loadTemplateFromRoute(route.query)
 }
 
 /** @returns {void} 清理上一个模板的页面状态。 */
 function resetPageState() {
-  documentData.value = null
   canvasLoaded.value = false
-  templateError.value = ''
   imagePreviewUrl.value = ''
   textValue.value = ''
   hasImageTarget.value = false
@@ -240,8 +219,7 @@ function handleDocumentLoaded(payload) {
  */
 function handleCanvasError(error) {
   canvasLoaded.value = false
-  documentData.value = null
-  templateError.value = error?.message || '画布加载失败。'
+  handleTemplateCanvasError(error)
 }
 
 /**
@@ -305,7 +283,7 @@ async function onSubmit() {
   try {
     const payload = await saveH5CustomDesign(editor, {
       templateId: route.query.templateId,
-      designName: resolveRouteValue(route.query.designName) || props.pageTitle,
+      designName: readRouteValue(route.query.designName) || props.pageTitle,
       partnerId: route.query.partnerId
     })
     const bridgeResult = postSaveMessage(payload)
@@ -341,7 +319,7 @@ function postSaveMessage(payload) {
     MESSAGE_TYPES.H5_PAGE_SAVED,
     {
       page: props.pageId,
-      templateId: resolveRouteValue(route.query.templateId),
+      templateId: readRouteValue(route.query.templateId),
       json: payload.editorJson,
       previewImgUrl: payload.previewImgUrl,
       productImgUrl: payload.productImgUrl,
@@ -373,29 +351,14 @@ function createMissingMarkerMessage() {
     : `模板未配置“${props.imageDescription}”标记。`
 }
 
-/** @param {*} value 路由参数。 @returns {number | null} 正整数模板 ID。 */
-function resolveTemplateId(value) {
-  const number = Number(resolveRouteValue(value))
-  return Number.isSafeInteger(number) && number > 0 ? number : null
-}
-
-/** @param {*} value 路由参数。 @returns {string | number | null} 单值参数。 */
-function resolveRouteValue(value) {
-  return Array.isArray(value) ? value[0] ?? null : value ?? null
-}
-
 watch(textValue, applyTextValue)
 watch(
   () => [route.query.templateId, route.query.partnerId],
   () => {
-    void loadTemplateFromRoute()
+    void reloadTemplate()
   },
   { immediate: true }
 )
-
-onBeforeUnmount(() => {
-  templateRequestId += 1
-})
 </script>
 
 <style lang="scss" scoped>

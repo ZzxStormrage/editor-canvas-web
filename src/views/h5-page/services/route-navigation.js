@@ -17,28 +17,21 @@ const INTERNAL_QUERY_KEYS = new Set([
  * @returns {string | null} 包含业务参数的重定向路径；未传入时返回 null。
  */
 export function readH5RedirectPath(route) {
-  const value = route?.query?.redirectPath
-  const path = Array.isArray(value) ? value[0] : value
-
-  if (typeof path === 'string' && path.trim()) {
-    return appendBusinessQuery(path.trim(), route.query)
-  }
-
-  return null
+  const path = readRouteValue(route?.query?.redirectPath)
+  return typeof path === 'string' && path.trim()
+    ? appendBusinessQuery(path.trim(), route.query)
+    : null
 }
 
 /**
  * 跳转到 redirectPath 指定的页面。
- *
- * 微信小程序环境优先使用 redirectTo；普通浏览器回退到站内路由或 http/https 地址。
  *
  * @param {string | null} path 重定向路径。
  * @param {Object} router Vue Router 实例。
  * @returns {Promise<boolean>} 是否已发起跳转。
  */
 export async function navigateToH5RedirectPath(path, router) {
-  const target = normalizeRedirectPath(path, { allowMiniProgramPath: true })
-
+  const target = normalizeRedirectPath(path)
   if (!target) {
     return false
   }
@@ -60,14 +53,19 @@ export async function navigateToH5RedirectPath(path, router) {
   return true
 }
 
-/**
- * 归一化并校验重定向路径。
- *
- * @param {*} value 原始路径。
- * @param {{ allowMiniProgramPath?: boolean }} [options={}] 校验配置。
- * @returns {string | null} 安全路径。
- */
-function normalizeRedirectPath(value, options = {}) {
+/** @param {*} value 路由参数值。 @returns {*} 单值。 */
+export function readRouteValue(value) {
+  return Array.isArray(value) ? value[0] ?? null : value ?? null
+}
+
+/** @param {*} value 路由模板 ID。 @returns {number | null} 正整数模板 ID。 */
+export function readRouteTemplateId(value) {
+  const templateId = Number(readRouteValue(value))
+  return Number.isSafeInteger(templateId) && templateId > 0 ? templateId : null
+}
+
+/** @param {*} value 原始路径。 @returns {string | null} 安全路径。 */
+function normalizeRedirectPath(value) {
   if (typeof value !== 'string') {
     return null
   }
@@ -76,25 +74,16 @@ function normalizeRedirectPath(value, options = {}) {
   if (/^https?:\/\//i.test(path)) {
     return path
   }
-
   if (path.startsWith('#/')) {
     return path.slice(1)
   }
-
   if (path.startsWith('/') && !path.startsWith('//')) {
     return path
   }
-
-  if (options.allowMiniProgramPath && /^[\w.-]+(?:\/[\w.-]+)+(?:\?.*)?$/.test(path)) {
-    return `/${path}`
-  }
-
-  return null
+  return /^[\w.-]+(?:\/[\w.-]+)+(?:\?.*)?$/.test(path) ? `/${path}` : null
 }
 
 /**
- * 将 H5 路由中的业务参数追加到小程序跳转路径。
- *
  * @param {string} path 原始跳转路径。
  * @param {Object} query 当前 H5 查询参数。
  * @returns {string} 包含业务参数的跳转路径。
