@@ -33,6 +33,28 @@ export const wxAPI = Object.freeze({
   },
 
   /**
+   * 关闭当前小程序页面并跳转到指定页面。
+   *
+   * @param {{ url: string }} options 小程序页面路径。
+   * @returns {boolean} 是否成功调用微信 API。
+   */
+  redirectTo(options = {}) {
+    const bridge = resolveMiniProgramBridge()
+    const url = normalizeMiniProgramPath(options.url)
+    if (typeof bridge?.redirectTo !== 'function' || !url) {
+      return false
+    }
+
+    try {
+      bridge.redirectTo({ url })
+      return true
+    } catch (error) {
+      console.warn('WeChat mini program redirectTo failed.', error)
+      return false
+    }
+  },
+
+  /**
    * 返回微信小程序上一页，使 web-view 的 bindmessage 收到已发送数据。
    *
    * @param {{ delta?: number }} [options={}] 返回层级。
@@ -63,4 +85,9 @@ function resolveMiniProgramBridge() {
 function normalizeDelta(value) {
   const delta = Number(value ?? 1)
   return Number.isSafeInteger(delta) && delta > 0 ? delta : 1
+}
+
+/** @param {*} value 小程序页面路径。 @returns {string | null} 有效路径。 */
+function normalizeMiniProgramPath(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }

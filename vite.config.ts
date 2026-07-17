@@ -2,7 +2,7 @@
  * @Author: zzx 452436275@qq.com
  * @Date: 2024-04-29 14:38:47
  * @LastEditors: zzx 452436275@qq.com
- * @LastEditTime: 2026-07-17 16:04:30
+ * @LastEditTime: 2026-07-17 16:48:18
  * @FilePath: /wufangzhai-custom/vite.config.ts
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -78,7 +78,7 @@ export default ({ mode }) => {
       // 是否开启 https
       https: false,
       // 端口号
-      port: 5137,
+      port: 8014,
       // 监听所有地址
       host: '0.0.0.0',
       // 服务启动时是否自动打开浏览器

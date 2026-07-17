@@ -98,12 +98,14 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { customerPictureApi } from '../../api/index.js'
 import CanvasDocumentViewport from '../canvas-runtime/CanvasDocumentViewport.vue'
 import { loadCustomerTemplateDocument } from '../../services/custom-template-document.js'
+import { saveH5CustomDesign } from '../../services/h5-custom-design.js'
 import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
+import { navigateToH5RedirectPath, readH5RedirectPath } from '../../services/h5-route-navigation.js'
 import { wxAPI } from '../../services/wx-api.js'
 
 const props = defineProps({
@@ -126,6 +128,7 @@ const props = defineProps({
 })
 
 const route = useRoute()
+const router = useRouter()
 const canvasViewportRef = ref(null)
 const fileInputRef = ref(null)
 const documentData = shallowRef(null)
@@ -300,10 +303,19 @@ async function onSubmit() {
   saving.value = true
   operationStatus.value = { type: 'success', text: '' }
   try {
-    const payload = await createSavePayload(editor)
+    const payload = await saveH5CustomDesign(editor, {
+      templateId: route.query.templateId,
+      designName: resolveRouteValue(route.query.designName) || props.pageTitle,
+      partnerId: route.query.partnerId
+    })
     const bridgeResult = postSaveMessage(payload)
 
     console.log(`${props.pageTitle}保存数据：`, JSON.stringify(payload, null, 2))
+
+    if (await navigateToH5RedirectPath(readH5RedirectPath(route), router)) {
+      return
+    }
+
     if (bridgeResult.channels.includes('mini-program') && wxAPI.isSupported()) {
       operationStatus.value = { type: 'success', text: '保存成功，正在返回' }
       if (wxAPI.navigateBack({ delta: 1 })) {
@@ -321,30 +333,7 @@ async function onSubmit() {
 }
 
 /**
- * @param {Object} editor 核心编辑器实例。
- * @returns {Promise<{ editorJson: Object, printAreaImage: string | null }>} 保存数据。
- */
-async function createSavePayload(editor) {
-  const editorJson = editor.exportDocument()
-  if (!editorJson) {
-    throw new Error('无法获取当前画布 JSON。')
-  }
-
-  const printAreaImage = editor.getPrintAreaProperties()
-    ? await editor.capturePrintArea({
-        includeBackground: false,
-        includeMask: false,
-        type: 'image/png',
-        quality: 1,
-        upload: (file) => customerPictureApi.upload(file)
-      })
-    : null
-
-  return { editorJson, printAreaImage }
-}
-
-/**
- * @param {{ editorJson: Object, printAreaImage: string | null }} payload 保存数据。
+ * @param {Object} payload 保存数据。
  * @returns {{ message: Object, channels: string[] }} 通信结果。
  */
 function postSaveMessage(payload) {
@@ -354,7 +343,10 @@ function postSaveMessage(payload) {
       page: props.pageId,
       templateId: resolveRouteValue(route.query.templateId),
       json: payload.editorJson,
-      printAreaImage: payload.printAreaImage
+      previewImgUrl: payload.previewImgUrl,
+      productImgUrl: payload.productImgUrl,
+      printAreaImage: payload.productImgUrl,
+      design: payload.response
     },
     { target: 'mini-program', sender: 'h5-page' }
   )

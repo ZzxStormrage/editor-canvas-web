@@ -1,4 +1,5 @@
 import { customerXiaoxiangClient } from '../clients/customer-xiaoxiang-client.js';
+import { XIAOXIANG_ASSET_BASE_URL } from '../clients/xiaoxiang-client.js';
 import { createPictureApi } from './picture.js';
 
 const CUSTOMER_PICTURE_UPLOAD_PATH =
@@ -8,5 +9,6 @@ const CUSTOMER_PICTURE_UPLOAD_PATH =
 export const customerPictureApi = createPictureApi(
   CUSTOMER_PICTURE_UPLOAD_PATH,
   'customerPicture.upload',
-  customerXiaoxiangClient
+  customerXiaoxiangClient,
+  XIAOXIANG_ASSET_BASE_URL
 );

@@ -92,17 +92,19 @@
 
 <script setup>
 import { computed, ref, shallowRef, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
-import { customerPictureApi } from '../../api/index.js'
 import CanvasDocumentViewport from '../../components/canvas-runtime/CanvasDocumentViewport.vue'
 import { loadCustomerTemplateDocument } from '../../services/custom-template-document.js'
+import { saveH5CustomDesign } from '../../services/h5-custom-design.js'
 import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
+import { navigateToH5RedirectPath, readH5RedirectPath } from '../../services/h5-route-navigation.js'
 import { wxAPI } from '../../services/wx-api.js'
 
 const type = ref(1)
 const canvasViewportRef = ref(null)
 const route = useRoute()
+const router = useRouter()
 const year = ref('')
 const month = ref('')
 const day = ref('')
@@ -358,9 +360,18 @@ async function onSubmit() {
   saveStatus.value = { type: 'success', text: '' }
 
   try {
-    const savePayload = await createSavePayload(canvasViewportRef.value?.getEditor?.())
+    const savePayload = await saveH5CustomDesign(canvasViewportRef.value?.getEditor?.(), {
+      templateId: route.query.templateId,
+      designName: resolveRouteValue(route.query.designName) || '生肖定制',
+      partnerId: route.query.partnerId
+    })
     console.log('生肖页面保存数据：', JSON.stringify(savePayload, null, 2))
     const bridgeResult = postChineseZodiacSaveMessage(savePayload)
+
+    const redirectPath = readH5RedirectPath(route)
+    if (await navigateToH5RedirectPath(redirectPath, router)) {
+      return
+    }
 
     if (bridgeResult.channels.includes('mini-program') && wxAPI.isSupported()) {
       saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
@@ -381,7 +392,7 @@ async function onSubmit() {
 /**
  * 向微信小程序发送生肖页面保存结果。
  *
- * @param {{ editorJson: Object, printAreaImage: * }} savePayload 保存数据。
+ * @param {Object} savePayload 保存数据。
  * @returns {{ message: Object, channels: string[] }} 通信结果。
  */
 function postChineseZodiacSaveMessage(savePayload) {
@@ -391,7 +402,10 @@ function postChineseZodiacSaveMessage(savePayload) {
       page: 'chinese-zodiac',
       templateId: resolveRouteValue(route.query.templateId),
       json: savePayload.editorJson,
-      printAreaImage: savePayload.printAreaImage
+      previewImgUrl: savePayload.previewImgUrl,
+      productImgUrl: savePayload.productImgUrl,
+      printAreaImage: savePayload.productImgUrl,
+      design: savePayload.response
     },
     {
       target: 'mini-program',
@@ -400,38 +414,6 @@ function postChineseZodiacSaveMessage(savePayload) {
   )
 }
 
-/**
- * @param {Object | null} editor 核心编辑器实例。
- * @returns {Promise<{ editorJson: Object, printAreaImage: string | null }>} 页面保存数据。
- */
-async function createSavePayload(editor) {
-  if (!editor) {
-    throw new Error('画布尚未加载完成。')
-  }
-
-  const editorJson = editor.exportDocument()
-  if (!editorJson) {
-    throw new Error('无法获取当前画布 JSON。')
-  }
-
-  const printAreaImage = editor.getPrintAreaProperties() ? await capturePrintAreaImage(editor) : null
-
-  return { editorJson, printAreaImage }
-}
-
-/**
- * @param {Object} editor 核心编辑器实例。
- * @returns {Promise<string>} 打印区域截图上传地址。
- */
-function capturePrintAreaImage(editor) {
-  return editor.capturePrintArea({
-    includeBackground: false,
-    includeMask: false,
-    type: 'image/png',
-    quality: 1,
-    upload: (file) => customerPictureApi.upload(file)
-  })
-}
 </script>
 
 <style lang="scss" scoped>

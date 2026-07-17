@@ -1623,6 +1623,9 @@ function onDocumentLoaded({ editor }) {
 
 # 微信小程序 web-view 初始化时传入 Token
 #/h5-page/chinese-zodiac?templateId=1001&token=ACCESS_TOKEN
+
+# 保存成功后跳转到指定微信小程序页面
+#/h5-page/chinese-zodiac?templateId=1001&productInfoId=2807&skuId=516&redirectPath=subPackage2/home/productDetail/orderDetails
 ```
 
 | 参数 | 位置 | 类型 | 必填 | 说明 |
@@ -1630,12 +1633,65 @@ function onDocumentLoaded({ editor }) {
 | `templateId` | 查询参数 | 正整数 | 是 | 自定义模板主键；请求 `/customer/api/customTemplate/{templateId}`。 |
 | `partnerId` | 查询参数 | 正整数 | 否 | 写入模板详情请求的 `X-Partner-Id` 请求头。 |
 | `token` | 查询参数 | 字符串 | 否 | 小程序初始化 Token；兼容 `authorization` 和 `Authorization`，读取后立即从 URL 删除。 |
+| `designName` | 查询参数 | 字符串 | 否 | 用户设计名称；未传时使用当前业务页面名称。 |
+| `redirectPath` | 查询参数 | 小程序主包或分包页面路径 | 否 | 保存成功后通过 `wx.miniProgram.redirectTo()` 跳转，例如 `subPackage2/home/productDetail/orderDetails`。 |
 
 正式约定使用查询参数 `templateId`，不使用含义模糊的 `id`。H5 生产页面的模板读取和截图上传
 统一使用 `/customer/api`，后台编辑器继续使用 `/admin/api`。接口返回的 `content` 会先经过
 统一文档校验，再交给 `CanvasDocumentViewport` 还原；没有 `templateId` 或接口失败时显示页面
 错误状态，不初始化画布，也不会使用本地模拟数据。截图上传地址为
 `/customer/api/localStorage/pictures`。
+
+当 `redirectPath` 存在时，页面保存成功后优先调用微信小程序 `redirectTo`；没有参数时继续
+执行原有的微信小程序返回上一页逻辑。普通浏览器调试时，站内路径和 HTTP(S) 地址会作为
+回退跳转目标。H5 URL 中的业务参数会自动追加到小程序目标地址；`templateId`、`partnerId`、
+`designName`、Token 和 `redirectPath` 等 H5 内部参数不会透传。若目标地址已包含同名参数，
+以目标地址中的参数为准。
+
+例如：
+
+```text
+H5 URL:
+#/h5-page/chinese-zodiac?templateId=3&productInfoId=2807&skuId=516&skuCustomId=2074&quantity=1&redirectPath=subPackage2/home/productDetail/orderDetails
+
+微信小程序最终跳转：
+/subPackage2/home/productDetail/orderDetails?productInfoId=2807&skuId=516&skuCustomId=2074&quantity=1
+```
+
+### 保存 H5 用户设计
+
+所有生产 H5 页面点击保存时统一调用：
+
+```http
+POST /customer/api/customTemplate
+Authorization: Bearer <H5_TOKEN>
+X-Partner-Id: 10
+Content-Type: application/json
+```
+
+调用代码：
+
+```js
+const result = await saveH5CustomDesign(editor, {
+  templateId: route.query.templateId,
+  designName: route.query.designName || '生肖定制',
+  partnerId: route.query.partnerId
+})
+```
+
+请求 DTO：
+
+| 字段 | 类型 | 必填 | 来源 |
+| --- | --- | --- | --- |
+| `content` | `string` | 是 | `editor.exportDocument()` 返回的统一 JSON，经 `JSON.stringify()` 转换。 |
+| `designName` | `string` | 否 | 路由 `designName` 或当前业务页面名称。 |
+| `previewImgUrl` | `string` | 是 | `captureCanvas()` 完整画板截图上传地址，包含背景图和遮罩图。 |
+| `productImgUrl` | `string` | 否 | `capturePrintArea()` 打印区域截图上传地址，不包含背景图和遮罩图；没有打印区域时不发送。 |
+| `templateId` | `number` | 是 | 路由 `templateId`，表示用户设计基于哪个后台模板。 |
+
+保存顺序固定为：导出 JSON → 上传完整画板截图 → 按需上传打印区域截图 → POST 用户设计 →
+发送 `H5_PAGE_SAVED` 消息 → 按 `redirectPath` 跳转微信小程序页面。任一步失败都会停止保存和
+跳转，并由页面 Loading/错误状态反馈。
 
 ### 图片文字定制 H5 路由
 
@@ -1657,15 +1713,19 @@ function onDocumentLoaded({ editor }) {
 | 可替换文字 | `text.description` | `文本替换` | 输入内容实时同步到所有匹配文本节点。 |
 
 页面先通过 `/customer/api/localStorage/pictures` 上传用户图片，取得永久 URL 后再调用
-`editor.replaceImage()`。保存时导出统一 JSON；存在打印区域时额外截图并上传，截图默认排除
-背景图和遮罩图。最终通过 `MESSAGE_TYPES.H5_PAGE_SAVED` 将 `page`、`templateId`、`json` 和
-`printAreaImage` 发送给微信小程序。
+`editor.replaceImage()`。保存成功后通过 `MESSAGE_TYPES.H5_PAGE_SAVED` 将 `page`、
+`templateId`、`json`、`previewImgUrl`、`productImgUrl` 和接口返回结果发送给微信小程序。
 
 H5 customer Token 与编辑器 admin Token 完全独立。本地调试 H5 页面时使用：
 
 ```env
 VITE_H5_TEMPORARY_ACCESS_TOKEN=H5_CUSTOMER_TOKEN
 ```
+
+H5 `/customer/api/localStorage/pictures` 与 `/customer/api/customTemplate` 共用
+`customerXiaoxiangClient` 和 `VITE_XIAOXIANG_API_BASE_URL`。开发环境下两者都会经过
+`/xiaoxiang-api` 代理，避免浏览器跨域限制；上传接口返回的相对图片地址仍按代理目标域名
+补全为可持久化的绝对 URL。
 
 ## H5 文档测试运行时
 

@@ -99,10 +99,13 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
-import { customerPictureApi } from '../../api/index.js'
 import { loadFontFace } from '../../canvas-editor-core/src/index.js'
 import CanvasDocumentViewport from '../../components/canvas-runtime/CanvasDocumentViewport.vue'
+import { saveH5CustomDesign } from '../../services/h5-custom-design.js'
+import { navigateToH5RedirectPath, readH5RedirectPath } from '../../services/h5-route-navigation.js'
+import { MESSAGE_TYPES, postBridgeMessage } from '../../services/message-bridge.js'
 
 const BACKGROUND_IMAGE_URL =
   'https://ele-aiketie.ele007.com/yinxiang/202607/ba7f4d19-5ec2-4b01-9a33-900e292660eb.jpg'
@@ -135,6 +138,8 @@ const FONT_STYLE_MOCKS = [
 const DEFAULT_FONT_STYLE = FONT_STYLE_MOCKS[0]
 
 const canvasViewportRef = ref(null)
+const route = useRoute()
+const router = useRouter()
 const surname = ref('王')
 const givenName = ref('小明')
 const fontStyles = ref([])
@@ -369,8 +374,30 @@ async function onSubmit() {
   saveStatus.value = { type: 'success', text: '' }
 
   try {
-    const savePayload = await createSavePayload(canvasViewportRef.value?.getEditor?.())
+    const savePayload = await saveH5CustomDesign(canvasViewportRef.value?.getEditor?.(), {
+      templateId: route.query.templateId,
+      designName: route.query.designName || '百家姓定制',
+      partnerId: route.query.partnerId
+    })
     console.log('百家姓页面保存数据：', JSON.stringify(savePayload, null, 2))
+    postBridgeMessage(
+      MESSAGE_TYPES.H5_PAGE_SAVED,
+      {
+        page: 'hundred-family-surnames',
+        templateId: route.query.templateId,
+        json: savePayload.editorJson,
+        previewImgUrl: savePayload.previewImgUrl,
+        productImgUrl: savePayload.productImgUrl,
+        printAreaImage: savePayload.productImgUrl,
+        design: savePayload.response
+      },
+      { target: 'mini-program', sender: 'h5-page' }
+    )
+
+    if (await navigateToH5RedirectPath(readH5RedirectPath(route), router)) {
+      return
+    }
+
     saveStatus.value = { type: 'success', text: '保存数据已生成' }
   } catch (error) {
     console.error('Hundred family save failed.', error)
@@ -378,35 +405,6 @@ async function onSubmit() {
   } finally {
     saving.value = false
   }
-}
-
-/**
- * @param {Object | null} editor 核心编辑器实例。
- * @returns {Promise<{ editorJson: Object, printAreaImage: string | null }>} 页面保存数据。
- */
-async function createSavePayload(editor) {
-  if (!editor) {
-    throw new Error('画布尚未加载完成。')
-  }
-
-  const editorJson = editor.exportDocument()
-  if (!editorJson) {
-    throw new Error('无法获取当前画布 JSON。')
-  }
-
-  const printAreaImage = editor.getPrintAreaProperties() ? await capturePrintAreaImage(editor) : null
-  return { editorJson, printAreaImage }
-}
-
-/** @param {Object} editor 核心编辑器实例。 @returns {Promise<string>} 打印区域截图地址。 */
-function capturePrintAreaImage(editor) {
-  return editor.capturePrintArea({
-    includeBackground: false,
-    includeMask: false,
-    type: 'image/png',
-    quality: 1,
-    upload: (file) => customerPictureApi.upload(file)
-  })
 }
 
 onMounted(loadFontStyles)

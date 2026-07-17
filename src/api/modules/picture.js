@@ -1,4 +1,7 @@
-import { XIAOXIANG_API_BASE_URL, xiaoxiangClient } from '../clients/xiaoxiang-client.js';
+import {
+  XIAOXIANG_ASSET_BASE_URL,
+  xiaoxiangClient
+} from '../clients/xiaoxiang-client.js';
 import { ApiError } from '../core/api-error.js';
 
 const PICTURE_UPLOAD_PATH = '/admin/api/localStorage/pictures';
@@ -6,7 +9,12 @@ const PICTURE_UPLOAD_PATH = '/admin/api/localStorage/pictures';
 /**
  * 图片存储接口模块。
  */
-export const pictureApi = createPictureApi(PICTURE_UPLOAD_PATH);
+export const pictureApi = createPictureApi(
+  PICTURE_UPLOAD_PATH,
+  'picture.upload',
+  xiaoxiangClient,
+  XIAOXIANG_ASSET_BASE_URL
+);
 
 /**
  * 创建指定业务前缀的图片上传接口。
@@ -14,9 +22,15 @@ export const pictureApi = createPictureApi(PICTURE_UPLOAD_PATH);
  * @param {string} uploadPath 上传路径。
  * @param {string} [methodName='picture.upload'] Alova 方法名。
  * @param {import('alova').Alova} [client=xiaoxiangClient] 请求客户端。
+ * @param {string} [assetBaseURL=XIAOXIANG_ASSET_BASE_URL] 图片地址补全域名。
  * @returns {{ upload: (file: File | Blob) => import('alova').Method }} 图片接口。
  */
-export function createPictureApi(uploadPath, methodName = 'picture.upload', client = xiaoxiangClient) {
+export function createPictureApi(
+  uploadPath,
+  methodName = 'picture.upload',
+  client = xiaoxiangClient,
+  assetBaseURL = XIAOXIANG_ASSET_BASE_URL
+) {
   const apiPath = normalizeUploadPath(uploadPath);
 
   return Object.freeze({
@@ -30,7 +44,7 @@ export function createPictureApi(uploadPath, methodName = 'picture.upload', clie
 
       return client.Post(apiPath, formData, {
         name: methodName,
-        transformData: resolveUploadedPictureUrl
+        transformData: (response) => resolveUploadedPictureUrl(response, assetBaseURL)
       });
     }
   });
@@ -69,9 +83,10 @@ function assertImageFile(file) {
  * 从服务端响应中提取并补全图片地址。
  *
  * @param {*} response 图片上传响应体。
+ * @param {string} assetBaseURL 图片地址补全域名。
  * @returns {string} 绝对图片地址。
  */
-function resolveUploadedPictureUrl(response) {
+function resolveUploadedPictureUrl(response, assetBaseURL) {
   const payload = response?.data ?? response;
   const url = typeof payload === 'string' ? payload : payload?.url ?? payload?.data?.url;
 
@@ -83,7 +98,7 @@ function resolveUploadedPictureUrl(response) {
   }
 
   try {
-    return new URL(url, `${XIAOXIANG_API_BASE_URL.replace(/\/$/, '')}/`).toString();
+    return new URL(url, `${assetBaseURL.replace(/\/$/, '')}/`).toString();
   } catch (error) {
     throw new ApiError('图片上传接口返回的地址无效。', {
       code: 'PICTURE_UPLOAD_URL_INVALID',
