@@ -1,3 +1,4 @@
+import { customerXiaoxiangClient } from '../clients/customer-xiaoxiang-client.js';
 import { createPictureApi } from './picture.js';
 
 const CUSTOMER_PICTURE_UPLOAD_PATH =
@@ -6,5 +7,6 @@ const CUSTOMER_PICTURE_UPLOAD_PATH =
 /** H5 生产页面使用的客户侧图片上传接口。 */
 export const customerPictureApi = createPictureApi(
   CUSTOMER_PICTURE_UPLOAD_PATH,
-  'customerPicture.upload'
+  'customerPicture.upload',
+  customerXiaoxiangClient
 );

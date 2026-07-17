@@ -1,3 +1,4 @@
+import { customerXiaoxiangClient } from '../clients/customer-xiaoxiang-client.js'
 import { createCustomTemplateApi } from './custom-template.js'
 
 const CUSTOMER_CUSTOM_TEMPLATE_ENDPOINT =
@@ -6,5 +7,6 @@ const CUSTOMER_CUSTOM_TEMPLATE_ENDPOINT =
 /** H5 生产页面使用的客户侧模板接口。 */
 export const customerCustomTemplateApi = createCustomTemplateApi(
   CUSTOMER_CUSTOM_TEMPLATE_ENDPOINT,
-  'customerCustomTemplate'
+  'customerCustomTemplate',
+  customerXiaoxiangClient
 )

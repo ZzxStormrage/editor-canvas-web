@@ -12,15 +12,16 @@ export const customTemplateApi = createCustomTemplateApi(CUSTOM_TEMPLATE_ENDPOIN
  *
  * @param {string} endpoint 接口路径。
  * @param {string} [namePrefix='customTemplate'] Alova 方法名前缀。
+ * @param {import('alova').Alova} [client=xiaoxiangClient] 请求客户端。
  * @returns {Object} 自定义模板接口。
  */
-export function createCustomTemplateApi(endpoint, namePrefix = 'customTemplate') {
+export function createCustomTemplateApi(endpoint, namePrefix = 'customTemplate', client = xiaoxiangClient) {
   const apiEndpoint = normalizeEndpoint(endpoint)
 
   return Object.freeze({
     /** @param {Object} [params={}] 查询参数。 @param {Object} [options={}] 请求上下文。 @returns {import('alova').Method} */
     list(params = {}, options = {}) {
-      return xiaoxiangClient.Get(apiEndpoint, {
+      return client.Get(apiEndpoint, {
         name: `${namePrefix}.list`,
         params: normalizeQueryParams(params),
         headers: createRequestHeaders(options)
@@ -29,7 +30,7 @@ export function createCustomTemplateApi(endpoint, namePrefix = 'customTemplate')
 
     /** @param {string | number} id 模板 ID。 @param {Object} [options={}] 请求上下文。 @returns {import('alova').Method} */
     detail(id, options = {}) {
-      return xiaoxiangClient.Get(createDetailURL(apiEndpoint, id), {
+      return client.Get(createDetailURL(apiEndpoint, id), {
         name: `${namePrefix}.detail`,
         headers: createRequestHeaders(options)
       })
@@ -37,7 +38,7 @@ export function createCustomTemplateApi(endpoint, namePrefix = 'customTemplate')
 
     /** @param {Object} dto 模板 DTO。 @param {Object} [options={}] 请求上下文。 @returns {import('alova').Method} */
     create(dto, options = {}) {
-      return xiaoxiangClient.Post(apiEndpoint, assertTemplateDto(dto), {
+      return client.Post(apiEndpoint, assertTemplateDto(dto), {
         name: `${namePrefix}.create`,
         headers: createRequestHeaders(options)
       })
@@ -48,7 +49,7 @@ export function createCustomTemplateApi(endpoint, namePrefix = 'customTemplate')
       const payload = assertTemplateDto(dto)
       normalizePositiveInteger(payload.id, 'customTemplate.id')
 
-      return xiaoxiangClient.Put(apiEndpoint, payload, {
+      return client.Put(apiEndpoint, payload, {
         name: `${namePrefix}.update`,
         headers: createRequestHeaders(options)
       })

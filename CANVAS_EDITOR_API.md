@@ -193,7 +193,7 @@ if (coreEditor) {
 | `token` | `string` | 否 | 兼容路由鉴权，也支持 `authorization`。读取后会立即从地址栏删除。 |
 
 Token 优先通过 `postMessage` 的 `auth:token` 发送，避免出现在浏览器历史、截图或宿主日志中。
-源码不内置生产 Token；本地调试如确实需要临时 Token，应通过未提交的
+源码不内置生产 Token；本地调试后台编辑器如确实需要临时 admin Token，应通过未提交的
 `VITE_TEMPORARY_ACCESS_TOKEN` 环境变量配置。API 请求最多等待 3 秒接收宿主 Token，超时后
 按无 Token 请求并由接口返回登录过期提示。
 
@@ -262,6 +262,7 @@ postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
 | `MESSAGE_TYPES.EDITOR_READY` | `'editor:ready'` | 编辑器 → 宿主 | 编辑器通信层已就绪，`payload.capabilities` 表示支持的能力。 |
 | `MESSAGE_TYPES.EDITOR_INITIALIZED` | `'editor:initialized'` | 编辑器 → 宿主 | 当前编辑器页面和模板上下文初始化完成，可以开始交互。 |
 | `MESSAGE_TYPES.AUTH_TOKEN` | `'auth:token'` | 双向 | 传递登录 Token；编辑器接收后会用于后续 API 请求。 |
+| `MESSAGE_TYPES.H5_AUTH_TOKEN` | `'h5:auth-token'` | 宿主 → H5 | 单独传递 H5 customer 接口 Token，不会覆盖编辑器 admin Token。 |
 | `MESSAGE_TYPES.AUTH_EXPIRED` | `'auth:expired'` | 编辑器 → 宿主 | 接口返回 401，宿主应清理登录态并引导重新登录。 |
 | `MESSAGE_TYPES.TEMPLATE_LOADING` | `'template:loading'` | 编辑器 → 宿主 | 开始请求模板详情。 |
 | `MESSAGE_TYPES.TEMPLATE_LOADED` | `'template:loaded'` | 编辑器 → 宿主 | 模板 JSON 已成功还原到编辑器。 |
@@ -564,7 +565,20 @@ Page({
 微信 `web-view` 标准能力不提供小程序主动调用 H5 JavaScript 的通道，因此首次 Token 推荐放在
 H5 hash 路由查询参数中。H5 支持 `token`、`authorization` 和 `Authorization`，读取后会立即
 写入内存并通过 `router.replace()` 从地址栏删除。后台 iframe 或具备 JavaScript 注入能力的
-原生容器仍推荐发送 `auth:token` 消息，避免 Token 出现在 URL 中。
+原生容器应发送 `h5:auth-token` 消息，避免 Token 出现在 URL 中。`auth:token` 只提供给后台
+编辑器的 `/admin/api` 请求，不能作为 H5 `/customer/api` 请求的 Token。
+
+```js
+window.EleEditorBridge.receiveMessage({
+  channel: 'ele-editor',
+  version: 1,
+  type: 'h5:auth-token',
+  sender: 'mini-program',
+  payload: {
+    token: h5AccessToken
+  }
+})
+```
 
 生肖页面保存成功后会按以下顺序处理：
 
@@ -1590,6 +1604,12 @@ function onDocumentLoaded({ editor }) {
 统一文档校验，再交给 `CanvasDocumentViewport` 还原；没有 `templateId` 或接口失败时显示页面
 错误状态，不初始化画布，也不会使用本地模拟数据。截图上传地址为
 `/customer/api/localStorage/pictures`。
+
+H5 customer Token 与编辑器 admin Token 完全独立。本地调试 H5 页面时使用：
+
+```env
+VITE_H5_TEMPORARY_ACCESS_TOKEN=H5_CUSTOMER_TOKEN
+```
 
 ## H5 文档测试运行时
 

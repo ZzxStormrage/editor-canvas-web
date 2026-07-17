@@ -1,11 +1,11 @@
+import { createAccessTokenStore, normalizeAccessToken } from './access-token-store.js'
 import { MESSAGE_TYPES, postBridgeMessage, subscribeBridgeMessage } from './message-bridge.js'
 
-const ACCESS_TOKEN_WAIT_TIMEOUT = 3000
-const CONFIGURED_ACCESS_TOKEN = import.meta.env?.VITE_TEMPORARY_ACCESS_TOKEN
-let accessToken = CONFIGURED_ACCESS_TOKEN ? normalizeAccessToken(CONFIGURED_ACCESS_TOKEN) : ''
+const adminAccessTokenStore = createAccessTokenStore({
+  initialToken: import.meta.env?.VITE_TEMPORARY_ACCESS_TOKEN
+})
 let removeTokenSubscription = null
 const authExpiredSubscribers = new Set()
-const accessTokenWaiters = new Set()
 
 /**
  * 设置当前运行时 Token。
@@ -14,10 +14,7 @@ const accessTokenWaiters = new Set()
  * @returns {string} 去除 Bearer 前缀后的 Token。
  */
 export function setAccessToken(token) {
-  accessToken = normalizeAccessToken(token)
-  accessTokenWaiters.forEach((resolve) => resolve(accessToken))
-  accessTokenWaiters.clear()
-  return accessToken
+  return adminAccessTokenStore.set(token)
 }
 
 /**
@@ -26,36 +23,17 @@ export function setAccessToken(token) {
  * @returns {string | null} Token。
  */
 export function getAccessToken() {
-  return accessToken || null
+  return adminAccessTokenStore.get()
 }
 
 /**
  * 等待宿主传入 Token，避免页面初始化请求抢在 auth:token 之前发出。
  *
- * @param {number} [timeout=ACCESS_TOKEN_WAIT_TIMEOUT] 最大等待时间，单位毫秒。
+ * @param {number} [timeout] 最大等待时间，单位毫秒。
  * @returns {Promise<string | null>} Token 或超时后的 null。
  */
-export function waitForAccessToken(timeout = ACCESS_TOKEN_WAIT_TIMEOUT) {
-  if (accessToken) {
-    return Promise.resolve(accessToken)
-  }
-
-  const waitTimeout =
-    Number.isFinite(Number(timeout)) && Number(timeout) >= 0 ? Number(timeout) : ACCESS_TOKEN_WAIT_TIMEOUT
-
-  return new Promise((resolve) => {
-    let timer = null
-    const finish = (token = null) => {
-      if (timer) {
-        clearTimeout(timer)
-      }
-      accessTokenWaiters.delete(finish)
-      resolve(token)
-    }
-
-    accessTokenWaiters.add(finish)
-    timer = setTimeout(() => finish(), waitTimeout)
-  })
+export function waitForAccessToken(timeout) {
+  return adminAccessTokenStore.wait(timeout)
 }
 
 /**
@@ -64,7 +42,7 @@ export function waitForAccessToken(timeout = ACCESS_TOKEN_WAIT_TIMEOUT) {
  * @returns {void}
  */
 export function clearAccessToken() {
-  accessToken = ''
+  adminAccessTokenStore.clear()
 }
 
 /**
@@ -139,21 +117,4 @@ export function installAuthTokenBridge() {
  */
 export function postAccessToken(token, options = {}) {
   return postBridgeMessage(MESSAGE_TYPES.AUTH_TOKEN, { token: normalizeAccessToken(token) }, options)
-}
-
-/**
- * 归一化 Token。
- *
- * @param {string} token 原始 Token。
- * @returns {string} 标准 Token。
- */
-function normalizeAccessToken(token) {
-  if (typeof token !== 'string' || !token.trim()) {
-    throw new TypeError('Access token must be a non-empty string.')
-  }
-
-  return token
-    .trim()
-    .replace(/^Bearer\s+/i, '')
-    .trim()
 }

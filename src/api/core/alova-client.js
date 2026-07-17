@@ -42,9 +42,13 @@ export function configureApiClient(options = {}) {
  *
  * @param {Object} [options={}] 客户端配置。
  * @param {string} [options.baseURL] 服务基础地址。
+ * @param {(() => string | null | Promise<string | null>) | null} [options.getAccessToken] 独立 Token 获取器。
+ * @param {((error: ApiError) => void | Promise<void>) | null} [options.onUnauthorized] 独立 401 处理器。
  * @returns {import('alova').Alova} Alova 客户端实例。
  */
 export function createAlovaClient(options = {}) {
+  const clientRuntime = resolveClientRuntime(options);
+
   return createAlova({
     baseURL: normalizeBaseURL(options.baseURL),
     statesHook: VueHook,
@@ -52,9 +56,9 @@ export function createAlovaClient(options = {}) {
     timeout: DEFAULT_REQUEST_TIMEOUT,
     localCache: { GET: 0 },
     cacheLogger: false,
-    beforeRequest: appendAuthorizationHeader,
+    beforeRequest: (method) => appendAuthorizationHeader(method, clientRuntime),
     responded: {
-      onSuccess: handleSuccessResponse,
+      onSuccess: (response, method) => handleSuccessResponse(response, method, clientRuntime),
       onError: handleRequestError
     }
   });
@@ -73,14 +77,15 @@ export const alovaClient = createAlovaClient({
  * 给请求追加可选的 Bearer Token，不覆盖调用方显式传入的 Authorization。
  *
  * @param {import('alova').Method} method Alova Method 实例。
+ * @param {Object} clientRuntime 客户端鉴权配置。
  * @returns {Promise<void>}
  */
-async function appendAuthorizationHeader(method) {
-  if (method.meta?.skipAuth || !runtimeConfig.getAccessToken) {
+async function appendAuthorizationHeader(method, clientRuntime) {
+  if (method.meta?.skipAuth || !clientRuntime.getAccessToken) {
     return;
   }
 
-  const accessToken = await runtimeConfig.getAccessToken();
+  const accessToken = await clientRuntime.getAccessToken();
   if (!accessToken || hasAuthorizationHeader(method.config.headers)) {
     return;
   }
@@ -93,15 +98,16 @@ async function appendAuthorizationHeader(method) {
  *
  * @param {{ status: number, statusText: string, data: *, headers: Object }} response XHR 响应。
  * @param {import('alova').Method} method Alova Method 实例。
+ * @param {Object} clientRuntime 客户端鉴权配置。
  * @returns {Promise<*>} 响应体或完整响应。
  */
-async function handleSuccessResponse(response, method) {
+async function handleSuccessResponse(response, method, clientRuntime) {
   if (response.status >= 200 && response.status < 300) {
     return method.meta?.responseMode === RESPONSE_MODE_RAW ? response : response.data;
   }
 
   const error = createHttpError(response, method);
-  await notifyUnauthorized(error);
+  await notifyUnauthorized(error, clientRuntime);
   throw error;
 }
 
@@ -144,18 +150,39 @@ function createHttpError(response, method) {
  * 通知应用处理未授权状态，处理器异常不会覆盖原请求错误。
  *
  * @param {ApiError} error API 错误。
+ * @param {Object} clientRuntime 客户端鉴权配置。
  * @returns {Promise<void>}
  */
-async function notifyUnauthorized(error) {
-  if (error.status !== 401 || !runtimeConfig.onUnauthorized) {
+async function notifyUnauthorized(error, clientRuntime) {
+  if (error.status !== 401 || !clientRuntime.onUnauthorized) {
     return;
   }
 
   try {
-    await runtimeConfig.onUnauthorized(error);
+    await clientRuntime.onUnauthorized(error);
   } catch (handlerError) {
     console.error('Alova onUnauthorized handler failed.', handlerError);
   }
+}
+
+/**
+ * 解析客户端独立鉴权配置；未显式配置时复用应用级运行时配置。
+ *
+ * @param {Object} options 客户端创建配置。
+ * @returns {Object} 鉴权运行时配置。
+ */
+function resolveClientRuntime(options) {
+  const hasCustomRuntime = 'getAccessToken' in options || 'onUnauthorized' in options;
+  if (!hasCustomRuntime) {
+    return runtimeConfig;
+  }
+
+  validateOptionalHandler(options.getAccessToken, 'getAccessToken');
+  validateOptionalHandler(options.onUnauthorized, 'onUnauthorized');
+  return {
+    getAccessToken: options.getAccessToken ?? null,
+    onUnauthorized: options.onUnauthorized ?? null
+  };
 }
 
 /**

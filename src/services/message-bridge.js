@@ -4,6 +4,7 @@ export const MESSAGE_TYPES = Object.freeze({
   EDITOR_READY: 'editor:ready',
   EDITOR_INITIALIZED: 'editor:initialized',
   AUTH_TOKEN: 'auth:token',
+  H5_AUTH_TOKEN: 'h5:auth-token',
   AUTH_EXPIRED: 'auth:expired',
   TEMPLATE_LOADING: 'template:loading',
   TEMPLATE_LOADED: 'template:loaded',

@@ -13,9 +13,10 @@ export const pictureApi = createPictureApi(PICTURE_UPLOAD_PATH);
  *
  * @param {string} uploadPath 上传路径。
  * @param {string} [methodName='picture.upload'] Alova 方法名。
+ * @param {import('alova').Alova} [client=xiaoxiangClient] 请求客户端。
  * @returns {{ upload: (file: File | Blob) => import('alova').Method }} 图片接口。
  */
-export function createPictureApi(uploadPath, methodName = 'picture.upload') {
+export function createPictureApi(uploadPath, methodName = 'picture.upload', client = xiaoxiangClient) {
   const apiPath = normalizeUploadPath(uploadPath);
 
   return Object.freeze({
@@ -27,7 +28,7 @@ export function createPictureApi(uploadPath, methodName = 'picture.upload') {
       const formData = new FormData();
       formData.append('file', assertImageFile(file));
 
-      return xiaoxiangClient.Post(apiPath, formData, {
+      return client.Post(apiPath, formData, {
         name: methodName,
         transformData: resolveUploadedPictureUrl
       });
