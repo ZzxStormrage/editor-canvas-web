@@ -275,6 +275,19 @@ export class Editor {
   }
 
   /**
+   * 替换指定图片节点，保留节点外框、位置、层级和变换属性。
+   *
+   * @param {import('leafer-ui').Image} target 指定图片节点。
+   * @param {string | File | Blob} source 新图片来源。
+   * @param {{ fit?: 'contain' | 'cover' | 'stretch', allowLocked?: boolean }} [options={}]
+   * 替换配置。
+   * @returns {Promise<import('leafer-ui').Image> | undefined} 已替换资源的图片节点。
+   */
+  replaceImage(target, source, options = {}) {
+    return this.image?.replace?.(target, source, options)
+  }
+
+  /**
    * 替换指定文本节点，保留节点样式、位置和固定宽度，不改变当前选区。
    *
    * @param {import('leafer-ui').Text} target 指定文本节点。

@@ -176,10 +176,26 @@ export class ImagePlugin {
   async replaceSelected(source, options = {}) {
     this._assertReady();
     const image = this._requireSelectedImage();
-    const fit = this._normalizeReplacementOptions(options).fit;
+    return this.replace(image, source, options);
+  }
+
+  /**
+   * 替换指定图片节点的资源，并保留节点外框、位置、层级和变换属性。
+   *
+   * @param {LeaferImage} target 指定图片节点。
+   * @param {string | File | Blob} source 新图片 URL、File 或 Blob。
+   * @param {{ fit?: 'contain' | 'cover' | 'stretch', allowLocked?: boolean }} [options={}]
+   * 替换配置。
+   * @returns {Promise<LeaferImage>} 已替换资源的原图片节点。
+   * @throws {EditorError} 当目标不是图片、图片已锁定或资源加载失败时抛出。
+   */
+  async replace(target, source, options = {}) {
+    this._assertReady();
+    const image = this._requireImageTarget(target);
+    const replacementOptions = this._normalizeReplacementOptions(options);
     let imageSource = null;
 
-    if (image.locked) {
+    if (image.locked && !replacementOptions.allowLocked) {
       throw new EditorError('Unlock the image before replacing it.', 'IMAGE_LOCKED');
     }
 
@@ -188,9 +204,9 @@ export class ImagePlugin {
       const imageSize = await this._loadImageSize(imageSource.url);
       const previousUrl = image.url;
 
-      this._applyReplacement(image, imageSource.url, imageSize, fit);
+      this._applyReplacement(image, imageSource.url, imageSize, replacementOptions.fit);
       this._commitObjectUrlReplacement(previousUrl, imageSource);
-      this._notifyImageReplaced(image, fit);
+      this._notifyImageReplaced(image, replacementOptions.fit);
       return image;
     } catch (error) {
       this._revokeUncommittedObjectUrl(imageSource);
@@ -398,11 +414,29 @@ export class ImagePlugin {
   }
 
   /**
+   * 校验指定节点为图片。
+   *
+   * @private
+   * @param {*} target 待校验节点。
+   * @returns {LeaferImage} 图片节点。
+   */
+  _requireImageTarget(target) {
+    if (!(target instanceof LeaferImage)) {
+      throw new EditorError(
+        'image.replace(target, source) requires an Image node.',
+        'IMAGE_TARGET_INVALID'
+      );
+    }
+
+    return target;
+  }
+
+  /**
    * 归一化替换配置。
    *
    * @private
    * @param {Object} options 替换配置。
-   * @returns {{ fit: 'contain' | 'cover' | 'stretch' }} 标准配置。
+   * @returns {{ fit: 'contain' | 'cover' | 'stretch', allowLocked: boolean }} 标准配置。
    */
   _normalizeReplacementOptions(options) {
     if (!options || typeof options !== 'object' || Array.isArray(options)) {
@@ -412,7 +446,17 @@ export class ImagePlugin {
       );
     }
 
-    return { fit: normalizeImageReplacementFit(options.fit) };
+    if (options.allowLocked !== undefined && typeof options.allowLocked !== 'boolean') {
+      throw new EditorError(
+        'Image replacement allowLocked must be a boolean.',
+        'IMAGE_REPLACEMENT_ALLOW_LOCKED_INVALID'
+      );
+    }
+
+    return {
+      fit: normalizeImageReplacementFit(options.fit),
+      allowLocked: options.allowLocked === true
+    };
   }
 
   /**

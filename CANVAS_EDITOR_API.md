@@ -955,6 +955,38 @@ console.log(replacedImage === image) // true，仍是原节点
 新资源会先加载，再一次性替换，避免先以原始尺寸绘制后再次缩放造成闪烁。图片锁定时
 不会替换，需要先解锁。`File` 和 `Blob` 产生的临时 URL 由图片插件统一释放。
 
+### `editor.replaceImage(target, source, options)`
+
+替换指定图片节点，不要求先选中节点，也不会改变当前选区。该方法适合生产 H5 页面先按
+自定义属性查询模板槽位，再替换对应图片：
+
+```js
+const imageUrl = await customerPictureApi.upload(file)
+const targets = editor.getElementsByAttribute('image.description', '原图替换')
+
+await Promise.all(
+  targets.map((target) => editor.replaceImage(target, imageUrl, {
+    fit: 'contain',
+    allowLocked: true
+  }))
+)
+```
+
+| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `target` | `Image` | 是 | 无 | 核心查询 API 返回的图片节点 | 要替换的原图片节点。 |
+| `source` | `string \| File \| Blob` | 是 | 无 | 图片 URL、SVG、`File`、`Blob` | 新图片来源。生产页应优先传上传后的永久 URL。 |
+| `options` | `Object` | 否 | `{}` | 普通对象 | 替换配置。 |
+| `options.fit` | `string` | 否 | `'contain'` | `'contain'`、`'cover'`、`'stretch'` | 图片在原节点外框中的适配方式。 |
+| `options.allowLocked` | `boolean` | 否 | `false` | `true`、`false` | 是否允许替换锁定模板槽位；仅生产端固定槽位应设为 `true`。 |
+
+默认不允许修改锁定图片，保持编辑器交互的保护规则。生产 H5 可对已明确标记的固定模板槽位
+显式传入 `allowLocked: true`。目标不是图片时抛出 `IMAGE_TARGET_INVALID`，目标锁定且未允许替换
+时抛出 `IMAGE_LOCKED`。
+
+`replaceSelectedImage()` 是面向编辑器选区的便捷方法，`replaceImage()` 是面向业务查询结果的
+指定节点方法；两者最终使用同一套图片加载、适配、事件通知和临时 URL 清理逻辑。
+
 ### `editor.image.getSize(source)`
 
 读取图片原始像素尺寸，不创建节点。
@@ -1605,6 +1637,30 @@ function onDocumentLoaded({ editor }) {
 错误状态，不初始化画布，也不会使用本地模拟数据。截图上传地址为
 `/customer/api/localStorage/pictures`。
 
+### 图片文字定制 H5 路由
+
+原图定制和音乐款定制共用同一套生产运行时，只通过页面配置区分业务标识：
+
+```text
+# 原图定制
+#/h5-page/original-customization?templateId=1001
+
+# 音乐款定制
+#/h5-page/music-customization?templateId=1001
+```
+
+两类模板使用相同的元素标记约定：
+
+| 元素 | 自定义属性路径 | 属性值 | 页面行为 |
+| --- | --- | --- | --- |
+| 可替换图片 | `image.description` | `原图替换` | 图片上传成功后保持节点位置、尺寸、层级和变换属性，只替换资源。 |
+| 可替换文字 | `text.description` | `文本替换` | 输入内容实时同步到所有匹配文本节点。 |
+
+页面先通过 `/customer/api/localStorage/pictures` 上传用户图片，取得永久 URL 后再调用
+`editor.replaceImage()`。保存时导出统一 JSON；存在打印区域时额外截图并上传，截图默认排除
+背景图和遮罩图。最终通过 `MESSAGE_TYPES.H5_PAGE_SAVED` 将 `page`、`templateId`、`json` 和
+`printAreaImage` 发送给微信小程序。
+
 H5 customer Token 与编辑器 admin Token 完全独立。本地调试 H5 页面时使用：
 
 ```env
@@ -1867,6 +1923,7 @@ try {
 | 适配画板到视口 | `editor.fitArtboardToView(options)` |
 | 添加图片 | `await editor.image.add(source, options)` |
 | 替换选中图片 | `await editor.replaceSelectedImage(source, options)` |
+| 替换指定图片 | `await editor.replaceImage(target, source, options)` |
 | 读取图片尺寸 | `await editor.image.getSize(source)` |
 | 获取选中图片属性 | `editor.getSelectedImageProperties()` |
 | 更新选中图片属性 | `editor.updateSelectedImageProperties(properties)` |

@@ -27,9 +27,15 @@ const routes = [
         component: () => import('../views/h5-page/chinese-zodiac.vue')
       },
       {
-        path: 'original-image',
-        name: 'original-image',
-        component: () => import('../views/h5-page/original-image.vue')
+        path: 'original-customization',
+        alias: 'original-image',
+        name: 'original-customization',
+        component: () => import('../views/h5-page/original-customization.vue')
+      },
+      {
+        path: 'music-customization',
+        name: 'music-customization',
+        component: () => import('../views/h5-page/music-customization.vue')
       }
     ]
   },
