@@ -411,7 +411,7 @@ onBeforeUnmount(() => {
   position: relative;
   display: flex;
   width: min(100%, 430px);
-  min-height: 100dvh;
+  min-height: 100vh;
   margin: 0 auto;
   flex-direction: column;
   color: #191919;
@@ -431,7 +431,7 @@ onBeforeUnmount(() => {
 }
 
 .preview-section {
-  --preview-max-height: clamp(210px, 42dvh, 390px);
+  --preview-max-height: clamp(210px, 42vh, 390px);
 
   display: flex;
   min-height: 250px;

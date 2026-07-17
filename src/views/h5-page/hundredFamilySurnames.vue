@@ -417,7 +417,7 @@ onMounted(loadFontStyles)
   position: relative;
   display: flex;
   width: 100%;
-  height: 100dvh;
+  height: 100vh;
   margin: 0 auto;
   overflow: hidden;
   flex-direction: column;
@@ -427,7 +427,7 @@ onMounted(loadFontStyles)
 }
 
 .canvas-section {
-  --preview-max-height: clamp(190px, 34dvh, 300px);
+  --preview-max-height: clamp(190px, 34vh, 300px);
 
   display: flex;
   min-height: 0;
