@@ -5,6 +5,9 @@
         <CanvasDocumentViewport
           ref="canvasViewportRef"
           :document="documentData"
+          :fit-options="h5CanvasFitOptions"
+          :load-options="h5CanvasLoadOptions"
+          :zoom-limits="h5CanvasZoomLimits"
           @loaded="handleDocumentLoaded"
           @error="handleCanvasError"
         />
@@ -105,6 +108,13 @@ const year = ref('')
 const month = ref('')
 const day = ref('')
 const canvasLoaded = ref(false)
+const h5CanvasFitOptions = Object.freeze({
+  padding: 8,
+  viewportRatio: 0.92,
+  expandZoomRange: true
+})
+const h5CanvasLoadOptions = Object.freeze({ interactive: false })
+const h5CanvasZoomLimits = Object.freeze({ minRatio: 1, maxRatio: 2 })
 const dateTextBindings = [
   { description: '年', value: year },
   { description: '月', value: month },
@@ -318,8 +328,7 @@ async function onSubmit() {
   position: relative;
   width: 100%;
   overflow: hidden;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.12);
+  background: #eef0f2;
 }
 
 .canvas-frame :deep(.canvas-document-viewport) {

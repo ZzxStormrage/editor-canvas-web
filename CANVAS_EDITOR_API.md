@@ -1571,10 +1571,18 @@ editor.fitArtboardToView({ viewportRatio: 0.8, expandZoomRange: true })
 <CanvasDocumentViewport
   ref="viewportRef"
   :document="documentData"
+  :fit-options="{ padding: 8, viewportRatio: 0.92, expandZoomRange: true }"
   :load-options="{ productionVisibility: 'hidden' }"
+  :zoom-limits="{ minRatio: 1, maxRatio: 2 }"
   @loaded="onDocumentLoaded"
 />
 ```
+
+`zoomLimits` 默认是 `false`，不会改变完整 Web 编辑器或其他业务页。传入配置后，组件会以每次
+适配完成的完整画板比例为基准限制视口缩放；`minRatio: 1` 防止画板缩得小于完整预览，
+`maxRatio: 2` 允许最多放大到完整预览的两倍。移动端会在画布区域接管双指缩放，页面其他区域
+仍保持正常滚动。生产 H5 如不允许用户选择或拖动模板元素，应同时传入
+`:load-options="{ interactive: false }"`。
 
 业务页面通过核心 API 应用自己的展示策略：
 
