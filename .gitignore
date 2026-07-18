@@ -11,6 +11,8 @@ guangjiujd_*/
 wufangzhai_staging/
 wufangzhai_production/
 production/
+diststaging
+distproduction
 node_modules
 .eslintrc-auto-import.json
 .pnpm-store/
