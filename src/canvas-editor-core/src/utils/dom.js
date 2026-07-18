@@ -13,6 +13,10 @@ export function createResizeObserver(view, editor) {
   }
 
   const observer = new ResizeObserver(([entry]) => {
+    if (editor?.state?.destroyed) {
+      return
+    }
+
     const { width, height } = entry.contentRect
 
     if (width > 0 && height > 0) {

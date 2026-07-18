@@ -679,6 +679,18 @@ window.EleEditorBridge.receiveMessage({
 | 消息被忽略 | 消息是否包含正确的 `channel`、`version` 和 `type`；当前不限制来源域名。 |
 | 小程序消息延迟 | 检查对应平台 `web-view postMessage` 的触发时机限制。 |
 
+后台通过 iframe 嵌入时还应遵守以下生命周期约定：
+
+- iframe 容器必须有稳定且大于 `0` 的宽高；折叠标签页可以隐藏容器，但不要在窗口尺寸变化时反复改写 `src`。
+- 只有在确实离开编辑器页面时才移除 iframe。重新挂载后必须重新等待 `editor:ready` 和
+  `editor:initialized`，不能继续使用上一 iframe 的 `contentWindow`。
+- 后台不得直接访问 iframe 内的编辑器实例或 DOM；鉴权、保存状态和页面生命周期统一通过
+  `postMessage` 处理。
+- `Editor has been destroyed` 且堆栈来自 `ResizeObserver` 表示仍在使用未包含 observer 销毁修复的旧版静态资源，
+  应确认 HTML 与带 hash 的 JS 文件已经同步发布并清理 CDN 缓存。
+- `.woff2` 加载失败不属于编辑器生命周期错误。先检查资源响应状态、`Content-Type: font/woff2`，以及编辑器站点
+  CSP 的 `font-src`。跨域加载字体时，静态资源服务还必须返回匹配的 CORS 响应头。
+
 ## 创建编辑器
 
 ### `createEditor(options)`

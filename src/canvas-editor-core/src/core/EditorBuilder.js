@@ -271,7 +271,7 @@ export class EditorBuilder {
 
     // 自动尺寸监听（必须在 Editor 创建后才挂载）
     if (this.#options.autoResize) {
-      createResizeObserver(this.#view, editor)
+      editor.attachResizeObserver(createResizeObserver(this.#view, editor))
     }
 
     return editor

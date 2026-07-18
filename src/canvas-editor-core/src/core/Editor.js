@@ -42,6 +42,8 @@ export class Editor {
   #artboard
   /** @type {import('../plugins/action-buttons.js').EditorActionButtons} */
   #actionButtons
+  /** @type {ResizeObserver | null} */
+  #resizeObserver = null
 
   // ──────── 只读属性 — 供外部查询 ────────
   /** @returns {import('leafer-ui').Leafer} Leafer App 根实例。 */
@@ -169,6 +171,19 @@ export class Editor {
     this.#skyLeafer?.resize(new Bounds(0, 0, w, h))
     this.#state.width = w
     this.#state.height = h
+    return this
+  }
+
+  /**
+   * 保存内核自动尺寸监听器，由编辑器生命周期统一释放。
+   *
+   * @internal
+   * @param {ResizeObserver | null} observer 自动尺寸监听器。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  attachResizeObserver(observer) {
+    this.#resizeObserver?.disconnect()
+    this.#resizeObserver = observer
     return this
   }
 
@@ -772,6 +787,9 @@ export class Editor {
   destroy() {
     if (this.#state.destroyed) return
 
+    this.#resizeObserver?.takeRecords?.()
+    this.#resizeObserver?.disconnect()
+    this.#resizeObserver = null
     this.#actionButtons?.destroy()
     this.#artboard?.destroy()
     this.#viewport.destroy()
