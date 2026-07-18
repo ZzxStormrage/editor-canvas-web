@@ -36,18 +36,6 @@
         >
           立即保存
         </v-btn>
-        <v-btn
-          class="top-bar-preview-button"
-          color="surface"
-          density="compact"
-          prepend-icon="mdi-cellphone-eye"
-          size="small"
-          variant="flat"
-          :disabled="disabled"
-          @click="emit('preview')"
-        >
-          H5 预览
-        </v-btn>
       </div>
     </div>
   </v-app-bar>
@@ -69,5 +57,5 @@ defineProps({
   }
 })
 
-const emit = defineEmits(['save', 'preview'])
+const emit = defineEmits(['save'])
 </script>

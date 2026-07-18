@@ -1,6 +1,21 @@
 <template>
   <div class="layer-actions" :class="{ 'layer-actions--always-visible': alwaysVisible }">
     <button
+      type="button"
+      class="layer-action-button"
+      :class="{ 'layer-action-button--hidden': !layer.visible }"
+      :aria-label="layer.visible ? '隐藏图层' : '显示图层'"
+      :aria-pressed="!layer.visible"
+      @pointerdown.stop
+      @click.stop="emit('toggle-visibility')"
+    >
+      <v-icon :icon="layer.visible ? 'mdi-eye-outline' : 'mdi-eye-off-outline'" size="17" />
+      <v-tooltip activator="parent" location="top" open-delay="350">
+        {{ layer.visible ? '隐藏' : '显示' }}
+      </v-tooltip>
+    </button>
+
+    <button
       v-if="supportsElementProperties"
       type="button"
       class="layer-action-button layer-attribute-button"
@@ -79,7 +94,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['edit-attributes', 'toggle-pointer-through', 'toggle-lock', 'delete']);
+const emit = defineEmits(['toggle-visibility', 'edit-attributes', 'toggle-pointer-through', 'toggle-lock', 'delete']);
 
 const supportsElementProperties = computed(() => props.layer.type === 'text' || props.layer.type === 'image');
 const formattedAttributeCount = computed(() => {

@@ -22,6 +22,7 @@ const THUMBNAIL_STABLE_PROPERTIES = new Set([
   'scaleX',
   'scaleY',
   'locked',
+  'visible',
   'hittable',
   'hitSelf',
   'hitChildren',
@@ -273,6 +274,37 @@ export class LayerPlugin {
   }
 
   /**
+   * 切换图层可见性，隐藏时保留图层位置、顺序和业务属性。
+   *
+   * @param {string} id 图层 ID。
+   * @returns {void}
+   */
+  toggleVisibility(id) {
+    const node = this._nodes.get(String(id))
+    const innerEditor = this._context?.innerEditor
+
+    if (!node) {
+      return
+    }
+
+    node.visible = node.visible === false
+
+    if (!node.visible) {
+      if (innerEditor?.hoverTarget === node) {
+        innerEditor.hoverTarget = null
+      }
+      if (innerEditor?.hasItem?.(node)) {
+        innerEditor.cancel()
+      }
+    }
+
+    node.forceUpdate?.()
+    innerEditor?.update?.()
+    this._context?.artboard?.syncAllElements?.()
+    this._emitChanged()
+  }
+
+  /**
    * 切换图片节点的点击穿透状态，只修改命中能力，不改变锁定状态和图层顺序。
    *
    * @param {string} id 图层 ID。
@@ -424,6 +456,7 @@ export class LayerPlugin {
       imageRole: type === 'image' ? this._getImageRole(elementData.attributes) : null,
       customAttributeCount,
       locked: Boolean(node.locked),
+      visible: node.visible !== false,
       pointerThrough: type === 'image' && this._isPointerThrough(node),
       selected,
       order: index

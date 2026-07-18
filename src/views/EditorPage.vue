@@ -1,11 +1,10 @@
 <template>
   <v-app class="editor-app">
     <EditorTopBar
-      :disabled="templateLoading"
+      :disabled="templateLoading || !editor.ready.value"
       :saving="saving"
       :status="templateStatus"
       @save="saveCustomTemplate"
-      @preview="openH5Preview"
     />
 
     <div class="editor-workbench">
@@ -34,7 +33,6 @@ import EditorTopBar from '../components/editor-shell/EditorTopBar.vue'
 import { useCanvasEditor } from '../composables/useCanvasEditor.js'
 import { useCustomTemplatePersistence } from '../composables/useCustomTemplatePersistence.js'
 import { subscribeAuthExpired } from '../services/auth-token.js'
-import { exportH5Document, saveH5Document } from '../services/h5-document.js'
 import '../assets/scss/editor-workbench.scss'
 
 const route = useRoute()
@@ -67,15 +65,6 @@ async function saveCustomTemplate() {
     }
   } catch (error) {
     showMessage(error.message || '模板保存失败。', 'error')
-  }
-}
-
-async function openH5Preview() {
-  try {
-    saveH5Document(await exportH5Document(editor.getEditor()))
-    router.push({ name: 'h5-preview' })
-  } catch (error) {
-    showMessage(error.message || '导出 H5 JSON 失败。', 'error')
   }
 }
 

@@ -288,10 +288,12 @@ async function onSubmit() {
 .page {
   position: relative;
   display: flex;
-  width: 100%;
+  width: min(100%, 430px);
   height: 100vh;
+  min-height: 0;
   margin: 0 auto;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   flex-direction: column;
   color: #171717;
   background: #ffffff;
@@ -299,24 +301,22 @@ async function onSubmit() {
 }
 
 .canvas-section {
-  --preview-max-height: clamp(210px, 42vh, 380px);
-
   position: relative;
   display: flex;
+  width: 100%;
   min-height: 0;
-  padding: 12px 16px;
+  padding: 0;
+  overflow: hidden;
   align-items: center;
   justify-content: center;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
-  gap: 8px;
   background: #f2f3f5;
 }
 
 .canvas-frame {
   position: relative;
-  width: min(100%, calc(var(--preview-max-height) * var(--canvas-ratio)));
-  max-height: var(--preview-max-height);
+  width: 100%;
   overflow: hidden;
   background: #ffffff;
   box-shadow: 0 2px 8px rgba(17, 24, 39, 0.12);
@@ -348,8 +348,7 @@ async function onSubmit() {
 
 .canvas-loading {
   display: flex;
-  width: min(100%, var(--preview-max-height));
-  max-height: var(--preview-max-height);
+  width: 100%;
   aspect-ratio: 1;
   align-items: center;
   justify-content: center;
@@ -370,7 +369,7 @@ async function onSubmit() {
   min-height: 0;
   padding: 18px 16px 24px;
   overflow-y: auto;
-  flex: 1 1 auto;
+  flex: 1 0 220px;
   flex-direction: column;
   gap: 22px;
   overscroll-behavior: contain;
@@ -585,8 +584,8 @@ async function onSubmit() {
 }
 
 @media (max-height: 640px) {
-  .canvas-section {
-    --preview-max-height: 210px;
+  .page-container {
+    flex-basis: 200px;
   }
 }
 

@@ -4,6 +4,7 @@ import { customTemplateApi } from '../api/modules/custom-template.js'
 import { resolveCustomTemplateRecord } from '../services/custom-template-document.js'
 import { setAccessToken } from '../services/auth-token.js'
 import { MESSAGE_TYPES, postBridgeMessage } from '../services/message-bridge.js'
+import { parsePositiveIntegerId } from '../services/positive-integer-id.js'
 
 const TOKEN_QUERY_KEYS = ['token', 'authorization', 'Authorization']
 const ROUTE_CONTEXT_KEYS = ['id', 'itemId', 'userId', 'partnerId', 'templateName', 'previewImgUrl']
@@ -56,7 +57,6 @@ export function useCustomTemplatePersistence(options) {
       routeContext = currentRouteContext
       resetTemplateState(template)
       applyRouteContext(template, currentRouteContext)
-      editor.getEditor()?.clearDocument?.()
       if (currentRouteContext.id) {
         postLifecycleMessage(
           MESSAGE_TYPES.TEMPLATE_LOADING,
@@ -66,6 +66,8 @@ export function useCustomTemplatePersistence(options) {
         )
       }
       await applyRouteAuthorization(currentRouteContext, route, router)
+      const coreEditor = await editor.whenReady()
+      coreEditor.clearDocument?.()
 
       if (!currentRouteContext.id) {
         postLifecycleMessage(
@@ -131,9 +133,7 @@ export function useCustomTemplatePersistence(options) {
 
     saving.value = true
     try {
-      if (!editor.ready?.value) {
-        throw new Error('编辑器尚未初始化，无法保存模板。')
-      }
+      await editor.whenReady()
 
       const document = editor.exportDocument()
 
@@ -463,7 +463,7 @@ function createRequestOptions(template) {
  * 在创建接口未直接返回 ID 时通过列表查询补齐。
  *
  * @param {Object} template 当前模板状态。
- * @returns {Promise<number | null>} 新模板 ID。
+ * @returns {Promise<number | string | null>} 新模板 ID。
  */
 async function resolveCreatedTemplateId(template) {
   const response = await customTemplateApi.list(
@@ -486,7 +486,7 @@ async function resolveCreatedTemplateId(template) {
  *
  * @param {import('vue-router').RouteLocationNormalizedLoaded} route 当前路由。
  * @param {import('vue-router').Router} router Vue Router 实例。
- * @param {number} id 模板 ID。
+ * @param {number | string} id 模板 ID。
  * @returns {Promise<void>}
  */
 async function syncRouteTemplateId(route, router, id) {
@@ -511,7 +511,7 @@ async function syncRouteTemplateId(route, router, id) {
  *
  * @param {*} value 服务端响应。
  * @param {number} [depth=0] 当前解包深度。
- * @returns {number | null} 模板 ID。
+ * @returns {number | string | null} 模板 ID。
  */
 function resolveTemplateId(value, depth = 0) {
   if (depth > 4 || value === undefined || value === null || value === '') {
@@ -546,11 +546,10 @@ function resolveTemplateId(value, depth = 0) {
  * 宽容解析服务端返回的模板 ID。
  *
  * @param {*} value 服务端原始值。
- * @returns {number | null} 正整数 ID 或 null。
+ * @returns {number | string | null} 正整数 ID 或 null。
  */
 function normalizeResponseIdentifier(value) {
-  const number = Number(value)
-  return Number.isSafeInteger(number) && number > 0 ? number : null
+  return parsePositiveIntegerId(value)
 }
 
 /**
@@ -595,7 +594,7 @@ function isPlainObject(value) {
  *
  * @param {*} value 原始值。
  * @param {string} name 字段名。
- * @returns {number | null} 正整数 ID 或 null。
+ * @returns {number | string | null} 正整数 ID 或 null。
  */
 function normalizeOptionalIdentifier(value, name) {
   if (value === undefined || value === null || value === '') {
@@ -610,16 +609,16 @@ function normalizeOptionalIdentifier(value, name) {
  *
  * @param {*} value 原始值。
  * @param {string} name 字段名。
- * @returns {number} 正整数 ID。
+ * @returns {number | string} 正整数 ID。
  */
 function normalizeRequiredIdentifier(value, name) {
-  const number = Number(value)
+  const id = parsePositiveIntegerId(value)
 
-  if (!Number.isSafeInteger(number) || number <= 0) {
+  if (id === null) {
     throw new Error(`${name} 必须是正整数。`)
   }
 
-  return number
+  return id
 }
 
 /** @param {*} value 原始值。 @returns {string | null} 非空字符串或 null。 */

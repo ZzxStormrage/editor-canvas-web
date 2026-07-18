@@ -715,7 +715,7 @@
 
 .layer-item {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 126px;
+  grid-template-columns: 40px minmax(64px, 1fr) auto;
   align-items: center;
   min-height: 64px;
   padding: 4px 3px 4px 1px;
@@ -754,6 +754,10 @@
 
 .layer-item--locked .layer-preview {
   opacity: 0.62;
+}
+
+.layer-item--hidden .layer-preview {
+  opacity: 0.36;
 }
 
 .layer-drag-handle {
@@ -914,6 +918,11 @@
 .layer-action-button--active {
   color: var(--editor-primary);
   background: rgba(var(--v-theme-primary), 0.12);
+}
+
+.layer-action-button--hidden {
+  color: var(--editor-subtle);
+  background: rgba(var(--v-theme-on-surface), 0.08);
 }
 
 .layer-attribute-button {

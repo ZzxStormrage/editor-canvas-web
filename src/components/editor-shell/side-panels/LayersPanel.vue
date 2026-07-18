@@ -32,6 +32,7 @@
             :class="{
               'layer-item--selected': element.selected,
               'layer-item--locked': element.locked,
+              'layer-item--hidden': !element.visible,
               'layer-item--expanded': editingElementId === element.elementId
             }"
             tabindex="0"
@@ -58,6 +59,7 @@
               :layer="element"
               :attributes-active="editingElementId === element.elementId"
               @edit-attributes="toggleAttributeEditor(element)"
+              @toggle-visibility="editor.toggleLayerVisibility(element.id)"
               @toggle-pointer-through="editor.toggleLayerPointerThrough(element.id)"
               @toggle-lock="editor.toggleLayerLock(element.id)"
               @delete="editor.deleteLayer(element.id)"

@@ -51,6 +51,11 @@ export function useLayerControls(getEditor) {
     getEditor()?.layer?.toggleLock(id)
   }
 
+  /** @param {string} id 图层 ID。 */
+  function toggleLayerVisibility(id) {
+    getEditor()?.layer?.toggleVisibility(id)
+  }
+
   /** @param {string} id 图片图层 ID。 */
   function toggleLayerPointerThrough(id) {
     getEditor()?.layer?.togglePointerThrough(id)
@@ -82,6 +87,7 @@ export function useLayerControls(getEditor) {
     selectLayer,
     deleteLayer,
     toggleLayerLock,
+    toggleLayerVisibility,
     toggleLayerPointerThrough,
     hoverLayer,
     getLayerThumbnail

@@ -20,7 +20,7 @@ configureApiClient({
   }
 })
 installAuthTokenBridge()
-startMessageBridge()
+startMessageBridge({ allowedOrigins: '*' })
 postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
   capabilities: [
     MESSAGE_TYPES.EDITOR_INITIALIZED,

@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { createEditor } from '../canvas-editor-core/src/index.js'
 import { useArtboardControls } from './canvas-editor/useArtboardControls.js'
@@ -24,10 +24,12 @@ import { useTextControls } from './canvas-editor/useTextControls.js'
 export function useCanvasEditor(options = {}) {
   const canvasRef = ref(null)
   const ready = ref(false)
+  const initializationError = ref(null)
   const zoom = ref(1)
   const zoomPercent = computed(() => Math.round(zoom.value * 100))
   let editor = null
   let unsubscribeEvents = []
+  const readyWaiters = new Set()
 
   /** @returns {import('../canvas-editor-core/src/core/Editor.js').Editor | null} */
   function getEditor() {
@@ -58,64 +60,116 @@ export function useCanvasEditor(options = {}) {
    * TextPlugin、ViewportManager 等内部实现。
    */
   function initCanvas() {
-    if (!canvasRef.value) {
-      return
+    if (editor || !canvasRef.value) {
+      return editor
     }
 
-    editor = createEditor({
-      view: canvasRef.value,
-      autoResize: true
-    })
+    initializationError.value = null
 
-    unsubscribeEvents = [
-      editor.eventBus.on('text:selected', ({ options }) => {
-        if (!assetControls.isAddingWatermark()) {
-          textControls.applyTextOptionsToUI(options)
-        }
-      }),
-      editor.eventBus.on('selection:toolbar-changed', (state) => {
-        selectionToolbarControls.syncSelectionToolbar(state)
-        if (!state?.visible) {
-          layerMenuControls.hideLayerMenu()
-        }
-      }),
-      editor.eventBus.on('selection:layer-menu-close', layerMenuControls.hideLayerMenu),
-      editor.eventBus.on('image:selection-changed', ({ properties }) => {
-        imageControls.syncImageProperties(properties)
-        selectionToolbarControls.syncSelectionToolbar()
-      }),
-      editor.eventBus.on('production:print-area-changed', ({ properties }) => {
-        artboardControls.syncPrintAreaControls(properties)
-      }),
-      editor.eventBus.on('viewport:zoom-changed', ({ zoom: nextZoom }) => {
-        zoom.value = nextZoom
-        selectionToolbarControls.syncSelectionToolbar()
-      }),
-      editor.eventBus.on('viewport:transform-end', () => {
-        selectionToolbarControls.syncSelectionToolbar()
-      }),
-      editor.eventBus.on('canvas:resized', () => {
-        selectionToolbarControls.syncSelectionToolbar()
-      }),
-      editor.eventBus.on('artboard:resized', () => {
-        artboardControls.syncArtboardControls()
-        artboardControls.syncPrintAreaControls()
-        imageControls.syncImageProperties()
-      }),
-      editor.eventBus.on('layers:changed', ({ layers }) => {
-        layerControls.setLayers(layers)
-        imageControls.syncImageProperties()
-        selectionToolbarControls.syncSelectionToolbar()
+    try {
+      editor = createEditor({
+        view: canvasRef.value,
+        autoResize: true
       })
-    ]
 
-    selectionToolbarControls.startSelectionToolbar()
-    syncZoom()
-    artboardControls.syncArtboardControls()
-    artboardControls.syncPrintAreaControls()
-    layerControls.refreshLayers()
-    imageControls.syncImageProperties()
-    ready.value = true
+      unsubscribeEvents = [
+        editor.eventBus.on('text:selected', ({ options }) => {
+          if (!assetControls.isAddingWatermark()) {
+            textControls.applyTextOptionsToUI(options)
+          }
+        }),
+        editor.eventBus.on('selection:toolbar-changed', (state) => {
+          selectionToolbarControls.syncSelectionToolbar(state)
+          if (!state?.visible) {
+            layerMenuControls.hideLayerMenu()
+          }
+        }),
+        editor.eventBus.on('selection:layer-menu-close', layerMenuControls.hideLayerMenu),
+        editor.eventBus.on('image:selection-changed', ({ properties }) => {
+          imageControls.syncImageProperties(properties)
+          selectionToolbarControls.syncSelectionToolbar()
+        }),
+        editor.eventBus.on('production:print-area-changed', ({ properties }) => {
+          artboardControls.syncPrintAreaControls(properties)
+        }),
+        editor.eventBus.on('viewport:zoom-changed', ({ zoom: nextZoom }) => {
+          zoom.value = nextZoom
+          selectionToolbarControls.syncSelectionToolbar()
+        }),
+        editor.eventBus.on('viewport:transform-end', () => {
+          selectionToolbarControls.syncSelectionToolbar()
+        }),
+        editor.eventBus.on('canvas:resized', () => {
+          selectionToolbarControls.syncSelectionToolbar()
+        }),
+        editor.eventBus.on('artboard:resized', () => {
+          artboardControls.syncArtboardControls()
+          artboardControls.syncPrintAreaControls()
+          imageControls.syncImageProperties()
+        }),
+        editor.eventBus.on('layers:changed', ({ layers }) => {
+          layerControls.setLayers(layers)
+          imageControls.syncImageProperties()
+          selectionToolbarControls.syncSelectionToolbar()
+        })
+      ]
+
+      selectionToolbarControls.startSelectionToolbar()
+      syncZoom()
+      artboardControls.syncArtboardControls()
+      artboardControls.syncPrintAreaControls()
+      layerControls.refreshLayers()
+      imageControls.syncImageProperties()
+      ready.value = true
+      settleReadyWaiters('resolve', editor)
+      return editor
+    } catch (error) {
+      unsubscribeEvents.forEach((unsubscribe) => unsubscribe())
+      unsubscribeEvents = []
+      selectionToolbarControls.stopSelectionToolbar()
+      editor?.destroy?.()
+      editor = null
+      ready.value = false
+      initializationError.value = error
+      settleReadyWaiters('reject', error)
+      notify?.(error?.message || '编辑器初始化失败。', 'error')
+      return null
+    }
+  }
+
+  /**
+   * 等待核心编辑器完成初始化，供 iframe 消息和模板持久化流程消除挂载竞态。
+   *
+   * @param {number} [timeout=8000] 最长等待时间，单位毫秒。
+   * @returns {Promise<import('../canvas-editor-core/src/core/Editor.js').Editor>}
+   */
+  function whenReady(timeout = 8000) {
+    const instance = initCanvas()
+
+    if (instance && ready.value) {
+      return Promise.resolve(instance)
+    }
+    if (initializationError.value) {
+      return Promise.reject(initializationError.value)
+    }
+
+    return new Promise((resolve, reject) => {
+      const waiter = { resolve, reject, timer: 0 }
+      waiter.timer = window.setTimeout(() => {
+        readyWaiters.delete(waiter)
+        reject(new Error('编辑器初始化超时，请确认 iframe 已显示并刷新后重试。'))
+      }, timeout)
+      readyWaiters.add(waiter)
+    })
+  }
+
+  /** @param {'resolve' | 'reject'} action 完成方式。 @param {*} value 返回值。 */
+  function settleReadyWaiters(action, value) {
+    readyWaiters.forEach((waiter) => {
+      window.clearTimeout(waiter.timer)
+      waiter[action](value)
+    })
+    readyWaiters.clear()
   }
 
   /** 销毁事件桥接及 Editor 管理的全部 Leafer 资源。 */
@@ -126,6 +180,7 @@ export function useCanvasEditor(options = {}) {
     editor?.destroy()
     editor = null
     ready.value = false
+    settleReadyWaiters('reject', new Error('编辑器页面已关闭。'))
   }
 
   /** 放大画布。 */
@@ -188,6 +243,16 @@ export function useCanvasEditor(options = {}) {
     return editor?.exportDocument() ?? null
   }
 
+  watch(
+    canvasRef,
+    (view) => {
+      if (view && !editor) {
+        initCanvas()
+      }
+    },
+    { flush: 'post' }
+  )
+
   onMounted(initCanvas)
   onBeforeUnmount(destroyCanvas)
 
@@ -195,6 +260,8 @@ export function useCanvasEditor(options = {}) {
     getEditor,
     canvasRef,
     ready,
+    initializationError,
+    whenReady,
     zoom,
     zoomPercent,
     textValue: textControls.textValue,
@@ -263,8 +330,10 @@ export function useCanvasEditor(options = {}) {
     selectLayer: layerControls.selectLayer,
     deleteLayer: layerControls.deleteLayer,
     toggleLayerLock: layerControls.toggleLayerLock,
+    toggleLayerVisibility: layerControls.toggleLayerVisibility,
     toggleLayerPointerThrough: layerControls.toggleLayerPointerThrough,
     hoverLayer: layerControls.hoverLayer,
+    getLayerThumbnail: layerControls.getLayerThumbnail,
     getSelectedElementAttributes: elementDataControls.getSelectedElementAttributes,
     setSelectedElementAttributes: elementDataControls.setSelectedElementAttributes,
     removeSelectedElementAttributes: elementDataControls.removeSelectedElementAttributes,

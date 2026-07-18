@@ -36,6 +36,16 @@ const routes = [
         path: 'music-customization',
         name: 'music-customization',
         component: () => import('../views/h5-page/music-customization.vue')
+      },
+      {
+        path: 'portrait-customization',
+        name: 'portrait-customization',
+        component: () => import('../views/h5-page/portrait-customization.vue')
+      },
+      {
+        path: 'poetry-customization',
+        name: 'poetry-customization',
+        component: () => import('../views/h5-page/poetry-customization.vue')
       }
     ]
   },

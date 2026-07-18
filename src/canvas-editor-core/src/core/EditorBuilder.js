@@ -77,6 +77,7 @@ export class EditorBuilder {
     const snapHooks = createEditorSnapHooks({
       getInnerEditor: () => this.#innerEditor,
       getContentLayer: () => this.#contentLayer,
+      getGuideLayer: () => this.#stage,
       getState: () => this.#state?.proxy,
       getArtboard: () => this.#artboard,
       editorOptions: this.#options.editor

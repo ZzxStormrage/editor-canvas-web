@@ -241,7 +241,7 @@ import {
   startMessageBridge
 } from '@/services/message-bridge.js'
 
-startMessageBridge()
+startMessageBridge({ allowedOrigins: '*' })
 
 postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
   capabilities: [
@@ -659,30 +659,14 @@ window.EleEditorBridge.receiveMessage({
 
 `receiveMessage()` 同时兼容标准对象、JSON 字符串和 `{ data: message }` 包装格式。
 
-### 来源白名单
+### 消息来源
 
-生产环境不要使用 `'*'`。可以通过环境变量配置多个允许来源：
+当前应用入口使用 `startMessageBridge({ allowedOrigins: '*' })`，允许任意后台域名通过
+`window.postMessage` 传递 Token 和编辑器消息，不依赖 `document.referrer`。
 
-```env
-VITE_MESSAGE_ALLOWED_ORIGINS=https://admin.example.com,https://ops.example.com
-```
-
-也可以在手动初始化时传入：
-
-```js
-const stopBridge = startMessageBridge({
-  allowedOrigins: [
-    'https://admin.example.com',
-    'https://ops.example.com'
-  ]
-})
-
-// 仅在整个应用不再需要通信时调用
-stopBridge()
-```
-
-接收白名单会自动包含编辑器自身 origin 和 `document.referrer` 的 origin。发送窗口消息时，
-推荐始终显式传入 `targetOrigin`；未传时才会从 referrer、环境变量或当前页面来源推导。
+发送窗口消息时仍建议宿主显式指定编辑器的 `targetOrigin`，避免消息被发送到错误页面。
+如果后续需要恢复来源白名单，可以把 `allowedOrigins` 改为域名数组，或使用
+`VITE_MESSAGE_ALLOWED_ORIGINS` 配置多个来源。
 
 ### 通信排查
 
@@ -692,7 +676,7 @@ stopBridge()
 | 后台收不到消息 | `target` 是否正确，`targetOrigin` 是否与后台 origin 完全一致。 |
 | 编辑器收不到消息 | 消息是否包含 `channel: 'ele-editor'`、`version: 1` 和有效 `type`。 |
 | Token 未生效 | 是否在 `editor:ready` 后发送，字段是否为 `payload.token` 或 `payload.authorization`。 |
-| 消息被忽略 | `event.origin` 是否在 `allowedOrigins` 或 `VITE_MESSAGE_ALLOWED_ORIGINS` 中。 |
+| 消息被忽略 | 消息是否包含正确的 `channel`、`version` 和 `type`；当前不限制来源域名。 |
 | 小程序消息延迟 | 检查对应平台 `web-view postMessage` 的触发时机限制。 |
 
 ## 创建编辑器
@@ -1715,6 +1699,127 @@ const result = await saveH5CustomDesign(editor, {
 页面先通过 `/customer/api/localStorage/pictures` 上传用户图片，取得永久 URL 后再调用
 `editor.replaceImage()`。保存成功后通过 `MESSAGE_TYPES.H5_PAGE_SAVED` 将 `page`、
 `templateId`、`json`、`previewImgUrl`、`productImgUrl` 和接口返回结果发送给微信小程序。
+
+### 人像款定制 H5 模板
+
+人像款定制复用诗词定制页面的主题、背景、文案和保存流程，业务路由为：
+
+```text
+# 使用模板原始图片
+#/h5-page/portrait-customization?templateId=1001
+
+# 传入单个人像主题和背景图
+#/h5-page/portrait-customization?templateId=1001&aiThemeUrl=https%3A%2F%2Fcdn.example.com%2Fportrait.png&backgroundImageUrl=https%3A%2F%2Fcdn.example.com%2Fbackground.png
+
+# 保存成功后返回小程序页面
+#/h5-page/portrait-customization?templateId=1001&redirectPath=subPackage2/home/productDetail/orderDetails
+```
+
+编辑器模板需要使用以下自定义属性：
+
+| 图层 | 自定义属性 | 推荐值 | 说明 |
+| --- | --- | --- | --- |
+| 人像图片 | `image.description` | `人像替换` | 人像主题切换时只替换图片资源，保留位置、尺寸、层级和变换。兼容 `人像定制`、`AI主题`、`原图替换`、`原图定制`。 |
+| 人像图片 | `image.role` | `ai-variable` | 可选的通用可变图片角色；配置后无需依赖具体 description。 |
+| 背景图片 | `image.role` | `background` | 背景选项会替换该图层，建议锁定并关闭点击命中。 |
+| 可替换文字 | `text.description` | `文本替换` | 页面生成单行文案输入框；也支持 `文案替换`、`主标题`、`副标题`、`落款`。 |
+| 打印区域 | 图层名称 | `打印区域` | 可选；存在时保存流程额外生成不含背景图和遮罩图的 `productImgUrl`。 |
+
+主题和背景选项都由 URL 提供。单个选项分别使用 `aiThemeUrl`、`backgroundImageUrl`；
+多个选项使用 URL 编码后的 JSON 数组：
+
+```js
+const aiThemes = encodeURIComponent(JSON.stringify([
+  {
+    id: 'portrait-1',
+    label: '清新人像',
+    url: 'https://cdn.example.com/portrait-1.png',
+    selected: true
+  },
+  {
+    id: 'portrait-2',
+    label: '水墨人像',
+    url: 'https://cdn.example.com/portrait-2.png'
+  }
+]))
+
+const backgroundImages = encodeURIComponent(JSON.stringify([
+  {
+    id: 'background-1',
+    label: '浅色背景',
+    url: 'https://cdn.example.com/background-1.png',
+    selected: true
+  }
+]))
+
+const url = `#/h5-page/portrait-customization?templateId=1001&aiThemes=${aiThemes}&backgroundImages=${backgroundImages}`
+```
+
+每个选项支持 `id`、`label`、`url` 和 `selected`。页面优先选择 `selected: true` 的选项；
+没有显式选择时依次匹配模板当前图片 URL、数组第一项。“尝试更多”会返回 `redirectPath`
+指定的小程序页面重新选择。
+
+最小模板 JSON 示例：
+
+```json
+{
+  "version": 1,
+  "canvas": {
+    "width": 1024,
+    "height": 1024,
+    "background": "#ffffff"
+  },
+  "elements": [
+    {
+      "tag": "Image",
+      "name": "背景图",
+      "url": "https://cdn.example.com/background.png",
+      "x": 0,
+      "y": 0,
+      "width": 1024,
+      "height": 1024,
+      "locked": true,
+      "hittable": false,
+      "attributes": {
+        "image": {
+          "role": "background"
+        }
+      }
+    },
+    {
+      "tag": "Image",
+      "url": "https://cdn.example.com/portrait.png",
+      "x": 112,
+      "y": 102,
+      "width": 800,
+      "height": 800,
+      "attributes": {
+        "image": {
+          "description": "人像替换",
+          "role": "ai-variable"
+        }
+      }
+    },
+    {
+      "tag": "Text",
+      "text": "人像款定制",
+      "x": 212,
+      "y": 760,
+      "width": 600,
+      "fontSize": 72,
+      "textAlign": "center",
+      "attributes": {
+        "text": {
+          "description": "文本替换"
+        }
+      }
+    }
+  ]
+}
+```
+
+Canvas 始终按模板 `canvas.width / canvas.height` 等比缩放并占满 H5 页面宽度；下方操作区
+自动占用剩余空间，纵向模板过高时页面允许滚动。图层顺序完全以模板 JSON 为准。
 
 H5 customer Token 与编辑器 admin Token 完全独立。本地调试 H5 页面时使用：
 

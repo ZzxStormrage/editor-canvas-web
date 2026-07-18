@@ -347,10 +347,12 @@ onMounted(loadFontStyles)
 .page {
   position: relative;
   display: flex;
-  width: 100%;
+  width: min(100%, 430px);
   height: 100vh;
+  min-height: 0;
   margin: 0 auto;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   flex-direction: column;
   color: #171717;
   background: #ffffff;
@@ -358,23 +360,21 @@ onMounted(loadFontStyles)
 }
 
 .canvas-section {
-  --preview-max-height: clamp(190px, 34vh, 300px);
-
   display: flex;
+  width: 100%;
   min-height: 0;
-  padding: 12px 16px;
+  padding: 0;
+  overflow: hidden;
   align-items: center;
   justify-content: center;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
-  gap: 8px;
   background: #f2f3f5;
 }
 
 .canvas-frame {
   position: relative;
-  width: min(100%, calc(var(--preview-max-height) * var(--canvas-ratio)));
-  max-height: var(--preview-max-height);
+  width: 100%;
   overflow: hidden;
   background: #ffffff;
   box-shadow: 0 2px 8px rgba(17, 24, 39, 0.14);
@@ -401,8 +401,7 @@ onMounted(loadFontStyles)
 
 .canvas-loading {
   display: flex;
-  width: min(100%, var(--preview-max-height));
-  max-height: var(--preview-max-height);
+  width: 100%;
   aspect-ratio: 1;
   align-items: center;
   justify-content: center;
@@ -425,7 +424,7 @@ onMounted(loadFontStyles)
   min-height: 0;
   padding: 16px 16px 22px;
   overflow-y: auto;
-  flex: 1 1 auto;
+  flex: 1 0 220px;
   flex-direction: column;
   gap: 20px;
   overscroll-behavior: contain;
@@ -681,11 +680,8 @@ onMounted(loadFontStyles)
 }
 
 @media (max-height: 650px) {
-  .canvas-section {
-    --preview-max-height: 190px;
-  }
-
   .page-container {
+    flex-basis: 200px;
     gap: 16px;
   }
 }

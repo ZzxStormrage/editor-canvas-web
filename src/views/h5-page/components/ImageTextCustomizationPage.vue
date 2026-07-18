@@ -60,12 +60,7 @@
               :disabled="!canPickImage"
               @change="handleImageChange"
             />
-            <button
-              type="button"
-              class="secondary-button"
-              :disabled="!canPickImage"
-              @click="handleUploadButtonClick"
-            >
+            <button type="button" class="secondary-button" :disabled="!canPickImage" @click="handleUploadButtonClick">
               {{ imageReplacing ? '上传中...' : '上传图片' }}
             </button>
           </div>
@@ -97,13 +92,7 @@
       <p v-if="saveStatus.text" class="save-status" :class="`is-${saveStatus.type}`" role="status" aria-live="polite">
         {{ saveStatus.text }}
       </p>
-      <button
-        class="submit-button"
-        type="button"
-        :disabled="!canSubmit"
-        :aria-busy="saving"
-        @click="onSubmit"
-      >
+      <button class="submit-button" type="button" :disabled="!canSubmit" :aria-busy="saving" @click="onSubmit">
         {{ saving ? '保存中...' : '立即购买' }}
       </button>
     </footer>
@@ -119,19 +108,8 @@
         class="image-picker-backdrop"
         @click.self="closeImagePickerSheet"
       >
-        <section
-          class="image-picker-sheet"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="image-picker-title"
-        >
-          <span class="sheet-handle" aria-hidden="true"></span>
-          <button
-            class="sheet-close"
-            type="button"
-            aria-label="关闭上传图片面板"
-            @click="closeImagePickerSheet"
-          >
+        <section class="image-picker-sheet" role="dialog" aria-modal="true" aria-labelledby="image-picker-title">
+          <button class="sheet-close" type="button" aria-label="关闭上传图片面板" @click="closeImagePickerSheet">
             <v-icon icon="mdi-close" size="18" />
           </button>
           <h2 id="image-picker-title">上传图片开始定制</h2>
@@ -209,12 +187,7 @@ const {
   handleCanvasError: handleTemplateCanvasError,
   loadTemplateFromRoute
 } = useH5TemplateDocument({ errorLabel: props.pageId })
-const {
-  saving,
-  saveStatus,
-  resetSaveStatus,
-  savePage
-} = useH5PageSave({
+const { saving, saveStatus, resetSaveStatus, savePage } = useH5PageSave({
   route,
   router,
   pageId: props.pageId,
@@ -378,10 +351,12 @@ async function handleImageChange(event) {
     const targets = getImageTargets(editor)
 
     await Promise.all(
-      targets.map((target) => editor.replaceImage(target, imageUrl, {
-        fit: 'contain',
-        allowLocked: true
-      }))
+      targets.map((target) =>
+        editor.replaceImage(target, imageUrl, {
+          fit: 'contain',
+          allowLocked: true
+        })
+      )
     )
     imagePreviewUrl.value = imageUrl
     hasUploadedImage.value = true
@@ -457,8 +432,11 @@ watch(
   position: relative;
   display: flex;
   width: min(100%, 430px);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   margin: 0 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   flex-direction: column;
   color: #191919;
   background: #ffffff;
@@ -477,20 +455,20 @@ watch(
 }
 
 .preview-section {
-  --preview-max-height: clamp(210px, 42vh, 390px);
-
   display: flex;
-  min-height: 250px;
-  padding: 16px 20px;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   background: #f4f5f6;
 }
 
 .canvas-frame {
   position: relative;
-  width: min(100%, calc(var(--preview-max-height) * var(--canvas-ratio)));
-  max-height: var(--preview-max-height);
+  width: 100%;
   overflow: hidden;
   background: #e3e3e3;
   box-shadow: 0 1px 8px rgba(0, 0, 0, 0.08);
@@ -518,7 +496,9 @@ watch(
 }
 
 .preview-state {
-  min-height: 218px;
+  width: 100%;
+  min-height: 0;
+  aspect-ratio: 1;
 }
 
 .preview-state.is-error {
@@ -529,7 +509,8 @@ watch(
 .form-section {
   display: flex;
   padding: 22px 20px 28px;
-  flex: 1;
+  overflow-y: auto;
+  flex: 1 0 220px;
   flex-direction: column;
   gap: 24px;
 }
@@ -609,7 +590,9 @@ watch(
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 160ms ease-out, color 160ms ease-out;
+  transition:
+    background-color 160ms ease-out,
+    color 160ms ease-out;
 }
 
 .secondary-button:hover {
@@ -646,7 +629,9 @@ watch(
   color: #202020;
   background: #ffffff;
   font-size: 13px;
-  transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
+  transition:
+    border-color 160ms ease-out,
+    box-shadow 160ms ease-out;
 }
 
 .text-input::placeholder {
@@ -819,7 +804,10 @@ watch(
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
 }
 
 .image-picker-option:hover {
@@ -882,15 +870,9 @@ watch(
 }
 
 @media (max-height: 690px) {
-  .preview-section {
-    --preview-max-height: 220px;
-
-    min-height: 230px;
-    padding-block: 10px;
-  }
-
   .form-section {
     padding-block: 18px;
+    flex-basis: 200px;
     gap: 18px;
   }
 }

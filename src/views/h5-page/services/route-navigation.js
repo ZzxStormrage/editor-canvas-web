@@ -3,6 +3,12 @@ import { wxAPI } from './wx-api.js'
 const INTERNAL_QUERY_KEYS = new Set([
   'Authorization',
   'authorization',
+  'aiThemeUrl',
+  'aiThemeUrls',
+  'aiThemes',
+  'backgroundImageUrl',
+  'backgroundImageUrls',
+  'backgroundImages',
   'designName',
   'partnerId',
   'redirectPath',

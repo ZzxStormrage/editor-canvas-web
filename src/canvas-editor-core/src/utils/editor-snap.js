@@ -29,6 +29,7 @@ const GUIDE_STYLE = {
  * @param {Object} params
  * @param {() => import('@leafer-in/editor').Editor | null} params.getInnerEditor
  * @param {() => import('leafer-ui').Group | null} params.getContentLayer
+ * @param {() => import('leafer-ui').Group | null} params.getGuideLayer
  * @param {() => Object | null} params.getState
  * @param {() => import('../artboard.js').ArtboardManager | null} params.getArtboard
  * @param {Object} params.editorOptions
@@ -37,6 +38,7 @@ const GUIDE_STYLE = {
 export function createEditorSnapHooks({
   getInnerEditor,
   getContentLayer,
+  getGuideLayer,
   getState,
   getArtboard,
   editorOptions
@@ -45,7 +47,13 @@ export function createEditorSnapHooks({
   const rotateSnap = normalizeSnapOption(editorOptions.rotateSnap, DEFAULT_ROTATE_SNAP)
   const userBeforeMove = editorOptions.beforeMove
   const userBeforeRotate = editorOptions.beforeRotate
-  const guides = createSnapGuideRenderer(getContentLayer, getState, getArtboard, editorOptions.theme)
+  const guides = createSnapGuideRenderer(
+    getContentLayer,
+    getGuideLayer,
+    getState,
+    getArtboard,
+    editorOptions.theme
+  )
 
   return {
     beforeMove(data) {
@@ -238,7 +246,7 @@ function findSnapOffset(sourceLines, targetLines, threshold) {
   return best
 }
 
-function createSnapGuideRenderer(getContentLayer, getState, getArtboard, theme = {}) {
+function createSnapGuideRenderer(getContentLayer, getGuideLayer, getState, getArtboard, theme = {}) {
   let group = null
   let verticalLine = null
   let horizontalLine = null
@@ -249,19 +257,20 @@ function createSnapGuideRenderer(getContentLayer, getState, getArtboard, theme =
       if (!ensureGuides()) return
       clearHideTimer()
       const contentLayer = getContentLayer()
+      const guideLayer = getGuideLayer()
       const state = getState()
 
-      if (!contentLayer || !state) return
+      if (!contentLayer || !guideLayer || !state) return
 
       if (Number.isFinite(vertical)) {
-        verticalLine.path = createVerticalGuidePath(contentLayer, state, getArtboard?.(), vertical)
+        verticalLine.path = createVerticalGuidePath(contentLayer, guideLayer, state, getArtboard?.(), vertical)
         verticalLine.visible = true
       } else {
         verticalLine.visible = false
       }
 
       if (Number.isFinite(horizontal)) {
-        horizontalLine.path = createHorizontalGuidePath(contentLayer, state, getArtboard?.(), horizontal)
+        horizontalLine.path = createHorizontalGuidePath(contentLayer, guideLayer, state, getArtboard?.(), horizontal)
         horizontalLine.visible = true
       } else {
         horizontalLine.visible = false
@@ -278,9 +287,12 @@ function createSnapGuideRenderer(getContentLayer, getState, getArtboard, theme =
   }
 
   function ensureGuides() {
-    if (group) return true
-    const contentLayer = getContentLayer()
-    if (!contentLayer) return false
+    const guideLayer = getGuideLayer()
+    if (!guideLayer) return false
+
+    if (group?.parent === guideLayer) return true
+
+    group?.remove?.()
 
     group = new Group({
       visible: false,
@@ -292,7 +304,7 @@ function createSnapGuideRenderer(getContentLayer, getState, getArtboard, theme =
     verticalLine = createGuideLine(theme)
     horizontalLine = createGuideLine(theme)
     group.addMany(verticalLine, horizontalLine)
-    contentLayer?.add(group)
+    guideLayer.add(group)
     return true
   }
 
@@ -313,26 +325,26 @@ function createGuideLine(theme) {
   return line
 }
 
-function createVerticalGuidePath(contentLayer, state, artboard, x) {
+function createVerticalGuidePath(contentLayer, guideLayer, state, artboard, x) {
   const bounds = getCanvasWorldBounds(contentLayer, state, artboard)
   if (!bounds) return ''
 
-  const start = worldToContentPoint(contentLayer, { x, y: bounds.y })
-  const end = worldToContentPoint(contentLayer, { x, y: bounds.y + bounds.height })
+  const start = worldToGuidePoint(guideLayer, { x, y: bounds.y })
+  const end = worldToGuidePoint(guideLayer, { x, y: bounds.y + bounds.height })
   return `M ${start.x} ${start.y} L ${end.x} ${end.y}`
 }
 
-function createHorizontalGuidePath(contentLayer, state, artboard, y) {
+function createHorizontalGuidePath(contentLayer, guideLayer, state, artboard, y) {
   const bounds = getCanvasWorldBounds(contentLayer, state, artboard)
   if (!bounds) return ''
 
-  const start = worldToContentPoint(contentLayer, { x: bounds.x, y })
-  const end = worldToContentPoint(contentLayer, { x: bounds.x + bounds.width, y })
+  const start = worldToGuidePoint(guideLayer, { x: bounds.x, y })
+  const end = worldToGuidePoint(guideLayer, { x: bounds.x + bounds.width, y })
   return `M ${start.x} ${start.y} L ${end.x} ${end.y}`
 }
 
-function worldToContentPoint(contentLayer, point) {
-  return contentLayer?.getLocalPoint?.(point) ?? point
+function worldToGuidePoint(guideLayer, point) {
+  return guideLayer?.getLocalPoint?.(point) ?? point
 }
 
 function getVerticalLines(bounds) {
