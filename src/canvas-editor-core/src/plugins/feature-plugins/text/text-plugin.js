@@ -874,9 +874,6 @@ export class TextPlugin {
   /**
    * 四角缩放文本时归整像素值，并实时通知外部 UI 刷新。
    *
-   * 左右宽度控制点会在 action-buttons 中单独覆盖为 size 模式，
-   * 不会改变 fontSize。
-   *
    * @param {import('@leafer-in/interface').IEditorScaleEvent} event 缩放事件。
    * @returns {void}
    * @private
