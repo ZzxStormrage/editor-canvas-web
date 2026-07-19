@@ -45,6 +45,7 @@ export class EditorBuilder {
   #treeLeafer // 内容树层 —— 放置背景、缩放容器和可编辑元素
   #stage
   #contentLayer
+  #guideLayer // 屏幕坐标辅助层 —— 吸附线不跟随画布缩放
   #area
   #artboard
   #innerEditor
@@ -77,7 +78,7 @@ export class EditorBuilder {
     const snapHooks = createEditorSnapHooks({
       getInnerEditor: () => this.#innerEditor,
       getContentLayer: () => this.#contentLayer,
-      getGuideLayer: () => this.#stage,
+      getGuideLayer: () => this.#guideLayer,
       getState: () => this.#state?.proxy,
       getArtboard: () => this.#artboard,
       editorOptions: this.#options.editor
@@ -120,8 +121,9 @@ export class EditorBuilder {
   //   app (App)
   //   ├── tree (Leafer, type: 'design')
   //   │   ├── area (Group)          ← 背景/网格，不参与缩放
-  //   │   └── stage (Group, scale)  ← 缩放容器
+  //   │   ├── stage (Group, scale)  ← 缩放容器
   //   │       └── contentLayer      ← 可编辑元素 (editable: true)
+  //   │   └── guideLayer (Group)    ← 矢量吸附线，固定屏幕描边
   //   └── sky (Leafer)
   //       └── Editor 实例           ← @leafer-in/editor
   //
@@ -139,6 +141,11 @@ export class EditorBuilder {
       scale: this.#options.zoom.initial
     })
     this.#contentLayer = new Group({ x: 0, y: 0 })
+    this.#guideLayer = new Group({
+      hittable: false,
+      editable: false,
+      draggable: false
+    })
     this.#area = createArea(this.#size, this.#options)
     this.#artboard = new ArtboardManager(this.#options.artboard, this.#size)
 
@@ -150,6 +157,7 @@ export class EditorBuilder {
     // 保持官方编辑器刷新链路中的 children 全部都是 Leafer 层。
     this.#treeLeafer.add(this.#area, 0)
     this.#treeLeafer.add(this.#stage, 1)
+    this.#treeLeafer.add(this.#guideLayer, 2)
 
     return this
   }
