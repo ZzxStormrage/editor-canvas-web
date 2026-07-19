@@ -12,7 +12,10 @@ import { readRouteValue } from './route-navigation.js'
  * @returns {{ id: string, label: string, url: string, selected: boolean }[]} 图片选项。
  */
 export function readRouteImageOptions(query, keys, idPrefix) {
-  const rawValue = keys.map((key) => query?.[key]).find((value) => value != null)
+  // Vue Router 未提供的参数可能是 null 或 undefined，两种空值都应继续查找下一个别名。
+  const rawValue = keys
+    .map((key) => query?.[key])
+    .find((value) => value !== null && value !== undefined)
   const entries = parseRouteOptionValue(rawValue)
   const seenUrls = new Set()
   const seenIds = new Set()
@@ -38,7 +41,7 @@ function parseRouteOptionValue(value) {
 
   return values.flatMap((item) => {
     if (typeof item !== 'string') {
-      return item == null ? [] : [item]
+      return item === null || item === undefined ? [] : [item]
     }
 
     const text = item.trim()

@@ -326,8 +326,10 @@ watch([surname, givenName], () => {
 })
 
 function onAdvancedEdit() {
-  const editorJson = canvasViewportRef.value?.getEditor?.()?.exportDocument?.()
-  console.log('百家姓高级编辑数据：', editorJson)
+  if (import.meta.env.DEV) {
+    const editorJson = canvasViewportRef.value?.getEditor?.()?.exportDocument?.()
+    console.log('百家姓高级编辑数据：', editorJson)
+  }
 }
 
 /** @returns {Promise<void>} 保存当前 JSON，并按需获取打印区域截图。 */

@@ -45,7 +45,10 @@ export function useH5PageSave(options) {
       const payload = await createSavePayload(options)
       const bridgeResult = postSaveMessage(options, payload)
 
-      console.log(`${options.pageId} save result:`, JSON.stringify(payload, null, 2))
+      // 用户设计可能包含完整文档和图片地址，仅在开发环境输出诊断数据。
+      if (import.meta.env.DEV) {
+        console.log(`${options.pageId} save result:`, JSON.stringify(payload, null, 2))
+      }
       if (await leavePageAfterSave(options, bridgeResult)) {
         return payload
       }
