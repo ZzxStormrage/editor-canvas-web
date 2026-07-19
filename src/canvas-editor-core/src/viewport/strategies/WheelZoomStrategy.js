@@ -23,10 +23,23 @@ export class WheelZoomStrategy {
    * @returns {{ scale: number, anchorX: number, anchorY: number } | null}
    */
   handle(data, config = {}) {
-    const delta = config.delta || { y: 8.0 };
-    const speed = config.zoomSpeed ?? 0.15;   // 滚轮灵敏度（越小越慢）
+    const configuredDelta = Number(config.delta?.y);
+    const baseDelta = Number.isFinite(configuredDelta) && configuredDelta > 0
+      ? configuredDelta
+      : 8;
+    const configuredSpeed = Number(config.zoomSpeed);
+    const speed = Number.isFinite(configuredSpeed) && configuredSpeed > 0
+      ? configuredSpeed
+      : 0.15;
+    const wheelDelta = Number(data?.deltaY);
 
-    const scale = Math.pow(2, -data.deltaY * speed / delta.y);
+    if (!Number.isFinite(wheelDelta) || wheelDelta === 0) return null;
+
+    // 不同浏览器和设备的单次 deltaY 可能从个位数到 120。限制到一个基准步长，
+    // 避免普通鼠标滚动一次就从最小缩放跳到最大缩放。
+    const normalizedDelta = Math.max(-baseDelta, Math.min(baseDelta, wheelDelta));
+
+    const scale = Math.pow(2, -normalizedDelta * speed / baseDelta);
 
     // 忽略极小的缩放变化（防抖）
     if (Math.abs(scale - 1) < 0.001) return null;

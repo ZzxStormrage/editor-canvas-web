@@ -7,6 +7,7 @@ import { MESSAGE_TYPES, postBridgeMessage } from '../services/message-bridge.js'
 import { parsePositiveIntegerId } from '../services/positive-integer-id.js'
 
 const TOKEN_QUERY_KEYS = ['token', 'authorization', 'Authorization']
+const TEMPLATE_ID_ROUTE_KEYS = ['id', 'templateId']
 const ROUTE_CONTEXT_KEYS = ['id', 'itemId', 'userId', 'partnerId', 'templateName', 'previewImgUrl']
 
 /**
@@ -300,7 +301,7 @@ function resetTemplateState(target) {
  */
 function createRoutePersistenceKey(route) {
   return createContextPersistenceKey({
-    id: readRouteValue(route, ['id']),
+    id: readRouteValue(route, TEMPLATE_ID_ROUTE_KEYS),
     itemId: readRouteValue(route, ['itemId']),
     userId: readRouteValue(route, ['userId']),
     partnerId: readRouteValue(route, ['partnerId', 'xPartnerId', 'X-Partner-Id']),
@@ -327,7 +328,7 @@ function createContextPersistenceKey(context) {
  */
 function readRouteContext(route) {
   return {
-    id: normalizeOptionalIdentifier(readRouteValue(route, ['id']), 'id'),
+    id: normalizeOptionalIdentifier(readRouteValue(route, TEMPLATE_ID_ROUTE_KEYS), 'templateId'),
     itemId: normalizeOptionalIdentifier(readRouteValue(route, ['itemId']), 'itemId'),
     userId: normalizeOptionalIdentifier(readRouteValue(route, ['userId']), 'userId'),
     partnerId: normalizeOptionalIdentifier(
@@ -490,7 +491,7 @@ async function resolveCreatedTemplateId(template) {
  * @returns {Promise<void>}
  */
 async function syncRouteTemplateId(route, router, id) {
-  const currentId = route.params.id ?? route.query.id
+  const currentId = readRouteValue(route, TEMPLATE_ID_ROUTE_KEYS)
 
   if (String(currentId ?? '') === String(id)) {
     return
@@ -501,7 +502,7 @@ async function syncRouteTemplateId(route, router, id) {
     params: route.params,
     query: {
       ...route.query,
-      id: String(id)
+      templateId: String(id)
     }
   })
 }
