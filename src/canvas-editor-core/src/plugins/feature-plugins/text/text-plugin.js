@@ -9,6 +9,7 @@ import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
 
 const FONT_URL_KEY = '__canvasEditorFontUrl'
 const RAW_TEXT_KEY = '__canvasEditorRawText'
+const INITIAL_TEXT_GEOMETRY_KEY = '__canvasEditorInitialTextGeometry'
 const VERTICAL_FONT_CENTER_KEY = '__canvasEditorVerticalFontCenter'
 const MIN_TEXT_PIXEL = 1
 const VISUAL_ITALIC_KEY = '__canvasEditorVisualItalic'
@@ -116,6 +117,7 @@ export class TextPlugin {
       text.forceUpdate?.()
       text.updateLayout?.()
       contentLayer.add(text)
+      this._captureInitialTextGeometry(text)
       this._activeText = text
       this._context.innerEditor?.select(text)
       eventBus.emit('text:added', { text })
@@ -195,6 +197,13 @@ export class TextPlugin {
     this._setRawText(target, source.text ?? target.text ?? '')
     this._setFontUrl(target, source.fontUrl)
     this._ensureTextEditConfig(target)
+
+    // Capture the document's first measurable bounds before any page-level
+    // content or font replacement can resize the node. Vertical text uses
+    // this geometry directly; keeping it for all text nodes also makes a
+    // later writing-mode change deterministic.
+    this._captureInitialTextGeometry(target)
+
     return target
   }
 
@@ -668,12 +677,13 @@ export class TextPlugin {
   }
 
   _shouldKeepVerticalCenter(text, options) {
-    const writingMode = options.writingMode ?? text.writingMode ?? text.__?.writingMode
     const changesLayout =
       Object.keys(options ?? {}).some((key) => DIMENSION_TEXT_KEYS.has(key)) ||
       Object.prototype.hasOwnProperty.call(options, 'fontUrl')
 
-    return changesLayout && this._isVerticalWritingMode(writingMode)
+    // Keep the historical method name for compatibility, but center every
+    // text node whose font/content update can change its measured bounds.
+    return changesLayout
   }
 
   _getOrCreateVerticalFontCenter(text, options) {
@@ -683,10 +693,11 @@ export class TextPlugin {
 
     const savedCenter = text?.[VERTICAL_FONT_CENTER_KEY]
     if ([savedCenter?.x, savedCenter?.y].every(Number.isFinite)) {
+      this._captureInitialTextGeometry(text, savedCenter)
       return savedCenter
     }
 
-    const center = this._getTextCenter(text)
+    const center = this._captureInitialTextGeometry(text)?.center ?? this._getTextCenter(text)
     if (center && text) {
       text[VERTICAL_FONT_CENTER_KEY] = center
     }
@@ -695,6 +706,10 @@ export class TextPlugin {
   }
 
   _getTextCenter(text) {
+    return this._getTextGeometry(text)?.center ?? null
+  }
+
+  _getTextGeometry(text) {
     const x = Number(text?.x)
     const y = Number(text?.y)
     const width = Number(text?.width)
@@ -705,9 +720,65 @@ export class TextPlugin {
     }
 
     return {
-      x: x + width / 2,
-      y: y + height / 2
+      x,
+      y,
+      width,
+      height,
+      center: {
+        x: x + width / 2,
+        y: y + height / 2
+      }
     }
+  }
+
+  /**
+   * Capture the first usable text bounds and keep them for the lifetime of
+   * the node. Font and content changes may resize a Text node, but they must
+   * always be positioned from this initial geometry instead of the previous
+   * update's geometry.
+   *
+   * @param {LeaferText} text Text node.
+   * @param {{ x: number, y: number }} [centerOverride] Optional center supplied
+   * by a document/page restore path.
+   * @returns {{ x: number, y: number, width: number, height: number, center: { x: number, y: number } } | null}
+   * Initial text geometry, or null when the node has no measurable bounds yet.
+   * @private
+   */
+  _captureInitialTextGeometry(text, centerOverride = null) {
+    if (!isTextElement(text)) {
+      return null
+    }
+
+    const existing = text[INITIAL_TEXT_GEOMETRY_KEY]
+    if (
+      existing &&
+      [existing.x, existing.y, existing.width, existing.height, existing.center?.x, existing.center?.y].every(
+        Number.isFinite
+      )
+    ) {
+      return existing
+    }
+
+    const geometry = this._getTextGeometry(text)
+    if (!geometry) {
+      return null
+    }
+
+    const center = [centerOverride?.x, centerOverride?.y].every(Number.isFinite)
+      ? { x: Number(centerOverride.x), y: Number(centerOverride.y) }
+      : geometry.center
+    const initialGeometry = {
+      x: geometry.x,
+      y: geometry.y,
+      width: geometry.width,
+      height: geometry.height,
+      center
+    }
+
+    text[INITIAL_TEXT_GEOMETRY_KEY] = initialGeometry
+    text[VERTICAL_FONT_CENTER_KEY] = center
+
+    return initialGeometry
   }
 
   _restoreTextCenter(text, center) {
