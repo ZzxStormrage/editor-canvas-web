@@ -44,7 +44,7 @@ function parseRouteOptionValue(value) {
       return item === null || item === undefined ? [] : [item]
     }
 
-    const text = item.trim()
+    const text = decodeRouteValue(item).trim()
     if (!text) {
       return []
     }
@@ -52,6 +52,23 @@ function parseRouteOptionValue(value) {
     const parsed = parseJsonValue(text)
     return Array.isArray(parsed) ? parsed : [parsed]
   })
+}
+
+/** @param {string} value 可能被小程序路由重复编码的参数。 @returns {string} 解码后的参数。 */
+function decodeRouteValue(value) {
+  let result = value
+
+  for (let round = 0; round < 5; round += 1) {
+    try {
+      const decoded = decodeURIComponent(result)
+      if (decoded === result) break
+      result = decoded
+    } catch {
+      break
+    }
+  }
+
+  return result
 }
 
 /** @param {string} value 路由字符串。 @returns {*} JSON 值或原字符串。 */

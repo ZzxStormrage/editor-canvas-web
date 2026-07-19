@@ -59,48 +59,31 @@
             </div>
 
             <div class="theme-list">
-              <button
+              <div
                 v-for="option in aiThemeOptions"
                 :key="option.id"
-                type="button"
                 class="theme-item"
                 :class="{ 'is-selected': selectedAiThemeId === option.id }"
-                :disabled="!canSelectTheme"
-                :aria-label="`选择${option.label}`"
-                @click="selectAiTheme(option)"
               >
                 <span class="theme-preview">
                   <img :src="option.url" alt="" />
                 </span>
                 <span class="theme-label">{{ option.label }}</span>
-              </button>
-
-              <button type="button" class="theme-item add-theme" @click="tryMoreThemes">
-                <span class="theme-preview">
-                  <v-icon icon="mdi-plus" size="22" />
-                </span>
-                <span class="theme-label">尝试更多</span>
-              </button>
+              </div>
             </div>
 
             <div v-if="backgroundOptions.length" class="background-section">
               <h3>选择背景图</h3>
-              <div class="background-list" role="radiogroup" aria-label="背景图片">
-                <button
+              <div class="background-list" aria-label="背景图片">
+                <div
                   v-for="option in backgroundOptions"
                   :key="option.id"
-                  type="button"
                   class="background-option"
                   :class="{ 'is-selected': selectedBackgroundId === option.id }"
-                  role="radio"
-                  :aria-checked="selectedBackgroundId === option.id"
-                  :aria-label="option.label"
                   :title="option.label"
-                  :disabled="!canSelectBackground"
-                  @click="selectBackground(option)"
                 >
                   <img :src="option.url" alt="" />
-                </button>
+                </div>
               </div>
             </div>
           </section>
@@ -239,8 +222,6 @@ const {
   canvasFrameStyle,
   canvasLoaded,
   canvasViewportRef,
-  canSelectBackground,
-  canSelectTheme,
   canSubmit,
   documentData,
   handleCanvasError,
@@ -249,8 +230,6 @@ const {
   operationStatus,
   saveStatus,
   saving,
-  selectAiTheme,
-  selectBackground,
   selectedAiThemeId,
   selectedBackgroundId,
   setImageFit,
@@ -259,7 +238,6 @@ const {
   templateError,
   templateLoading,
   textFields,
-  tryMoreThemes,
   updateTextField
 } = usePoetryCustomization({
   pageId: props.pageId,
@@ -475,7 +453,6 @@ const {
   background: transparent;
   font: inherit;
   font-size: 9px;
-  cursor: pointer;
 }
 
 .theme-preview {
@@ -493,16 +470,6 @@ const {
 
 .theme-item.is-selected .theme-preview {
   border: 2px solid #e6002d;
-}
-
-.theme-item.add-theme .theme-preview {
-  border: 1px dashed #e6002d;
-  background: #ffffff;
-}
-
-.theme-item:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 .theme-preview img {
@@ -548,23 +515,11 @@ const {
   border-radius: 8px;
   background: #e4e5e7;
   box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.08);
-  cursor: pointer;
-  transition:
-    border-color 180ms ease-out,
-    transform 180ms ease-out;
+  transition: border-color 180ms ease-out;
 }
 
 .background-option.is-selected {
   border-color: #e6002d;
-}
-
-.background-option:active {
-  transform: scale(0.96);
-}
-
-.background-option:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .background-option img {

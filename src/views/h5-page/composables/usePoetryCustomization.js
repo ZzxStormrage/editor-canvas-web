@@ -3,11 +3,8 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useH5PageSave } from './useH5PageSave.js'
 import { useH5TemplateDocument } from './useH5TemplateDocument.js'
+import { loadAiSubjectBackgroundOptions } from '../services/ai-subject-backgrounds.js'
 import { readRouteImageOptions } from '../services/route-image-options.js'
-import {
-  navigateToH5RedirectPath,
-  readH5RedirectPath
-} from '../services/route-navigation.js'
 
 const DEFAULT_IMAGE_TARGET_DESCRIPTIONS = Object.freeze([
   '诗词配图',
@@ -16,8 +13,9 @@ const DEFAULT_IMAGE_TARGET_DESCRIPTIONS = Object.freeze([
   '原图定制'
 ])
 
-const AI_THEME_QUERY_KEYS = Object.freeze(['aiThemes', 'aiThemeUrls', 'aiThemeUrl'])
+const AI_THEME_QUERY_KEYS = Object.freeze(['imageUrl', 'aiThemeUrl', 'aiThemeUrls', 'aiThemes'])
 const BACKGROUND_QUERY_KEYS = Object.freeze([
+  'background_img_urls',
   'backgroundImages',
   'backgroundImageUrls',
   'backgroundImageUrl'
@@ -59,6 +57,7 @@ export function usePoetryCustomization(options = {}) {
   const selectedBackgroundId = ref('')
   const textFields = ref([])
   const operationStatus = ref({ type: 'success', text: '' })
+  let reloadRequestId = 0
   const {
     documentData,
     templateLoading,
@@ -115,13 +114,24 @@ export function usePoetryCustomization(options = {}) {
 
   /** @returns {Promise<void>} 根据路由模板 ID 重新加载页面。 */
   async function reloadTemplate() {
+    const currentRequestId = ++reloadRequestId
     resetPageState()
-    aiThemeOptions.value = readRouteImageOptions(route.query, AI_THEME_QUERY_KEYS, 'ai-theme')
-    backgroundOptions.value = readRouteImageOptions(
+    aiThemeOptions.value = readRouteImageOptions(route.query, AI_THEME_QUERY_KEYS, 'ai-theme').slice(0, 1)
+    const routeBackgrounds = readRouteImageOptions(
       route.query,
       BACKGROUND_QUERY_KEYS,
       'background'
     )
+    try {
+      const apiBackgrounds = await loadAiSubjectBackgroundOptions(route.query)
+      if (currentRequestId !== reloadRequestId) return
+      backgroundOptions.value = (apiBackgrounds.length ? apiBackgrounds : routeBackgrounds)
+        .map((option) => ({ ...option }))
+    } catch (error) {
+      if (currentRequestId !== reloadRequestId) return
+      console.error('AI subject backgrounds failed to load.', error)
+      backgroundOptions.value = routeBackgrounds.map((option) => ({ ...option }))
+    }
     await loadTemplateFromRoute(route.query)
   }
 
@@ -180,20 +190,6 @@ export function usePoetryCustomization(options = {}) {
   function handleCanvasError(error) {
     canvasLoaded.value = false
     handleTemplateCanvasError(error)
-  }
-
-  /** @returns {Promise<void>} 返回 redirectPath 页面重新选择主题。 */
-  async function tryMoreThemes() {
-    const redirectPath = readH5RedirectPath(route)
-    if (!redirectPath) {
-      operationStatus.value = {
-        type: 'warning',
-        text: '当前页面未配置返回地址。'
-      }
-      return
-    }
-
-    await navigateToH5RedirectPath(redirectPath, router)
   }
 
   /**
@@ -375,9 +371,12 @@ export function usePoetryCustomization(options = {}) {
     () => [
       route.query.templateId,
       route.query.partnerId,
-      route.query.aiThemes,
-      route.query.aiThemeUrls,
+      route.query.imageUrl,
+      route.query.aiSubjectIds,
       route.query.aiThemeUrl,
+      route.query.aiThemeUrls,
+      route.query.aiThemes,
+      route.query.background_img_urls,
       route.query.backgroundImages,
       route.query.backgroundImageUrls,
       route.query.backgroundImageUrl
@@ -417,7 +416,6 @@ export function usePoetryCustomization(options = {}) {
     templateError,
     templateLoading,
     textFields,
-    tryMoreThemes,
     updateTextField
   }
 }
