@@ -9,6 +9,7 @@ import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
 
 const FONT_URL_KEY = '__canvasEditorFontUrl'
 const RAW_TEXT_KEY = '__canvasEditorRawText'
+const VERTICAL_FONT_CENTER_KEY = '__canvasEditorVerticalFontCenter'
 const MIN_TEXT_PIXEL = 1
 const VISUAL_ITALIC_KEY = '__canvasEditorVisualItalic'
 const VISUAL_ITALIC_SKEW_X = -12
@@ -148,6 +149,7 @@ export class TextPlugin {
     const updateOptions = options === undefined ? target : options
     const normalizedOptions = TextPlugin.normalizeOptions(updateOptions ?? {})
     const previousFontFamily = text.fontFamily ?? text.__?.fontFamily
+    const textCenter = this._getOrCreateVerticalFontCenter(text, normalizedOptions)
 
     const { renderOptions, rawText } = this._getRenderableTextOptions(normalizedOptions, text)
     this._applyTextEditConfig(renderOptions)
@@ -160,6 +162,7 @@ export class TextPlugin {
     this._applyVisualItalic(text, renderOptions)
     text.forceUpdate?.()
     text.updateLayout?.()
+    this._restoreTextCenter(text, textCenter)
 
     if (behavior.select !== false) {
       this._activeText = text
@@ -168,7 +171,7 @@ export class TextPlugin {
     }
 
     this._context.eventBus.emit('text:updated', { text, options: normalizedOptions })
-    this._refreshAfterFontLoad(text, normalizedOptions)
+    this._refreshAfterFontLoad(text, normalizedOptions, textCenter)
 
     if (behavior.select !== false) {
       this._emitSelected(text)
@@ -497,7 +500,17 @@ export class TextPlugin {
     context.font = `${italic}${fontWeight}${fontSize}px ${fontFamily}`
 
     if (this._isVerticalWritingMode(writingMode)) {
-      return Math.ceil(fontSize + Math.max(0, letterSpacing))
+      const glyphWidths = lines.flatMap((line) =>
+        Array.from(line).map((character) => {
+          const metrics = context.measureText(character)
+          const actualWidth =
+            Math.abs(metrics.actualBoundingBoxLeft ?? 0) + Math.abs(metrics.actualBoundingBoxRight ?? 0)
+          return actualWidth > 0 ? actualWidth : metrics.width
+        })
+      )
+      const measuredWidth = Math.max(...glyphWidths, 0)
+
+      return Math.ceil(measuredWidth || fontSize)
     }
 
     const widths = lines.map((line) => {
@@ -624,9 +637,10 @@ export class TextPlugin {
    * @private
    * @param {LeaferText} text 文本节点。
    * @param {Object} options 本次归一化配置。
+   * @param {{ x: number, y: number } | null} [textCenter] 字体更新前保存的中心点。
    * @returns {void}
    */
-  _refreshAfterFontLoad(text, options) {
+  _refreshAfterFontLoad(text, options, textCenter = null) {
     if (!options.fontUrl) {
       return
     }
@@ -643,11 +657,73 @@ export class TextPlugin {
         }
         text.forceUpdate?.()
         text.updateLayout?.()
+        this._restoreTextCenter(text, textCenter)
         this._refreshSelectedEditBox()
       })
       .catch((error) => {
         console.warn(`Font loading failed: ${options.fontFamily ?? text.fontFamily}`, error)
       })
+  }
+
+  _shouldKeepVerticalCenter(text, options) {
+    const writingMode = options.writingMode ?? text.writingMode ?? text.__?.writingMode
+    const changesFont =
+      Object.prototype.hasOwnProperty.call(options, 'fontFamily') ||
+      Object.prototype.hasOwnProperty.call(options, 'fontUrl')
+
+    return changesFont && this._isVerticalWritingMode(writingMode)
+  }
+
+  _getOrCreateVerticalFontCenter(text, options) {
+    if (!this._shouldKeepVerticalCenter(text, options)) {
+      return null
+    }
+
+    const savedCenter = text?.[VERTICAL_FONT_CENTER_KEY]
+    if ([savedCenter?.x, savedCenter?.y].every(Number.isFinite)) {
+      return savedCenter
+    }
+
+    const center = this._getTextCenter(text)
+    if (center && text) {
+      text[VERTICAL_FONT_CENTER_KEY] = center
+    }
+
+    return center
+  }
+
+  _getTextCenter(text) {
+    const x = Number(text?.x)
+    const y = Number(text?.y)
+    const width = Number(text?.width)
+    const height = Number(text?.height)
+
+    if (![x, y, width, height].every(Number.isFinite)) {
+      return null
+    }
+
+    return {
+      x: x + width / 2,
+      y: y + height / 2
+    }
+  }
+
+  _restoreTextCenter(text, center) {
+    if (!center) {
+      return
+    }
+
+    const width = Number(text?.width)
+    const height = Number(text?.height)
+
+    if (![width, height].every(Number.isFinite)) {
+      return
+    }
+
+    text.set?.({
+      x: center.x - width / 2,
+      y: center.y - height / 2
+    })
   }
 
   /**

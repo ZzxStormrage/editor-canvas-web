@@ -63,6 +63,11 @@
         <div v-if="fontStylesLoading" class="font-grid" aria-label="字体风格加载中" aria-busy="true">
           <span v-for="index in 4" :key="index" class="font-skeleton"></span>
         </div>
+        <p v-if="fontReplacing" class="font-replacing" role="status" aria-live="polite">
+          <span class="font-loading-spinner" aria-hidden="true"></span>
+          <span>字体加载中...</span>
+        </p>
+        <p v-if="fontReplaceError" class="font-error" role="alert">{{ fontReplaceError }}</p>
         <p v-else-if="fontStylesError" class="font-error" role="alert">
           {{ fontStylesError }}
         </p>
@@ -74,6 +79,8 @@
             class="font-option"
             :class="{ 'is-selected': selectedFontId === style.id }"
             :aria-pressed="selectedFontId === style.id"
+            :aria-busy="fontReplacing"
+            :disabled="fontReplacing"
             :title="style.fontName"
             @click="selectFontStyle(style.id)"
           >
@@ -152,6 +159,8 @@ const fontStyles = ref([])
 const selectedFontId = ref(null)
 const fontStylesLoading = ref(false)
 const fontStylesError = ref('')
+const fontReplacing = ref(false)
+const fontReplaceError = ref('')
 const canvasLoaded = ref(false)
 const nameTextBindings = [
   { description: '姓', value: surname },
@@ -266,9 +275,31 @@ function applyNameTextValues(editor) {
 }
 
 /** @param {string} styleId 字体风格 ID。 @returns {void} */
-function selectFontStyle(styleId) {
-  selectedFontId.value = styleId
-  applySelectedFontStyle()
+async function selectFontStyle(styleId) {
+  if (fontReplacing.value) {
+    return
+  }
+
+  const style = fontStyles.value.find((item) => item.id === styleId)
+  if (!style) {
+    return
+  }
+
+  const previousFontId = selectedFontId.value
+  selectedFontId.value = style.id
+  fontReplaceError.value = ''
+  fontReplacing.value = true
+
+  try {
+    await loadFontFace(style.fontName, style.fontUrl)
+    applySelectedFontStyle(undefined, style)
+  } catch (error) {
+    console.warn('Hundred family font replacement failed.', error)
+    selectedFontId.value = previousFontId
+    fontReplaceError.value = '字体加载失败，请稍后重试。'
+  } finally {
+    fontReplacing.value = false
+  }
 }
 
 /**
@@ -277,9 +308,8 @@ function selectFontStyle(styleId) {
  * @param {Object | null} [editor] 核心编辑器实例。
  * @returns {void}
  */
-function applySelectedFontStyle(editor) {
+function applySelectedFontStyle(editor, style = selectedFontStyle.value) {
   const activeEditor = editor ?? getCanvasEditor()
-  const style = selectedFontStyle.value
   if (!activeEditor || !style) {
     return
   }
@@ -288,8 +318,7 @@ function applySelectedFontStyle(editor) {
     activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
       activeEditor.updateText(element, {
         fontFamily: style.fontName,
-        fontUrl: style.fontUrl,
-        width: Number(element.width)
+        fontUrl: style.fontUrl
       })
     })
   })
@@ -544,9 +573,14 @@ onMounted(loadFontStyles)
     background-color 180ms ease;
 }
 
-.font-option:hover {
+.font-option:hover:not(:disabled) {
   color: #262626;
   background: #e4e4e5;
+}
+
+.font-option:disabled {
+  cursor: wait;
+  opacity: 0.62;
 }
 
 .font-option.is-selected {
@@ -564,6 +598,25 @@ onMounted(loadFontStyles)
   display: block;
   background: #eeeeef;
   animation: skeleton-pulse 1.1s ease-in-out infinite alternate;
+}
+
+.font-replacing {
+  display: flex;
+  margin: 8px 0 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #666666;
+  font-size: 12px;
+}
+
+.font-loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #e6e6e6;
+  border-top-color: #d61f35;
+  border-radius: 50%;
+  animation: save-spinner-rotate 700ms linear infinite;
 }
 
 .font-error {
@@ -705,6 +758,7 @@ onMounted(loadFontStyles)
   }
 
   .font-skeleton,
+  .font-loading-spinner,
   .save-spinner {
     animation: none;
   }
