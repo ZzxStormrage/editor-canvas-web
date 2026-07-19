@@ -252,14 +252,15 @@ function syncNameValuesFromEditor(editor) {
  * @param {Object | null} [editor] 核心编辑器实例。
  * @returns {void}
  */
-function applyNameTextValues(editor = canvasViewportRef.value?.getEditor?.()) {
-  if (!editor) {
+function applyNameTextValues(editor) {
+  const activeEditor = editor ?? getCanvasEditor()
+  if (!activeEditor) {
     return
   }
 
   nameTextBindings.forEach(({ description, value }) => {
-    editor.getElementsByAttribute('text.description', description).forEach((element) => {
-      editor.replaceText(element, value.value)
+    activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
+      activeEditor.replaceText(element, value.value)
     })
   })
 }
@@ -276,15 +277,16 @@ function selectFontStyle(styleId) {
  * @param {Object | null} [editor] 核心编辑器实例。
  * @returns {void}
  */
-function applySelectedFontStyle(editor = canvasViewportRef.value?.getEditor?.()) {
+function applySelectedFontStyle(editor) {
+  const activeEditor = editor ?? getCanvasEditor()
   const style = selectedFontStyle.value
-  if (!editor || !style) {
+  if (!activeEditor || !style) {
     return
   }
 
   nameTextBindings.forEach(({ description }) => {
-    editor.getElementsByAttribute('text.description', description).forEach((element) => {
-      editor.updateText(element, {
+    activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
+      activeEditor.updateText(element, {
         fontFamily: style.fontName,
         fontUrl: style.fontUrl,
         width: Number(element.width)
@@ -294,17 +296,24 @@ function applySelectedFontStyle(editor = canvasViewportRef.value?.getEditor?.())
 }
 
 /** @param {Object | null} [editor] 核心编辑器实例。 @returns {void} */
-function syncSelectedFontFromEditor(editor = canvasViewportRef.value?.getEditor?.()) {
-  if (!editor || fontStyles.value.length === 0) {
+function syncSelectedFontFromEditor(editor) {
+  const activeEditor = editor ?? getCanvasEditor()
+  if (!activeEditor || fontStyles.value.length === 0) {
     return
   }
 
-  const element = editor.getElementsByAttribute('text.description', '姓')[0]
-    ?? editor.getElementsByAttribute('text.description', '名')[0]
+  const element = activeEditor.getElementsByAttribute('text.description', '姓')[0]
+    ?? activeEditor.getElementsByAttribute('text.description', '名')[0]
   const style = fontStyles.value.find((item) => {
     return item.fontName === element?.fontFamily || item.fontUrl === element?.fontUrl
   })
   selectedFontId.value = style?.id ?? null
+}
+
+/** @returns {Object | null} 当前画布编辑器实例。 */
+function getCanvasEditor() {
+  const viewport = canvasViewportRef.value
+  return viewport && typeof viewport.getEditor === 'function' ? viewport.getEditor() : null
 }
 
 /** @param {string} fontName 字体名称。 @returns {string} CSS 字体声明。 */

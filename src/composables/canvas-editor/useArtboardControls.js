@@ -347,16 +347,23 @@ export function useArtboardControls(getEditor, notify = null) {
    * 打印区域属性。
    * @returns {void}
    */
-  function syncPrintAreaControls(properties = getEditor()?.getPrintAreaProperties?.() ?? null) {
-    if (!properties) {
+  function syncPrintAreaControls(properties) {
+    const editor = getEditor()
+    const currentProperties = properties ?? (
+      editor && typeof editor.getPrintAreaProperties === 'function'
+        ? editor.getPrintAreaProperties()
+        : null
+    )
+
+    if (!currentProperties) {
       return
     }
 
     isSyncingPrintArea = true
-    printAreaX.value = normalizeFiniteForUI(properties.x, 0)
-    printAreaY.value = normalizeFiniteForUI(properties.y, 0)
-    printAreaWidth.value = normalizePixelForUI(properties.width, 1)
-    printAreaHeight.value = normalizePixelForUI(properties.height, 1)
+    printAreaX.value = normalizeFiniteForUI(currentProperties.x, 0)
+    printAreaY.value = normalizeFiniteForUI(currentProperties.y, 0)
+    printAreaWidth.value = normalizePixelForUI(currentProperties.width, 1)
+    printAreaHeight.value = normalizePixelForUI(currentProperties.height, 1)
     isSyncingPrintArea = false
   }
 

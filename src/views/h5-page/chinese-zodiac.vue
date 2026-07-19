@@ -226,8 +226,9 @@ function handleCanvasError(error) {
  * @param {Object | null} [editor] 核心编辑器实例。
  * @returns {void}
  */
-function applySelectedAnimal(editor = canvasViewportRef.value?.getEditor?.()) {
-  editor?.setElementsVisibilityByAttribute('image.description', selectedAnimal.value.name, {
+function applySelectedAnimal(editor) {
+  const activeEditor = editor ?? getCanvasEditor()
+  activeEditor?.setElementsVisibilityByAttribute('image.description', selectedAnimal.value.name, {
     exclusive: true
   })
 }
@@ -238,16 +239,23 @@ function applySelectedAnimal(editor = canvasViewportRef.value?.getEditor?.()) {
  * @param {Object | null} [editor] 核心编辑器实例。
  * @returns {void}
  */
-function applyDateTextValues(editor = canvasViewportRef.value?.getEditor?.()) {
-  if (!editor) {
+function applyDateTextValues(editor) {
+  const activeEditor = editor ?? getCanvasEditor()
+  if (!activeEditor) {
     return
   }
 
   dateTextBindings.forEach(({ description, value }) => {
-    editor.getElementsByAttribute('text.description', description).forEach((element) => {
-      editor.replaceText(element, value.value)
+    activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
+      activeEditor.replaceText(element, value.value)
     })
   })
+}
+
+/** @returns {Object | null} 当前画布编辑器实例。 */
+function getCanvasEditor() {
+  const viewport = canvasViewportRef.value
+  return viewport && typeof viewport.getEditor === 'function' ? viewport.getEditor() : null
 }
 
 /**
