@@ -153,38 +153,24 @@ if (coreEditor) {
 
 `getEditor()` 在组件挂载前和卸载后会返回 `null`。
 
-### 编辑器、业务页面和 H5 测试页
-
-三个入口必须区分，不能互相复制渲染逻辑。
-
-| 使用场景 | Vue 入口 | 渲染实现 | JSON 用途 |
-| --- | --- | --- | --- |
-| 完整编辑器 | `CanvasWorkspace` + `useCanvasEditor` | `canvas-editor-core` | 无损加载、编辑和导出 |
-| 生产业务页面 | `CanvasDocumentViewport` | `canvas-editor-core` | 无损加载，再调用 API 应用页面策略 |
-| H5 功能测试页 | `H5PreviewPage` + `H5CanvasRenderer` | HTML/CSS | 仅测试 H5 DTO、替换和输入规则 |
-
-`H5PreviewPage` 不是生产页面，也不是编辑器还原入口。生产页面需要与编辑器保持一致时，
-使用 `CanvasDocumentViewport`，不要直接操作 Leafer 节点。
-
 ## 自定义模板路由
 
-完整编辑器页面通过 `#/editor` 接收模板上下文。`id` 存在时会请求模板详情并调用
-`editor.loadDocument()` 还原 JSON；没有 `id` 时作为新模板。
+完整编辑器页面通过 `#/editor` 接收模板上下文。`templateId` 存在时会请求模板详情并调用
+`editor.loadDocument()` 还原 JSON；没有 `templateId` 时作为新模板。
 
 ```text
 # 新建模板
 #/editor?itemId=2001&templateName=生肖模板&partnerId=10
 
-# 编辑已有模板，两种 id 写法均支持
-#/editor/1001?itemId=2001&partnerId=10
-#/editor?id=1001&itemId=2001&partnerId=10
+# 编辑已有模板
+#/editor?templateId=1001&itemId=2001&partnerId=10
 ```
 
 路由参数：
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `id` | `number` | 编辑时是 | 自定义模板 ID，可放在路径或查询参数。 |
+| `templateId` | `number` | 编辑时是 | 自定义模板 ID。兼容旧的路径参数或查询参数 `id`。 |
 | `itemId` | `number` | 保存时是 | 商品 ID，优先使用路由值，否则使用详情接口值。 |
 | `templateName` | `string` | 否 | 模板名；未传且详情中没有时保存为“未命名模板”。 |
 | `previewImgUrl` | `string` | 否 | 预览图地址；编辑已有模板时默认保留接口值。 |
@@ -202,9 +188,9 @@ Token 优先通过 `postMessage` 的 `auth:token` 发送，避免出现在浏览
 
 | 状态 | 请求 | 地址 | 行为 |
 | --- | --- | --- | --- |
-| 带 `id` 初始化 | `GET` | `https://xiaoxiang.ele007.com/admin/api/customTemplate/{id}` | 读取 `content` 并还原编辑器。 |
-| 没有 `id` 保存 | `POST` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 新增模板，返回 ID 后写回路由。 |
-| 已有 `id` 保存 | `PUT` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 修改当前模板。 |
+| 带 `templateId` 初始化 | `GET` | `https://xiaoxiang.ele007.com/admin/api/customTemplate/{templateId}` | 读取 `content` 并还原编辑器。 |
+| 没有 `templateId` 保存 | `POST` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 新增模板，返回 ID 后写回路由。 |
+| 已有 `templateId` 保存 | `PUT` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 修改当前模板。 |
 | 模板列表 | `GET` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 按条件查询模板，也用于新增后补齐 ID。 |
 
 保存时 `content` 是 `editor.exportDocument()` 结果的 JSON 字符串：
@@ -1574,337 +1560,10 @@ await editor.loadDocument(documentData)
 editor.fitArtboardToView({ viewportRatio: 0.8, expandZoomRange: true })
 ```
 
-### 生产业务页面中加载
+### H5 生产页面
 
-`CanvasDocumentViewport` 只创建核心实例、调用文档 API 并负责容器尺寸适配。是否允许选择、
-拖动和缩放由调用方通过文档字段或 `loadOptions.interactive` 决定。
-
-```vue
-<CanvasDocumentViewport
-  ref="viewportRef"
-  :document="documentData"
-  :fit-options="{ padding: 8, viewportRatio: 0.92, expandZoomRange: true }"
-  :load-options="{ productionVisibility: 'hidden' }"
-  :zoom-limits="{ minRatio: 1, maxRatio: 2 }"
-  @loaded="onDocumentLoaded"
-/>
-```
-
-`zoomLimits` 默认是 `false`，不会改变完整 Web 编辑器或其他业务页。传入配置后，组件会以每次
-适配完成的完整画板比例为基准限制视口缩放；`minRatio: 1` 防止画板缩得小于完整预览，
-`maxRatio: 2` 允许最多放大到完整预览的两倍。移动端会在画布区域接管双指缩放，页面其他区域
-仍保持正常滚动。生产 H5 如不允许用户选择或拖动模板元素，应同时传入
-`:load-options="{ interactive: false }"`。
-
-业务页面通过核心 API 应用自己的展示策略：
-
-```js
-function onDocumentLoaded({ editor }) {
-  editor.arrangeLayersByRole({
-    back: ['background'],
-    front: ['mask']
-  })
-
-  editor.setElementsVisibilityByAttribute('image.description', '鼠', {
-    exclusive: true
-  })
-}
-```
-
-`arrangeLayersByRole()` 和 `setElementsVisibilityByAttribute()` 只改变当前运行时状态；
-`loadDocument()` 本身始终按 JSON 顺序无损还原。
-
-### 生肖 H5 模板路由
-
-生肖生产页面使用查询参数接收模板主键：
-
-```text
-# 回显模板 ID 1001
-#/h5-page/chinese-zodiac?templateId=1001
-
-# 带分销商请求头回显模板
-#/h5-page/chinese-zodiac?templateId=1001&partnerId=10
-
-# 微信小程序 web-view 初始化时传入 Token
-#/h5-page/chinese-zodiac?templateId=1001&token=ACCESS_TOKEN
-
-# 保存成功后跳转到指定微信小程序页面
-#/h5-page/chinese-zodiac?templateId=1001&productInfoId=2807&skuId=516&redirectPath=subPackage2/home/productDetail/orderDetails
-```
-
-| 参数 | 位置 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `templateId` | 查询参数 | 正整数 | 是 | 自定义模板主键；请求 `/customer/api/customTemplate/{templateId}`。 |
-| `partnerId` | 查询参数 | 正整数 | 否 | 写入模板详情请求的 `X-Partner-Id` 请求头。 |
-| `token` | 查询参数 | 字符串 | 否 | 小程序初始化 Token；兼容 `authorization` 和 `Authorization`，读取后立即从 URL 删除。 |
-| `designName` | 查询参数 | 字符串 | 否 | 用户设计名称；未传时使用当前业务页面名称。 |
-| `redirectPath` | 查询参数 | 小程序主包或分包页面路径 | 否 | 保存成功后通过 `wx.miniProgram.redirectTo()` 跳转，例如 `subPackage2/home/productDetail/orderDetails`。 |
-
-正式约定使用查询参数 `templateId`，不使用含义模糊的 `id`。H5 生产页面的模板读取和截图上传
-统一使用 `/customer/api`，后台编辑器继续使用 `/admin/api`。接口返回的 `content` 会先经过
-统一文档校验，再交给 `CanvasDocumentViewport` 还原；没有 `templateId` 或接口失败时显示页面
-错误状态，不初始化画布，也不会使用本地模拟数据。截图上传地址为
-`/customer/api/localStorage/pictures`。
-
-当 `redirectPath` 存在时，页面保存成功后优先调用微信小程序 `redirectTo`；没有参数时继续
-执行原有的微信小程序返回上一页逻辑。普通浏览器调试时，站内路径和 HTTP(S) 地址会作为
-回退跳转目标。H5 URL 中的业务参数会自动追加到小程序目标地址；`templateId`、`partnerId`、
-`designName`、Token 和 `redirectPath` 等 H5 内部参数不会透传。若目标地址已包含同名参数，
-以目标地址中的参数为准。
-
-例如：
-
-```text
-H5 URL:
-#/h5-page/chinese-zodiac?templateId=3&productInfoId=2807&skuId=516&skuCustomId=2074&quantity=1&redirectPath=subPackage2/home/productDetail/orderDetails
-
-微信小程序最终跳转：
-/subPackage2/home/productDetail/orderDetails?productInfoId=2807&skuId=516&skuCustomId=2074&quantity=1
-```
-
-### 保存 H5 用户设计
-
-所有生产 H5 页面点击保存时统一调用：
-
-```http
-POST /customer/api/customTemplate
-Authorization: Bearer <H5_TOKEN>
-X-Partner-Id: 10
-Content-Type: application/json
-```
-
-调用代码：
-
-```js
-const result = await saveH5CustomDesign(editor, {
-  templateId: route.query.templateId,
-  designName: route.query.designName || '生肖定制',
-  partnerId: route.query.partnerId
-})
-```
-
-请求 DTO：
-
-| 字段 | 类型 | 必填 | 来源 |
-| --- | --- | --- | --- |
-| `content` | `string` | 是 | `editor.exportDocument()` 返回的统一 JSON，经 `JSON.stringify()` 转换。 |
-| `designName` | `string` | 否 | 路由 `designName` 或当前业务页面名称。 |
-| `previewImgUrl` | `string` | 是 | `captureCanvas()` 完整画板截图上传地址，包含背景图和遮罩图。 |
-| `productImgUrl` | `string` | 否 | `capturePrintArea()` 打印区域截图上传地址，不包含背景图和遮罩图；没有打印区域时不发送。 |
-| `templateId` | `number` | 是 | 路由 `templateId`，表示用户设计基于哪个后台模板。 |
-
-保存顺序固定为：导出 JSON → 上传完整画板截图 → 按需上传打印区域截图 → POST 用户设计 →
-发送 `H5_PAGE_SAVED` 消息 → 按 `redirectPath` 跳转微信小程序页面。任一步失败都会停止保存和
-跳转，并由页面 Loading/错误状态反馈。
-
-### 图片文字定制 H5 路由
-
-原图定制和音乐款定制共用同一套生产运行时，只通过页面配置区分业务标识：
-
-```text
-# 原图定制
-#/h5-page/original-customization?templateId=1001
-
-# 音乐款定制
-#/h5-page/music-customization?templateId=1001
-```
-
-两类模板使用相同的元素标记约定：
-
-| 元素 | 自定义属性路径 | 属性值 | 页面行为 |
-| --- | --- | --- | --- |
-| 可替换图片 | `image.description` | `原图替换` | 图片上传成功后保持节点位置、尺寸、层级和变换属性，只替换资源。 |
-| 可替换文字 | `text.description` | `文本替换` | 输入内容实时同步到所有匹配文本节点。 |
-
-页面先通过 `/customer/api/localStorage/pictures` 上传用户图片，取得永久 URL 后再调用
-`editor.replaceImage()`。保存成功后通过 `MESSAGE_TYPES.H5_PAGE_SAVED` 将 `page`、
-`templateId`、`json`、`previewImgUrl`、`productImgUrl` 和接口返回结果发送给微信小程序。
-
-### 人像款定制 H5 模板
-
-人像款定制复用诗词定制页面的主题、背景、文案和保存流程，业务路由为：
-
-```text
-# 使用模板原始图片
-#/h5-page/portrait-customization?templateId=1001
-
-# 传入单个人像主题和背景图
-#/h5-page/portrait-customization?templateId=1001&aiThemeUrl=https%3A%2F%2Fcdn.example.com%2Fportrait.png&backgroundImageUrl=https%3A%2F%2Fcdn.example.com%2Fbackground.png
-
-# 保存成功后返回小程序页面
-#/h5-page/portrait-customization?templateId=1001&redirectPath=subPackage2/home/productDetail/orderDetails
-```
-
-编辑器模板需要使用以下自定义属性：
-
-| 图层 | 自定义属性 | 推荐值 | 说明 |
-| --- | --- | --- | --- |
-| 人像图片 | `image.description` | `人像替换` | 人像主题切换时只替换图片资源，保留位置、尺寸、层级和变换。兼容 `人像定制`、`AI主题`、`原图替换`、`原图定制`。 |
-| 人像图片 | `image.role` | `ai-variable` | 可选的通用可变图片角色；配置后无需依赖具体 description。 |
-| 背景图片 | `image.role` | `background` | 背景选项会替换该图层，建议锁定并关闭点击命中。 |
-| 可替换文字 | `text.description` | `文本替换` | 页面生成单行文案输入框；也支持 `文案替换`、`主标题`、`副标题`、`落款`。 |
-| 打印区域 | 图层名称 | `打印区域` | 可选；存在时保存流程额外生成不含背景图和遮罩图的 `productImgUrl`。 |
-
-主题和背景选项都由 URL 提供。单个选项分别使用 `aiThemeUrl`、`backgroundImageUrl`；
-多个选项使用 URL 编码后的 JSON 数组：
-
-```js
-const aiThemes = encodeURIComponent(JSON.stringify([
-  {
-    id: 'portrait-1',
-    label: '清新人像',
-    url: 'https://cdn.example.com/portrait-1.png',
-    selected: true
-  },
-  {
-    id: 'portrait-2',
-    label: '水墨人像',
-    url: 'https://cdn.example.com/portrait-2.png'
-  }
-]))
-
-const backgroundImages = encodeURIComponent(JSON.stringify([
-  {
-    id: 'background-1',
-    label: '浅色背景',
-    url: 'https://cdn.example.com/background-1.png',
-    selected: true
-  }
-]))
-
-const url = `#/h5-page/portrait-customization?templateId=1001&aiThemes=${aiThemes}&backgroundImages=${backgroundImages}`
-```
-
-每个选项支持 `id`、`label`、`url` 和 `selected`。页面优先选择 `selected: true` 的选项；
-没有显式选择时依次匹配模板当前图片 URL、数组第一项。“尝试更多”会返回 `redirectPath`
-指定的小程序页面重新选择。
-
-最小模板 JSON 示例：
-
-```json
-{
-  "version": 1,
-  "canvas": {
-    "width": 1024,
-    "height": 1024,
-    "background": "#ffffff"
-  },
-  "elements": [
-    {
-      "tag": "Image",
-      "name": "背景图",
-      "url": "https://cdn.example.com/background.png",
-      "x": 0,
-      "y": 0,
-      "width": 1024,
-      "height": 1024,
-      "locked": true,
-      "hittable": false,
-      "attributes": {
-        "image": {
-          "role": "background"
-        }
-      }
-    },
-    {
-      "tag": "Image",
-      "url": "https://cdn.example.com/portrait.png",
-      "x": 112,
-      "y": 102,
-      "width": 800,
-      "height": 800,
-      "attributes": {
-        "image": {
-          "description": "人像替换",
-          "role": "ai-variable"
-        }
-      }
-    },
-    {
-      "tag": "Text",
-      "text": "人像款定制",
-      "x": 212,
-      "y": 760,
-      "width": 600,
-      "fontSize": 72,
-      "textAlign": "center",
-      "attributes": {
-        "text": {
-          "description": "文本替换"
-        }
-      }
-    }
-  ]
-}
-```
-
-Canvas 始终按模板 `canvas.width / canvas.height` 等比缩放并占满 H5 页面宽度；下方操作区
-自动占用剩余空间，纵向模板过高时页面允许滚动。图层顺序完全以模板 JSON 为准。
-
-H5 customer Token 与编辑器 admin Token 完全独立。本地调试 H5 页面时使用：
-
-```env
-VITE_H5_TEMPORARY_ACCESS_TOKEN=H5_CUSTOMER_TOKEN
-```
-
-H5 `/customer/api/localStorage/pictures` 与 `/customer/api/customTemplate` 共用
-`src/views/h5-page/api/customer-client.js` 中的 `customerClient` 和
-`VITE_XIAOXIANG_API_BASE_URL`。开发环境下两者都会经过
-`/xiaoxiang-api` 代理，避免浏览器跨域限制；上传接口返回的相对图片地址仍按代理目标域名
-补全为可持久化的绝对 URL。
-
-## H5 文档测试运行时
-
-本节 API 服务于 `H5PreviewPage` 测试页，不替代 `canvas-editor-core` 的统一文档加载。
-
-H5 页面不创建 Leafer 编辑器实例，而是渲染可序列化文档。运行时替换通过
-`src/services/h5-document.js` 的纯文档 API 完成，返回新文档，不直接修改传入对象。
-
-```js
-import {
-  replaceH5Image,
-  replaceH5Text,
-  saveH5Document
-} from '@/services/h5-document.js'
-
-const imageDocument = await replaceH5Image(documentData, imageElementId, imageFile)
-const textDocument = replaceH5Text(imageDocument, textElementId, 'H5 动态标题')
-
-saveH5Document(textDocument)
-```
-
-### `replaceH5Image(document, elementId, source, options)`
-
-| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| `document` | `Object` | 是 | 无 | `version=1` 的 H5 文档 | 当前文档。 |
-| `elementId` | `string` | 是 | 无 | 已存在的图片元素 ID | 通过稳定 `elementId` 定位图片。 |
-| `source` | `string \| File \| Blob` | 是 | 无 | 图片 URL、`File`、`Blob` | 新图片；`File`、`Blob` 会转换为可持久化 Data URL。 |
-| `options` | `Object` | 否 | `{}` | 普通对象 | 替换配置。 |
-| `options.fit` | `string` | 否 | `'contain'` | `'contain'`、`'cover'`、`'stretch'` | 与编辑器图片替换规则一致。 |
-
-返回 `Promise<Object>`。新文档保留图片元素的坐标、宽高、旋转、缩放、透明度、业务
-属性和图层顺序，并更新以下字段：
-
-| 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `url` | `string` | 无 | 新图片 URL 或 Data URL。 |
-| `sourceWidth` / `sourceHeight` | `number` | 图片原始尺寸 | 新图片原始像素尺寸。 |
-| `objectFit` | `'contain' \| 'cover' \| 'fill'` | `'contain'` | H5 渲染使用的 CSS 图片适配方式。 |
-| `objectPosition` | `string` | `'center center'` | 新图片在原外框中水平、垂直居中。 |
-
-### `replaceH5Text(document, elementId, content)`
-
-| 参数 | 类型 | 必填 | 默认值 | 可选值或限制 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| `document` | `Object` | 是 | 无 | `version=1` 的 H5 文档 | 当前文档。 |
-| `elementId` | `string` | 是 | 无 | 已存在的文本元素 ID | 通过稳定 `elementId` 定位文本。 |
-| `content` | `string \| number` | 是 | 无 | 字符串或数字 | 新文本内容。 |
-
-返回新的 `Object` 文档。除 `text` 外，其余文本元素字段保持不变。
-
-启动项目后访问 `#/h5-preview`，可在“替换功能测试”区域选择元素。点击“替换图片”会
-选择本地图片并使用默认 `contain` 规则；输入文字后点击“替换文字”可立即验证渲染结果。
+H5 模板配置、客户侧 API 和生产页面编辑器接入规则见
+`src/views/h5-page/README.md`。本文件只保留核心编辑器 API 和编辑器接入说明。
 
 ## 事件
 
