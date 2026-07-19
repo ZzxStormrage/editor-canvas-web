@@ -214,10 +214,12 @@ export class TextPlugin {
       throw new EditorError('text.replace(target, content) requires a Text node.', 'TEXT_TARGET_INVALID')
     }
 
+    const writingMode = target.writingMode ?? target.__?.writingMode
     const width = Number(target.width ?? target.__?.width)
+    const preserveWidth = !this._isVerticalWritingMode(writingMode)
     const updateOptions = {
       text: content ?? '',
-      ...(Number.isFinite(width) && width > 0 ? { width } : {})
+      ...(preserveWidth && Number.isFinite(width) && width > 0 ? { width } : {})
     }
     const updatedText = this.update(target, updateOptions, { select: options.select === true })
 
@@ -667,11 +669,11 @@ export class TextPlugin {
 
   _shouldKeepVerticalCenter(text, options) {
     const writingMode = options.writingMode ?? text.writingMode ?? text.__?.writingMode
-    const changesFont =
-      Object.prototype.hasOwnProperty.call(options, 'fontFamily') ||
+    const changesLayout =
+      Object.keys(options ?? {}).some((key) => DIMENSION_TEXT_KEYS.has(key)) ||
       Object.prototype.hasOwnProperty.call(options, 'fontUrl')
 
-    return changesFont && this._isVerticalWritingMode(writingMode)
+    return changesLayout && this._isVerticalWritingMode(writingMode)
   }
 
   _getOrCreateVerticalFontCenter(text, options) {
@@ -1137,6 +1139,7 @@ export class TextPlugin {
     }
 
     this._activeText = text
+    this._getOrCreateVerticalFontCenter(text, { text: this._getRawText(text) })
     event.innerEditor?.editDom?.focus?.({ preventScroll: true })
   }
 
@@ -1158,6 +1161,13 @@ export class TextPlugin {
 
     if (this._isEmptyText(text)) {
       this._removeEmptyText(text)
+      return
+    }
+
+    const writingMode = text.writingMode ?? text.__?.writingMode
+    if (this._isVerticalWritingMode(writingMode)) {
+      this.update(text, { text: this._getRawText(text) }, { select: false })
+      this._emitSelected(text)
       return
     }
 

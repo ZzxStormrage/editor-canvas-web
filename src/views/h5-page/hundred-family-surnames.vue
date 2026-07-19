@@ -162,6 +162,7 @@ const fontStylesError = ref('')
 const fontReplacing = ref(false)
 const fontReplaceError = ref('')
 const canvasLoaded = ref(false)
+const nameTextCenters = new WeakMap()
 const nameTextBindings = [
   { description: '姓', value: surname },
   { description: '名', value: givenName }
@@ -232,6 +233,7 @@ async function loadFontStyles() {
 
 /** @param {{ editor: Object }} payload 文档加载事件。 @returns {void} */
 function handleDocumentLoaded(payload) {
+  initializeNameTextCenters(payload.editor)
   syncNameValuesFromEditor(payload.editor)
   syncSelectedFontFromEditor(payload.editor)
   applyNameTextValues(payload.editor)
@@ -256,6 +258,73 @@ function syncNameValuesFromEditor(editor) {
 }
 
 /**
+ * Record the initial center of the surname and given-name text nodes.
+ *
+ * The first document coordinates are kept for the lifetime of each node so
+ * text and font changes can resize around the same center.
+ *
+ * @param {Object | null} editor Canvas editor instance.
+ * @returns {void}
+ */
+function initializeNameTextCenters(editor) {
+  if (!editor) {
+    return
+  }
+
+  nameTextBindings.forEach(({ description }) => {
+    editor.getElementsByAttribute('text.description', description).forEach((element) => {
+      if (nameTextCenters.has(element)) {
+        return
+      }
+
+      const x = Number(element.x ?? element.__?.x)
+      const y = Number(element.y ?? element.__?.y)
+      const width = Number(element.width ?? element.__?.width)
+      const height = Number(element.height ?? element.__?.height)
+
+      if (![x, y, width, height].every(Number.isFinite)) {
+        return
+      }
+
+      const center = {
+        x: x + width / 2,
+        y: y + height / 2
+      }
+
+      nameTextCenters.set(element, center)
+      // Keep the same center for the text plugin's asynchronous font refresh.
+      element.__canvasEditorVerticalFontCenter = center
+    })
+  })
+}
+
+/**
+ * Restore a name text node to its initial center after its dimensions change.
+ *
+ * @param {Object | null} element Text node.
+ * @returns {void}
+ */
+function restoreNameTextCenter(element) {
+  const center = nameTextCenters.get(element)
+  const writingMode = element?.writingMode ?? element?.__?.writingMode
+  const width = Number(element?.width ?? element?.__?.width)
+  const height = Number(element?.height ?? element?.__?.height)
+
+  if (
+    !center ||
+    (writingMode !== 'y' && writingMode !== 'y-reverse') ||
+    ![width, height].every(Number.isFinite)
+  ) {
+    return
+  }
+
+  element.set?.({
+    x: center.x - width / 2,
+    y: center.y - height / 2
+  })
+}
+
+/**
  * 将姓和名同步到描述匹配的文字元素。
  *
  * @param {Object | null} [editor] 核心编辑器实例。
@@ -269,7 +338,9 @@ function applyNameTextValues(editor) {
 
   nameTextBindings.forEach(({ description, value }) => {
     activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
-      activeEditor.replaceText(element, value.value)
+      restoreNameTextCenter(element)
+      const updatedElement = activeEditor.replaceText(element, value.value)
+      restoreNameTextCenter(updatedElement ?? element)
     })
   })
 }
@@ -316,10 +387,12 @@ function applySelectedFontStyle(editor, style = selectedFontStyle.value) {
 
   nameTextBindings.forEach(({ description }) => {
     activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
-      activeEditor.updateText(element, {
+      restoreNameTextCenter(element)
+      const updatedElement = activeEditor.updateText(element, {
         fontFamily: style.fontName,
         fontUrl: style.fontUrl
       })
+      restoreNameTextCenter(updatedElement ?? element)
     })
   })
 }
