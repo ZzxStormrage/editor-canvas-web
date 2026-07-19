@@ -50,6 +50,7 @@ const routes = [
     ]
   },
   { path: '/docs', name: 'docs', component: () => import('../views/ApiDocsPage.vue') },
+  { path: '/h5-docs', name: 'h5-docs', component: () => import('../views/H5OperationsDocsPage.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/editor' }
 ]
 

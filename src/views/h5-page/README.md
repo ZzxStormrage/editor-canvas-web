@@ -1,210 +1,192 @@
-# H5 模板配置与编辑器接入
+# H5 模板配置与运维手册
 
-本文只描述 `src/views/h5-page` 的模板配置、客户侧 API 和编辑器使用方式。核心编辑器完整 API 见项目根目录 `CANVAS_EDITOR_API.md`。
+本文用于指导运维和模板配置人员发布、检查和排查 H5 定制模板。这里不介绍程序开发，只说明页面地址、模板标记、接口依赖和上线检查方法。
 
-## 页面路由
+## 使用流程
 
-| 页面 | 路由 |
+1. 在后台编辑器中新建或打开模板。
+2. 按业务页面要求配置文字和图片图层。
+3. 在图层面板打开“属性配置”，填写规定的“文字描述”“图片描述”或“图片用途”。
+4. 先保存属性配置，再保存整个模板。
+5. 记录保存后返回的模板 ID。
+6. 使用对应 H5 页面地址和模板 ID 进行预览。
+7. 检查文字输入、图片替换、生肖切换、预览图和保存接口。
+8. 验证通过后再将页面地址配置到小程序或业务系统。
+
+重要：图层名称、图片文件名和画布中的文字内容都不能代替“属性配置”。业务页面只读取属性配置中的标记。
+
+## 页面地址
+
+| 页面 | 地址 |
 | --- | --- |
-| 百家姓 | `#/h5-page/hundred-family-surnames` |
-| 十二生肖 | `#/h5-page/chinese-zodiac` |
-| 原图定制 | `#/h5-page/original-customization` |
-| 音乐定制 | `#/h5-page/music-customization` |
-| 人像定制 | `#/h5-page/portrait-customization` |
-| 诗词定制 | `#/h5-page/poetry-customization` |
+| 百家姓 | `#/h5-page/hundred-family-surnames?templateId=模板ID` |
+| 十二生肖 | `#/h5-page/chinese-zodiac?templateId=模板ID` |
+| 原图定制 | `#/h5-page/original-customization?templateId=模板ID` |
+| 音乐定制 | `#/h5-page/music-customization?templateId=模板ID` |
+| 人像定制 | `#/h5-page/portrait-customization?templateId=模板ID` |
+| 诗词定制 | `#/h5-page/poetry-customization?templateId=模板ID` |
 
-所有页面使用查询参数加载模板：
+### 地址参数
 
-```text
-#/h5-page/chinese-zodiac?templateId=1001&partnerId=10
-```
-
-| 参数 | 必填 | 说明 |
+| 参数 | 必填 | 运维说明 |
 | --- | --- | --- |
-| `templateId` | 是 | 后台模板正整数 ID。 |
-| `partnerId` | 否 | 转换为请求头 `X-Partner-Id`。 |
-| `token` | 否 | H5 customer Token；兼容 `authorization`、`Authorization`，读取后从 URL 删除。 |
-| `designName` | 否 | 保存的用户设计名称。 |
-| `redirectPath` | 否 | 保存成功后跳转的小程序页面。 |
+| `templateId` | 是 | 后台模板 ID，必须是正整数。 |
+| `partnerId` | 否 | 分销商 ID；配置后请求会携带对应分销商标识。 |
+| `token` | 否 | H5 用户登录凭证。生产环境优先由宿主传递，不建议长期写在地址中。 |
+| `designName` | 否 | 用户保存设计时使用的名称。 |
+| `redirectPath` | 否 | 保存成功后返回的小程序页面路径。 |
 
-H5 customer Token 与后台编辑器 admin Token 相互独立。本地调试可以配置：
+## 模板属性规则
 
-```env
-VITE_H5_TEMPORARY_ACCESS_TOKEN=H5_CUSTOMER_TOKEN
-```
+### 百家姓
 
-## 模板配置规则
+百家姓必须使用两个独立的文字图层。
 
-模板由后台编辑器创建并保存为统一文档 JSON。H5 页面通过元素业务属性识别可定制内容，不依赖图层 ID。
+| 图层 | 属性配置项 | 必须填写 |
+| --- | --- | --- |
+| 姓氏文字 | 文字描述 | `姓` |
+| 名字文字 | 文字描述 | `名` |
 
-### 通用图片文字模板
+不要填写“姓名”“姓氏”“用户姓名”，也不要只把图层名称改成“姓”或“名”。页面采用精确匹配，多一个字或少一个字都会失效。
 
-适用于原图定制和音乐定制：
+验收时分别修改姓和名，确认画布中的两个文字图层实时变化，再切换字体确认两个图层同时更新。
 
-| 元素 | 属性路径 | 默认值 | 用途 |
+### 十二生肖
+
+日期需要三个独立文字图层：
+
+| 图层 | 属性配置项 | 必须填写 |
+| --- | --- | --- |
+| 年份文字 | 文字描述 | `年` |
+| 月份文字 | 文字描述 | `月` |
+| 日期文字 | 文字描述 | `日` |
+
+生肖需要十二个独立图片图层。每个图片图层的“图片描述”分别填写：`鼠`、`牛`、`虎`、`兔`、`龙`、`蛇`、`马`、`羊`、`猴`、`鸡`、`狗`、`猪`。
+
+不要把十二生肖合成一张图片。切换生肖时，系统会显示描述匹配的图片并隐藏其他已配置生肖描述的图片。
+
+验收时依次点击十二个生肖，确认每次只有一个生肖图片显示；再修改年、月、日，确认三个文字图层分别变化。
+
+### 原图和音乐定制
+
+| 图层 | 属性配置项 | 必须填写 |
+| --- | --- | --- |
+| 用户可替换图片 | 图片描述 | `原图替换` |
+| 用户可修改文字 | 文字描述 | `文本替换` |
+
+图片替换只更换图片资源，原有位置、尺寸、旋转和图层顺序保持不变。
+
+### 人像和诗词定制
+
+| 图层 | 属性配置项 | 推荐值 | 说明 |
 | --- | --- | --- | --- |
-| 图片 | `image.description` | `原图替换` | 上传后调用 `editor.replaceImage()` 替换资源。 |
-| 文字 | `text.description` | `文本替换` | 输入时调用 `editor.replaceText()` 更新内容。 |
+| 可替换主图 | 图片用途 | `AI 可变图` | 推荐配置，适合主题图片和人像。 |
+| 可替换主图 | 图片描述 | `人像替换` | 未配置图片用途时使用。 |
+| 背景图片 | 图片用途 | `背景图` | 建议锁定图层并关闭点击命中。 |
+| 可替换文字 | 文字描述 | `文本替换` | 也可按业务使用“文案替换”“主标题”“副标题”“落款”。 |
+| 打印区域 | 图层名称 | `打印区域` | 可选；配置后保存时会生成产品图。 |
 
-### 百家姓模板
+人像和背景候选图由业务系统通过页面地址传入。运维只需要确认候选图片地址可公开访问、使用 HTTPS，并且图片未被防盗链拦截。
 
-模板文字元素必须配置：
+## 编辑器配置方法
 
-| 元素 | 属性路径 | 值 |
+### 配置文字图层
+
+1. 在编辑器中选中目标文字图层。
+2. 打开右侧图层面板。
+3. 点击该图层的“属性配置”。
+4. 在“文字描述”中填写本手册规定的值。
+5. 点击“保存配置”。
+6. 点击编辑器的“立即保存”，保存整个模板。
+
+### 配置图片图层
+
+1. 在编辑器中选中目标图片图层。
+2. 打开右侧图层面板和“属性配置”。
+3. 按页面规则填写“图片用途”或“图片描述”。
+4. 点击“保存配置”。
+5. 对所有业务图片逐个配置，不能遗漏。
+6. 点击编辑器的“立即保存”，保存整个模板。
+
+### 配置后的确认方法
+
+重新打开模板后，再次进入每个业务图层的“属性配置”。如果填写内容仍然存在，说明属性已经保存。只看到图层名称正确，不代表属性已经配置成功。
+
+## 接口与环境配置
+
+### 必须可用的接口
+
+| 功能 | 请求 | 默认地址 |
 | --- | --- | --- |
-| 姓 | `text.description` | `姓` |
-| 名 | `text.description` | `名` |
+| 获取模板详情 | GET | `/customer/api/customTemplate/{templateId}` |
+| 保存用户设计 | POST | `/customer/api/customTemplate` |
+| 上传用户图片 | POST | `/customer/api/localStorage/pictures` |
 
-页面会读取这些文字作为初始值，并对所有同名标记同步文字和字体。
+接口域名由 `VITE_XIAOXIANG_API_BASE_URL` 配置。模板接口路径可由 `VITE_CUSTOMER_CUSTOM_TEMPLATE_API_PATH` 覆盖，图片上传路径可由 `VITE_CUSTOMER_PICTURE_UPLOAD_PATH` 覆盖。
 
-### 十二生肖模板
+本地或测试环境临时 H5 Token 使用 `VITE_H5_TEMPORARY_ACCESS_TOKEN`。生产环境不要在构建文件、仓库或运维文档中写入真实 Token。
 
-| 元素 | 属性路径 | 值 |
-| --- | --- | --- |
-| 年 | `text.description` | `年` |
-| 月 | `text.description` | `月` |
-| 日 | `text.description` | `日` |
-| 生肖图片 | `image.description` | `鼠`、`牛`、`虎`、`兔`、`龙`、`蛇`、`马`、`羊`、`猴`、`鸡`、`狗`、`猪` |
+### 网络检查
 
-切换生肖时，页面调用 `setElementsVisibilityByAttribute()`，仅显示匹配的生肖图层。
-
-### 人像和诗词模板
-
-| 图层 | 属性路径 | 推荐值 | 说明 |
-| --- | --- | --- | --- |
-| 可替换主图 | `image.role` | `ai-variable` | 通用可变图片标记。 |
-| 可替换主图 | `image.description` | `人像替换`、`人像定制`、`AI主题`、`原图替换`、`原图定制` | 未配置 role 时按 description 匹配。 |
-| 背景图片 | `image.role` | `background` | 背景替换目标，建议锁定并关闭命中。 |
-| 可替换文字 | `text.description` | `文本替换`、`文案替换`、`主标题`、`副标题`、`落款` | 页面按 description 生成输入项。 |
-| 打印区域 | 图层名称 | `打印区域` | 可选；存在时保存 `productImgUrl`。 |
-
-图片选项通过路由传入：
-
-```text
-aiThemeUrl=https%3A%2F%2Fcdn.example.com%2Fportrait.png
-backgroundImageUrl=https%3A%2F%2Fcdn.example.com%2Fbackground.png
-```
-
-多个选项使用 URL 编码后的 JSON 数组参数 `aiThemes`、`aiThemeUrls`、`backgroundImages` 或 `backgroundImageUrls`。每项支持：
-
-```js
-{
-  id: 'portrait-1',
-  label: '清新人像',
-  url: 'https://cdn.example.com/portrait-1.png',
-  selected: true
-}
-```
-
-## 使用编辑器
-
-生产页面统一使用 `CanvasDocumentViewport`，不要直接创建或保存 Leafer 节点：
-
-```vue
-<CanvasDocumentViewport
-  ref="viewportRef"
-  :document="templateDocument"
-  :fit-options="{ padding: 8, viewportRatio: 0.92, expandZoomRange: true }"
-  :load-options="{ interactive: false }"
-  :zoom-limits="{ minRatio: 1, maxRatio: 2 }"
-  @loaded="handleDocumentLoaded"
-/>
-```
-
-```js
-async function handleDocumentLoaded({ editor }) {
-  const targets = editor.getElementsByAttribute('image.description', '原图替换')
-  const backgrounds = editor.getElementsByRole('background')
-
-  editor.replaceText(textTarget, '新文字')
-  await editor.replaceImage(targets[0], imageUrl, { fit: 'contain' })
-  editor.arrangeLayersByRole({ back: ['background'], front: ['mask'] })
-}
-```
-
-常用 API：
-
-| API | 用途 |
+| 检查项 | 正常结果 |
 | --- | --- |
-| `editor.loadDocument(document, options)` | 加载统一模板文档。 |
-| `editor.exportDocument()` | 导出当前统一文档。 |
-| `editor.getElementsByAttribute(path, value)` | 按 description 等属性查询元素。 |
-| `editor.getElementsByRole(role)` | 按图片角色查询元素。 |
-| `editor.replaceImage(target, source, options)` | 保持布局和变换，仅替换图片。 |
-| `editor.replaceText(target, content)` | 替换文字内容。 |
-| `editor.setElementsVisibilityByAttribute(path, value, options)` | 按属性切换元素显示。 |
-| `editor.captureCanvas(options)` | 生成完整画板预览图。 |
-| `editor.capturePrintArea(options)` | 生成打印区域产品图。 |
+| 模板详情请求 | 返回当前模板记录，并且 `content` 有完整模板内容。 |
+| 模板图片请求 | 所有图片返回 200，不出现跨域或防盗链错误。 |
+| 图片上传请求 | 返回可长期访问的图片地址。 |
+| 保存设计请求 | 返回成功结果，并包含新设计记录信息。 |
+| 登录状态 | 不出现 401；出现 401 时重新获取 H5 Token。 |
+| 分销商请求 | 配置 `partnerId` 后，请求头中的分销商标识正确。 |
 
-## 客户侧 API
+## 上线验收清单
 
-接口基础域名使用 `VITE_XIAOXIANG_API_BASE_URL`。
+| 项目 | 验收标准 |
+| --- | --- |
+| 页面地址 | 页面类型和 `templateId` 正确。 |
+| 模板加载 | 无“缺少模板 ID”“模板加载失败”等提示。 |
+| 画布比例 | 模板完整显示，不被裁切或严重留白。 |
+| 文字配置 | 输入后对应文字立即变化。 |
+| 图片配置 | 上传或切换后只有目标图片变化。 |
+| 生肖配置 | 十二个生肖均可切换，且每次只显示一个。 |
+| 字体资源 | 字体请求成功，刷新页面后样式一致。 |
+| 预览图 | 保存后完整画板截图可访问。 |
+| 产品图 | 配置打印区域时产品图可访问且不包含背景、遮罩。 |
+| 保存流程 | 保存按钮不会重复提交，接口成功后能正常返回或跳转。 |
+| 移动端 | 页面可滚动，画布双指缩放正常，底部按钮不被遮挡。 |
 
-| 功能 | 方法与地址 | 封装 |
-| --- | --- | --- |
-| 获取模板详情 | `GET /customer/api/customTemplate/{templateId}` | `customerTemplateApi.detail()` |
-| 保存用户设计 | `POST /customer/api/customTemplate` | `customerTemplateApi.createDesign()` |
-| 上传图片 | `POST /customer/api/localStorage/pictures` | `customerPictureApi.upload()` |
+## 故障排查
 
-路径可以通过以下环境变量覆盖：
+### 页面提示缺少模板 ID
 
-```env
-VITE_CUSTOMER_CUSTOM_TEMPLATE_API_PATH=/customer/api/customTemplate
-VITE_CUSTOMER_PICTURE_UPLOAD_PATH=/customer/api/localStorage/pictures
-```
+检查页面地址是否包含 `templateId`，并确认其值是正整数。不要使用商品 ID、用户设计 ID 或空字符串代替模板 ID。
 
-加载模板：
+### 模板加载失败
 
-```js
-import { loadH5TemplateDocument } from './services/template-document.js'
+检查模板详情接口状态、H5 Token、`partnerId` 和模板 `content`。后台编辑器能打开模板，不代表客户侧接口一定有权限读取。
 
-const { record, document } = await loadH5TemplateDocument(templateId, {
-  partnerId
-})
-```
+### 百家姓输入不生效
 
-上传图片：
+确认模板存在两个文字图层，并且“文字描述”精确填写为“姓”和“名”。如果填写的是“姓名”或只修改了图层名称，页面不会匹配。
 
-```js
-import { customerPictureApi } from './api/customer-picture.js'
+### 十二生肖切换不生效
 
-const imageUrl = await customerPictureApi.upload(file)
-```
+确认十二张生肖图片分别配置了“图片描述”，值必须是单个生肖汉字。若描述错误，切换时可能没有匹配图片，或所有已配置生肖图片都被隐藏。
 
-保存设计：
+### 年月日不生效
 
-```js
-import { saveH5CustomDesign } from './services/custom-design.js'
+确认三个文字图层的“文字描述”分别是“年”“月”“日”，不要填写“年份”“月份”“日期”。
 
-const result = await saveH5CustomDesign(editor, {
-  templateId,
-  partnerId,
-  designName: '生肖定制'
-})
-```
+### 图片上传后不显示
 
-保存流程固定为：
+检查上传接口返回地址是否为 HTTPS、是否能在浏览器直接访问，以及图片服务器是否允许当前页面域名访问。
 
-1. `editor.exportDocument()` 导出 JSON。
-2. `captureCanvas()` 上传完整预览图。
-3. 存在打印区域时调用 `capturePrintArea()` 上传产品图。
-4. `POST /customer/api/customTemplate` 保存用户设计。
-5. 发送 `h5:page-saved`，再执行小程序返回或 `redirectPath` 跳转。
+### 保存后没有预览图
 
-保存 DTO：
+先检查图片上传接口，再检查完整画板是否加载完成。模板中存在失效图片资源时，截图也可能失败。
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `templateId` | `number` | 原后台模板 ID。 |
-| `content` | `string` | `JSON.stringify(editor.exportDocument())`。 |
-| `designName` | `string` | 用户设计名称。 |
-| `previewImgUrl` | `string` | 完整画板截图地址。 |
-| `productImgUrl` | `string` | 可选打印区域截图地址。 |
+### 出现 401
 
-## 新增模板页面
+H5 customer Token 已失效或未传入。重新登录或让宿主重新发送 Token。不要使用后台编辑器的 admin Token 替代 H5 Token。
 
-1. 在 `src/router/index.js` 的 `/h5-page` children 中注册路由。
-2. 使用 `useH5TemplateDocument()` 从 `route.query.templateId` 加载文档。
-3. 使用 `CanvasDocumentViewport` 渲染，不直接操作底层 Leafer 实例。
-4. 使用 `description` 或 `role` 定义稳定的业务标记。
-5. 使用 `useH5PageSave()` 或 `saveH5CustomDesign()` 保存，禁止在页面内重复实现 HTTP 和截图流程。
+### 保存后没有返回小程序
+
+检查页面是否运行在小程序 `web-view` 中，并确认 `redirectPath` 是有效的小程序页面路径。未配置 `redirectPath` 时，系统默认尝试返回上一页。

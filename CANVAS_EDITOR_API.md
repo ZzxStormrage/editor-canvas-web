@@ -1783,8 +1783,6 @@ try {
 | 更新文字 | `editor.text.update(target, options)` |
 | 更新指定文字样式 | `editor.updateText(target, options)` |
 | 替换选中文字 | `editor.replaceSelectedText(content)` |
-| 替换 H5 图片 | `await replaceH5Image(document, elementId, source, options)` |
-| 替换 H5 文字 | `replaceH5Text(document, elementId, content)` |
 | 创建通信消息 | `createBridgeMessage(type, payload, options)` |
 | 发送跨端消息 | `postBridgeMessage(type, payload, options)` |
 | 订阅跨端消息 | `subscribeBridgeMessage(type, handler)` |

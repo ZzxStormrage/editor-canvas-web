@@ -10,6 +10,7 @@
       </div>
 
       <nav class="api-docs-actions" aria-label="文档页面导航">
+        <router-link to="/h5-docs">H5 运维手册</router-link>
         <router-link to="/editor">编辑器</router-link>
       </nav>
     </header>
