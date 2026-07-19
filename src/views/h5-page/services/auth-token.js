@@ -5,14 +5,17 @@ import {
   subscribeBridgeMessage
 } from '../../../services/message-bridge.js'
 
+const H5_ACCESS_TOKEN_STORAGE_KEY = 'ele-editor:h5-access-token:v1'
 const h5AccessTokenStore = createAccessTokenStore({
-  initialToken: import.meta.env?.VITE_H5_TEMPORARY_ACCESS_TOKEN
+  initialToken: readCachedH5AccessToken() || import.meta.env?.VITE_H5_TEMPORARY_ACCESS_TOKEN
 })
 let removeTokenSubscription = null
 
 /** @param {string} token H5 Token。 @returns {string} 标准 Token。 */
 export function setH5AccessToken(token) {
-  return h5AccessTokenStore.set(token)
+  const normalizedToken = h5AccessTokenStore.set(token)
+  writeCachedH5AccessToken(normalizedToken)
+  return normalizedToken
 }
 
 /** @returns {string | null} 当前 H5 Token。 */
@@ -28,6 +31,7 @@ export function waitForH5AccessToken(timeout) {
 /** @returns {void} 清空 H5 Token。 */
 export function clearH5AccessToken() {
   h5AccessTokenStore.clear()
+  removeCachedH5AccessToken()
 }
 
 /**
@@ -87,4 +91,44 @@ export function postH5AccessToken(token, options = {}) {
     { token: normalizeAccessToken(token) },
     options
   )
+}
+
+/** @returns {Storage | null} 当前标签页的安全缓存。 */
+function getTokenStorage() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    return window.sessionStorage
+  } catch {
+    return null
+  }
+}
+
+/** @returns {string} 已缓存的 H5 Token。 */
+function readCachedH5AccessToken() {
+  try {
+    return getTokenStorage()?.getItem(H5_ACCESS_TOKEN_STORAGE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/** @param {string} token 标准 Token。 @returns {void} */
+function writeCachedH5AccessToken(token) {
+  try {
+    getTokenStorage()?.setItem(H5_ACCESS_TOKEN_STORAGE_KEY, token)
+  } catch {
+    // 隐私模式或存储配额限制时仍保留当前内存 Token。
+  }
+}
+
+/** @returns {void} */
+function removeCachedH5AccessToken() {
+  try {
+    getTokenStorage()?.removeItem(H5_ACCESS_TOKEN_STORAGE_KEY)
+  } catch {
+    // 存储不可用时内存 Token 已经清除。
+  }
 }

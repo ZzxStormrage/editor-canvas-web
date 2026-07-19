@@ -32,7 +32,7 @@
 | --- | --- | --- |
 | `templateId` | 是 | 后台模板 ID，必须是正整数。 |
 | `partnerId` | 否 | 分销商 ID；配置后请求会携带对应分销商标识。 |
-| `token` | 否 | H5 用户登录凭证。生产环境优先由宿主传递，不建议长期写在地址中。 |
+| `token` | 否 | H5 用户登录凭证。接收后写入当前标签页缓存并从地址中删除，刷新页面仍然有效。 |
 | `designName` | 否 | 用户保存设计时使用的名称。 |
 | `redirectPath` | 否 | 保存成功后返回的小程序页面路径。 |
 
@@ -124,7 +124,7 @@
 
 接口域名由 `VITE_XIAOXIANG_API_BASE_URL` 配置。模板接口路径可由 `VITE_CUSTOMER_CUSTOM_TEMPLATE_API_PATH` 覆盖，图片上传路径可由 `VITE_CUSTOMER_PICTURE_UPLOAD_PATH` 覆盖。
 
-本地或测试环境临时 H5 Token 使用 `VITE_H5_TEMPORARY_ACCESS_TOKEN`。生产环境不要在构建文件、仓库或运维文档中写入真实 Token。
+本地或测试环境临时 H5 Token 使用 `VITE_H5_TEMPORARY_ACCESS_TOKEN`。生产环境不要在构建文件、仓库或运维文档中写入真实 Token。H5 Token 缓存在当前标签页中，刷新页面不会丢失；关闭标签页或接口返回 401 后缓存会被清除。
 
 ### 网络检查
 
