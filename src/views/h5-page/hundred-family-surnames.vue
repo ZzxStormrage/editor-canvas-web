@@ -162,7 +162,7 @@ const fontStylesError = ref('')
 const fontReplacing = ref(false)
 const fontReplaceError = ref('')
 const canvasLoaded = ref(false)
-const nameTextCenters = new WeakMap()
+const nameTextInitialGeometry = new WeakMap()
 const nameTextBindings = [
   { description: '姓', value: surname },
   { description: '名', value: givenName }
@@ -221,7 +221,17 @@ async function loadFontStyles() {
 
   try {
     fontStyles.value = await fetchFontStyles()
-    void Promise.allSettled(fontStyles.value.map((style) => loadFontFace(style.fontName, style.fontUrl)))
+    void Promise.allSettled(fontStyles.value.map((style) => loadFontFace(style.fontName, style.fontUrl))).then(() => {
+      const editor = getCanvasEditor()
+      if (!editor) {
+        return
+      }
+
+      initializeNameTextCenters(editor)
+      nameTextBindings.forEach(({ description }) => {
+        editor.getElementsByAttribute('text.description', description).forEach(restoreNameTextCenter)
+      })
+    })
     syncSelectedFontFromEditor()
   } catch (error) {
     console.error('Hundred family font styles failed.', error)
@@ -273,7 +283,33 @@ function initializeNameTextCenters(editor) {
 
   nameTextBindings.forEach(({ description }) => {
     editor.getElementsByAttribute('text.description', description).forEach((element) => {
-      if (nameTextCenters.has(element)) {
+      if (nameTextInitialGeometry.has(element)) {
+        return
+      }
+
+      const existingGeometry = element.__canvasEditorInitialTextGeometry
+      if (isTextGeometry(existingGeometry)) {
+        nameTextInitialGeometry.set(element, existingGeometry)
+        logNameTextGeometry('首次加载', description, element)
+        return
+      }
+
+      const existingCenter = element.__canvasEditorVerticalFontCenter
+      if ([existingCenter?.x, existingCenter?.y].every(Number.isFinite)) {
+        const x = Number(element.x ?? element.__?.x)
+        const y = Number(element.y ?? element.__?.y)
+        const width = Number(element.width ?? element.__?.width)
+        const height = Number(element.height ?? element.__?.height)
+        if ([x, y, width, height].every(Number.isFinite)) {
+          nameTextInitialGeometry.set(element, {
+            x,
+            y,
+            width,
+            height,
+            center: { x: existingCenter.x, y: existingCenter.y }
+          })
+        }
+        logNameTextGeometry('首次加载', description, element)
         return
       }
 
@@ -286,15 +322,59 @@ function initializeNameTextCenters(editor) {
         return
       }
 
-      const center = {
-        x: x + width / 2,
-        y: y + height / 2
+      const geometry = {
+        x,
+        y,
+        width,
+        height,
+        center: {
+          x: x + width / 2,
+          y: y + height / 2
+        }
       }
 
-      nameTextCenters.set(element, center)
-      // Keep the same center for the text plugin's asynchronous font refresh.
-      element.__canvasEditorVerticalFontCenter = center
+      nameTextInitialGeometry.set(element, geometry)
+      // Keep the same initial bounds for the text plugin's asynchronous font refresh.
+      element.__canvasEditorInitialTextGeometry = geometry
+      element.__canvasEditorVerticalFontCenter = geometry.center
+      logNameTextGeometry('首次加载', description, element)
     })
+  })
+}
+
+/**
+ * Print the current text coordinates and both current/initial centers.
+ *
+ * @param {string} stage Log stage.
+ * @param {string} description Text description.
+ * @param {Object | null} element Text node.
+ * @param {Object} [details={}] Additional operation details.
+ * @returns {void}
+ */
+function logNameTextGeometry(stage, description, element, details = {}) {
+  const x = Number(element?.x ?? element?.__?.x)
+  const y = Number(element?.y ?? element?.__?.y)
+  const width = Number(element?.width ?? element?.__?.width)
+  const height = Number(element?.height ?? element?.__?.height)
+  const initialGeometry = nameTextInitialGeometry.get(element)
+  const initialCenter = initialGeometry?.center ?? element?.__canvasEditorVerticalFontCenter
+  const hasGeometry = [x, y, width, height].every(Number.isFinite)
+  const centerX = hasGeometry ? x + width / 2 : null
+  const centerY = hasGeometry ? y + height / 2 : null
+
+  console.log(`[百家姓][${stage}][${description}] 文字坐标与中心坐标`, {
+    text: String(element?.text ?? ''),
+    x,
+    y,
+    width,
+    height,
+    centerX,
+    centerY,
+    initialCenterX: initialCenter?.x ?? null,
+    initialCenterY: initialCenter?.y ?? null,
+    centerOffsetX: Number.isFinite(centerX) && initialCenter ? centerX - initialCenter.x : null,
+    centerOffsetY: Number.isFinite(centerY) && initialCenter ? centerY - initialCenter.y : null,
+    ...details
   })
 }
 
@@ -305,16 +385,12 @@ function initializeNameTextCenters(editor) {
  * @returns {void}
  */
 function restoreNameTextCenter(element) {
-  const center = nameTextCenters.get(element)
-  const writingMode = element?.writingMode ?? element?.__?.writingMode
+  const initialGeometry = nameTextInitialGeometry.get(element)
+  const center = initialGeometry?.center ?? element?.__canvasEditorVerticalFontCenter
   const width = Number(element?.width ?? element?.__?.width)
   const height = Number(element?.height ?? element?.__?.height)
 
-  if (
-    !center ||
-    (writingMode !== 'y' && writingMode !== 'y-reverse') ||
-    ![width, height].every(Number.isFinite)
-  ) {
+  if (!center || ![width, height].every(Number.isFinite)) {
     return
   }
 
@@ -322,6 +398,39 @@ function restoreNameTextCenter(element) {
     x: center.x - width / 2,
     y: center.y - height / 2
   })
+}
+
+/**
+ * Restore after Leafer has completed its next layout pass. A second frame is
+ * used because remote font metrics can settle one frame after the font face
+ * promise resolves.
+ *
+ * @param {Object | null} element Text node.
+ * @param {() => void} [onRestored] Optional callback after the first restore.
+ * @returns {void}
+ */
+function scheduleNameTextCenterRestore(element, onRestored) {
+  const schedule =
+    typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (callback) => setTimeout(callback, 0)
+
+  schedule(() => {
+    restoreNameTextCenter(element)
+    onRestored?.()
+    schedule(() => restoreNameTextCenter(element))
+  })
+}
+
+/**
+ * @param {Object | null} geometry Initial text geometry.
+ * @returns {boolean} Whether the geometry contains finite bounds and center.
+ */
+function isTextGeometry(geometry) {
+  return Boolean(
+    geometry &&
+      [geometry.x, geometry.y, geometry.width, geometry.height, geometry.center?.x, geometry.center?.y].every(
+        Number.isFinite
+      )
+  )
 }
 
 /**
@@ -339,8 +448,11 @@ function applyNameTextValues(editor) {
   nameTextBindings.forEach(({ description, value }) => {
     activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
       restoreNameTextCenter(element)
+      logNameTextGeometry('修改文字前', description, element, { nextText: value.value })
       const updatedElement = activeEditor.replaceText(element, value.value)
-      restoreNameTextCenter(updatedElement ?? element)
+      const targetElement = updatedElement ?? element
+      restoreNameTextCenter(targetElement)
+      logNameTextGeometry('修改文字后', description, targetElement)
     })
   })
 }
@@ -362,6 +474,9 @@ async function selectFontStyle(styleId) {
   fontReplacing.value = true
 
   try {
+    // Capture the baseline before the first font request can trigger a
+    // browser/Leafer text reflow. Subsequent switches reuse this snapshot.
+    initializeNameTextCenters(getCanvasEditor())
     await loadFontFace(style.fontName, style.fontUrl)
     applySelectedFontStyle(undefined, style)
   } catch (error) {
@@ -388,11 +503,18 @@ function applySelectedFontStyle(editor, style = selectedFontStyle.value) {
   nameTextBindings.forEach(({ description }) => {
     activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
       restoreNameTextCenter(element)
+      logNameTextGeometry('切换字体前', description, element, { nextFontFamily: style.fontName })
       const updatedElement = activeEditor.updateText(element, {
         fontFamily: style.fontName,
         fontUrl: style.fontUrl
       })
-      restoreNameTextCenter(updatedElement ?? element)
+      const targetElement = updatedElement ?? element
+      restoreNameTextCenter(targetElement)
+      scheduleNameTextCenterRestore(targetElement, () => {
+        logNameTextGeometry('切换字体后', description, targetElement, {
+          fontFamily: style.fontName
+        })
+      })
     })
   })
 }
