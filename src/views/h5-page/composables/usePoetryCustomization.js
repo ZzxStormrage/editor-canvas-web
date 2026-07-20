@@ -22,6 +22,7 @@ const DEFAULT_IMAGE_TARGET_DESCRIPTIONS = Object.freeze([
 ])
 
 const AI_THEME_QUERY_KEYS = Object.freeze(['imageUrl'])
+const ART_TEXT_QUERY_KEYS = Object.freeze(['artTextImageUrls'])
 const BACKGROUND_QUERY_KEYS = Object.freeze([
   'background_img_urls',
   'backgroundImages',
@@ -59,6 +60,7 @@ const TRY_MORE_EXCLUDED_QUERY_KEYS = new Set([
  * @param {string[]} [options.imageTargetDescriptions] 可替换图片描述。
  * @param {string} [options.replacementTextLabel] 通用替换文本的表单名称。
  * @param {string} [options.titleTextLabel] 主标题文本的表单名称。
+ * @param {boolean} [options.artTextMode] 是否启用人像款艺术字图片选择。
  * @returns {Object} 页面状态和操作方法。
  */
 export function usePoetryCustomization(options = {}) {
@@ -67,6 +69,7 @@ export function usePoetryCustomization(options = {}) {
   const pageId = options.pageId || 'poetry-customization'
   const defaultDesignName = options.defaultDesignName || '诗词定制'
   const imageTargetDescriptions = normalizeDescriptionList(options.imageTargetDescriptions)
+  const artTextMode = options.artTextMode === true
   const textLabels = {
     replacement: options.replacementTextLabel || '诗词内容',
     title: options.titleTextLabel || '诗词标题'
@@ -81,8 +84,14 @@ export function usePoetryCustomization(options = {}) {
   const imageTargets = ref([])
   const backgroundTargets = ref([])
   const aiThemeOptions = ref([])
+  const artTextOptions = ref(
+    artTextMode ? readRouteImageOptions(route.query, ART_TEXT_QUERY_KEYS, 'art-text') : []
+  )
+  const artTextReplacing = ref(false)
+  const artTextTargets = ref([])
   const backgroundOptions = ref([])
   const selectedAiThemeId = ref('')
+  const selectedArtTextId = ref(artTextOptions.value[0]?.id || '')
   const selectedBackgroundId = ref('')
   const textFields = ref([])
   const operationStatus = ref({ type: 'success', text: '' })
@@ -250,7 +259,10 @@ export function usePoetryCustomization(options = {}) {
   function handleDocumentLoaded(payload) {
     imageTargets.value = resolveImageTargets(payload.editor, imageTargetDescriptions)
     backgroundTargets.value = resolveBackgroundTargets(payload.editor)
-    textFields.value = createTextFields(payload.editor, textLabels)
+    artTextTargets.value = artTextMode
+      ? payload.editor.getElementsByAttribute('image.description', '艺术字')
+      : []
+    textFields.value = artTextMode ? [] : createTextFields(payload.editor, textLabels)
     canvasLoaded.value = true
     templateError.value = ''
 
@@ -270,7 +282,35 @@ export function usePoetryCustomization(options = {}) {
       return
     }
 
-    void applyInitialRouteImages(payload.editor)
+    void applyInitialDocumentImages(payload.editor)
+  }
+
+  async function applyInitialDocumentImages(editor) {
+    await applyInitialRouteImages(editor)
+    if (!artTextMode || artTextOptions.value.length === 0) return
+    if (artTextTargets.value.length === 0) {
+      operationStatus.value = { type: 'warning', text: '模板未配置“艺术字”图片标记。' }
+      return
+    }
+    await selectArtText(artTextOptions.value[0])
+  }
+
+  async function selectArtText(option) {
+    if (!option?.url || artTextReplacing.value || artTextTargets.value.length === 0) return
+    artTextReplacing.value = true
+    operationStatus.value = { type: 'success', text: '' }
+    try {
+      await withTimeout(
+        replaceImageTargets(getEditor(), option.url, artTextTargets.value, 'contain'),
+        IMAGE_REPLACEMENT_TIMEOUT
+      )
+      selectedArtTextId.value = option.id
+    } catch (error) {
+      console.error('[portrait-customization] 艺术字替换失败', error)
+      operationStatus.value = { type: 'error', text: '艺术字图片切换失败。' }
+    } finally {
+      artTextReplacing.value = false
+    }
   }
 
   /** @param {*} error 画布加载错误。 @returns {void} */
@@ -540,6 +580,8 @@ export function usePoetryCustomization(options = {}) {
   return {
     activeTab,
     aiThemeOptions,
+    artTextOptions,
+    artTextReplacing,
     backgroundOptions,
     canvasFrameStyle,
     canvasLoaded,
@@ -557,8 +599,10 @@ export function usePoetryCustomization(options = {}) {
     saveStatus,
     saving,
     selectAiTheme,
+    selectArtText,
     selectBackground,
     selectedAiThemeId,
+    selectedArtTextId,
     selectedBackgroundId,
     setImageFit,
     showAdvancedSettings,

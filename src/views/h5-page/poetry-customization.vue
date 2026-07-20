@@ -46,7 +46,7 @@
           @click="activeTab = 'text'"
         >
           <v-icon icon="mdi-text-box-outline" size="16" />
-          <span>文案定制</span>
+          <span>{{ props.artTextMode ? '艺术字' : '文案定制' }}</span>
         </button>
       </div>
 
@@ -138,6 +138,34 @@
           </Transition>
         </div>
 
+        <div v-else-if="props.artTextMode" class="copy-customization" role="tabpanel">
+          <div class="section-heading">
+            <h2>选择艺术字</h2>
+            <p>选择后会替换画布中标记为“艺术字”的图片</p>
+          </div>
+
+          <div v-if="artTextOptions.length" class="art-text-list" aria-label="艺术字图片">
+            <button
+              v-for="option in artTextOptions"
+              :key="option.id"
+              type="button"
+              class="art-text-option"
+              :class="{ 'is-selected': selectedArtTextId === option.id }"
+              :disabled="artTextReplacing || !canvasLoaded"
+              :aria-label="`选择${option.label}`"
+              @click="selectArtText(option)"
+            >
+              <img :src="option.url" alt="" />
+            </button>
+          </div>
+
+          <div v-else class="copy-empty" role="status">
+            <v-icon icon="mdi-image-off-outline" size="28" />
+            <strong>暂无艺术字图片</strong>
+            <span>请先在商品后台配置人像款艺术字图片。</span>
+          </div>
+        </div>
+
         <div v-else class="copy-customization" role="tabpanel">
           <div class="section-heading">
             <h2>{{ props.copyHeading }}</h2>
@@ -227,12 +255,18 @@ const props = defineProps({
   imageTargetDescriptions: {
     type: Array,
     default: undefined
+  },
+  artTextMode: {
+    type: Boolean,
+    default: false
   }
 })
 
 const {
   activeTab,
   aiThemeOptions,
+  artTextOptions,
+  artTextReplacing,
   backgroundOptions,
   canvasFrameStyle,
   canvasLoaded,
@@ -249,8 +283,10 @@ const {
   saveStatus,
   saving,
   selectAiTheme,
+  selectArtText,
   selectBackground,
   selectedAiThemeId,
+  selectedArtTextId,
   selectedBackgroundId,
   setImageFit,
   showAdvancedSettings,
@@ -263,6 +299,7 @@ const {
 } = usePoetryCustomization({
   pageId: props.pageId,
   defaultDesignName: props.defaultDesignName,
+  artTextMode: props.artTextMode,
   imageTargetDescriptions: props.imageTargetDescriptions,
   replacementTextLabel: props.replacementTextLabel,
   titleTextLabel: props.titleTextLabel
@@ -631,6 +668,39 @@ const {
   gap: 10px;
 }
 
+.art-text-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.art-text-option {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 3px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: #f1f2f4;
+  cursor: pointer;
+}
+
+.art-text-option.is-selected {
+  border-color: #e6002d;
+}
+
+.art-text-option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.art-text-option img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .copy-field {
   display: grid;
   gap: 5px;
@@ -775,6 +845,7 @@ const {
 .customization-tabs button:focus-visible,
 .theme-item:focus-visible,
 .background-option:focus-visible,
+.art-text-option:focus-visible,
 .advanced-toggle:focus-visible,
 .fit-options button:focus-visible,
 .submit-button:focus-visible {
