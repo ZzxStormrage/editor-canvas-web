@@ -1861,28 +1861,46 @@ unsubscribe()
 | `element-data:changed` | `{ elementId, attributes }` | 同步业务属性面板。 |
 | `artboard:resized` | `{ artboard }` | 同步画板尺寸。 |
 | `viewport:zoom-changed` | `{ zoom, previous }` | 同步缩放显示。 |
-| `history:changed` | `{ canUndo, canRedo }` | 同步撤销重做按钮。 |
+| `history:changed` | `{ canUndo, canRedo, restoring }` | 同步设计内容的撤销、重做和恢复状态。 |
 
 订阅者异常由 EventBus 隔离，不会中断其他监听器。组件卸载时必须取消订阅。
 
 ## 命令与历史
 
+### 设计内容历史
+
+```js
+await editor.undo()
+await editor.redo()
+
+editor.history.canUndo
+editor.history.canRedo
+editor.history.restoring
+editor.clearHistory()
+```
+
+编辑器默认记录最近 50 步设计内容，包括文字、图片、移动缩放、旋转、删除、
+图层顺序、组合、锁定、显隐、自定义属性、画板和打印区域。连续拖动和连续输入
+会合并为一步。
+
+`undo()` 和 `redo()` 返回 `Promise<boolean>`：成功恢复时为 `true`，没有可用历史时为
+`false`。恢复过程会重新加载统一 JSON 文档，图片或字体资源失效时 Promise 会拒绝。
+
+选区、hover、视口缩放和画板居中不属于设计内容，不进入该历史。加载新的统一 JSON
+文档时，旧历史会被清空，新文档成为历史起点。
+
+### 高级显式命令
+
 ```js
 import { ZoomCommand } from '@/canvas-editor-core/src/index.js'
 
 editor.execute(new ZoomCommand(editor, 1.5))
-editor.execute(command)
-editor.undo()
-editor.redo()
-
-editor.commands.canUndo
-editor.commands.canRedo
-editor.commands.clear()
+editor.commands.undo()
+editor.commands.redo()
 ```
 
-只有通过命令管理器执行的写操作才会进入历史栈。直接调用图片、文本或图层插件不会自动
-生成撤销记录。`ZoomCommand` 是当前内置的可撤销命令；其他业务操作在接入对应
-命令前，不应在界面上宣称支持撤销。
+`CommandManager` 是独立的高级命令栈，只记录 `editor.execute(command)` 显式执行的命令，
+不与顶部“上一步/下一步”按钮共享状态。
 
 ## 常见业务流程
 

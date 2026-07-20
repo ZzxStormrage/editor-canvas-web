@@ -27,6 +27,9 @@ export function useCanvasEditor(options = {}) {
   const initializationError = ref(null)
   const zoom = ref(1)
   const zoomPercent = computed(() => Math.round(zoom.value * 100))
+  const canUndo = ref(false)
+  const canRedo = ref(false)
+  const historyBusy = ref(false)
   let editor = null
   let unsubscribeEvents = []
   const readyWaiters = new Set()
@@ -41,6 +44,13 @@ export function useCanvasEditor(options = {}) {
     if (editor) {
       zoom.value = editor.state.zoom
     }
+  }
+
+  /** @param {{ canUndo?: boolean, canRedo?: boolean, restoring?: boolean }} state 历史状态。 */
+  function syncHistoryState(state = {}) {
+    canUndo.value = state.canUndo === true
+    canRedo.value = state.canRedo === true
+    historyBusy.value = state.restoring === true
   }
 
   const notify = typeof options.onMessage === 'function' ? options.onMessage : null
@@ -99,6 +109,7 @@ export function useCanvasEditor(options = {}) {
         editor.eventBus.on('viewport:transform-end', () => {
           selectionToolbarControls.syncSelectionToolbar()
         }),
+        editor.eventBus.on('history:changed', syncHistoryState),
         editor.eventBus.on('canvas:resized', () => {
           selectionToolbarControls.syncSelectionToolbar()
         }),
@@ -180,7 +191,83 @@ export function useCanvasEditor(options = {}) {
     editor?.destroy()
     editor = null
     ready.value = false
+    syncHistoryState()
     settleReadyWaiters('reject', new Error('编辑器页面已关闭。'))
+  }
+
+  /** 同步历史恢复后的全部编辑器面板。 */
+  function syncEditorPanels() {
+    syncZoom()
+    artboardControls.syncArtboardControls()
+    artboardControls.syncPrintAreaControls()
+    layerControls.refreshLayers()
+    imageControls.syncImageProperties()
+    selectionToolbarControls.syncSelectionToolbar()
+    layerMenuControls.hideLayerMenu()
+  }
+
+  /**
+   * 执行撤销或重做并同步 Vue 面板。
+   *
+   * @param {'undo' | 'redo'} action 历史动作。
+   * @returns {Promise<boolean>} 是否恢复了一步历史。
+   */
+  async function runHistoryAction(action) {
+    if (!editor || historyBusy.value) {
+      return false
+    }
+
+    try {
+      const changed = await editor[action]()
+      if (changed) {
+        syncEditorPanels()
+      }
+      return changed
+    } catch (error) {
+      notify?.(error?.message || '历史恢复失败。', 'error')
+      return false
+    }
+  }
+
+  /** @returns {Promise<boolean>} 是否撤销了一步。 */
+  function undo() {
+    return runHistoryAction('undo')
+  }
+
+  /** @returns {Promise<boolean>} 是否重做了一步。 */
+  function redo() {
+    return runHistoryAction('redo')
+  }
+
+  /**
+   * 处理画布工作区快捷键。
+   *
+   * @param {KeyboardEvent} event 键盘事件。
+   * @returns {void}
+   */
+  function handleWorkspaceShortcut(event) {
+    if ((!event.metaKey && !event.ctrlKey) || event.altKey || isEditableTarget(event.target)) {
+      return
+    }
+
+    const action = resolveWorkspaceShortcut(event)
+    if (!action) {
+      return
+    }
+
+    event.preventDefault()
+    if (action === 'undo' || action === 'redo') {
+      void (action === 'undo' ? undo() : redo())
+      return
+    }
+
+    if (action === 'zoomIn') {
+      zoomIn()
+    } else if (action === 'zoomOut') {
+      zoomOut()
+    } else {
+      resetZoom()
+    }
   }
 
   /** 放大画布。 */
@@ -230,11 +317,7 @@ export function useCanvasEditor(options = {}) {
     }
 
     const loadedDocument = await editor.loadDocument(document, loadOptions)
-    artboardControls.syncArtboardControls()
-    artboardControls.syncPrintAreaControls()
-    layerControls.refreshLayers()
-    imageControls.syncImageProperties()
-    selectionToolbarControls.syncSelectionToolbar()
+    syncEditorPanels()
     return loadedDocument
   }
 
@@ -253,8 +336,14 @@ export function useCanvasEditor(options = {}) {
     { flush: 'post' }
   )
 
-  onMounted(initCanvas)
-  onBeforeUnmount(destroyCanvas)
+  onMounted(() => {
+    initCanvas()
+    window.addEventListener('keydown', handleWorkspaceShortcut)
+  })
+  onBeforeUnmount(() => {
+    window.removeEventListener('keydown', handleWorkspaceShortcut)
+    destroyCanvas()
+  })
 
   return {
     getEditor,
@@ -264,6 +353,9 @@ export function useCanvasEditor(options = {}) {
     whenReady,
     zoom,
     zoomPercent,
+    canUndo,
+    canRedo,
+    historyBusy,
     textValue: textControls.textValue,
     fontFamily: textControls.fontFamily,
     fontSize: textControls.fontSize,
@@ -346,10 +438,48 @@ export function useCanvasEditor(options = {}) {
     setElementsVisibilityByAttribute: elementDataControls.setElementsVisibilityByAttribute,
     loadDocument,
     exportDocument,
+    undo,
+    redo,
     zoomIn,
     zoomOut,
     resetZoom,
     centerArtboard,
     fitArtboardToView
   }
+}
+
+/** @param {EventTarget | null} target 键盘事件目标。 @returns {boolean} 是否正在输入内容。 */
+function isEditableTarget(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
+/**
+ * 解析工作区快捷键对应的操作。
+ *
+ * @param {KeyboardEvent} event 键盘事件。
+ * @returns {'undo' | 'redo' | 'zoomIn' | 'zoomOut' | 'resetZoom' | null} 操作名称。
+ */
+function resolveWorkspaceShortcut(event) {
+  const key = event.key.toLowerCase()
+
+  if (key === 'z') {
+    return event.shiftKey ? 'redo' : 'undo'
+  }
+  if (key === 'y') {
+    return 'redo'
+  }
+  if (key === '+' || key === '=' || event.code === 'NumpadAdd') {
+    return 'zoomIn'
+  }
+  if (key === '-' || key === '_' || event.code === 'NumpadSubtract') {
+    return 'zoomOut'
+  }
+  if (key === '0' || event.code === 'Numpad0') {
+    return 'resetZoom'
+  }
+  return null
 }

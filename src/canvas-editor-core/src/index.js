@@ -21,6 +21,7 @@ export { loadDocumentFonts, loadFontFace } from './utils/font.js';
 export { TextPlugin } from './plugins/feature-plugins/text/text-plugin.js';
 export { ImagePlugin } from './plugins/feature-plugins/image/image-plugin.js';
 export { LayerPlugin } from './plugins/feature-plugins/layer/layer-plugin.js';
+export { HistoryPlugin } from './plugins/feature-plugins/history/history-plugin.js';
 export { DEFAULT_PIXEL_DPI, formatMillimeter, pixelToMillimeter } from './utils/unit.js';
 
 /**

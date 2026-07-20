@@ -6,7 +6,8 @@ import { Bounds } from 'leafer-ui'
  * 为复杂的编辑器子系统提供统一的高层接口。
  * Editor 本身不实现业务逻辑，而是将调用委托给各个子系统：
  *   - ViewportManager → zoom/zoomIn/zoomOut/resetZoom
- *   - CommandManager  → 显式命令的 undo/redo 历史
+ *   - HistoryPlugin   → 统一文档快照的 undo/redo 历史
+ *   - CommandManager  → 高级调用方的显式命令栈
  *   - state (Proxy)   → 读操作
  *   - pluginManager   → 插件查询与销毁
  *
@@ -99,6 +100,10 @@ export class Editor {
   /** @returns {import('../plugins/feature-plugins/document/document-plugin.js').DocumentPlugin} 统一文档插件。 */
   get document() {
     return this.#pluginManager.get('document')
+  }
+  /** @returns {import('../plugins/feature-plugins/history/history-plugin.js').HistoryPlugin} 文档历史插件。 */
+  get history() {
+    return this.#pluginManager.get('history')
   }
   /** @returns {import('../plugins/feature-plugins/production/production-plugin.js').ProductionPlugin} 生产辅助插件。 */
   get production() {
@@ -574,7 +579,7 @@ export class Editor {
     return this
   }
 
-  // ═══════════════════ 显式命令历史 ═══════════════════
+  // ═══════════════════ 历史与显式命令 ═══════════════════
 
   /** @returns {import('../commands/CommandManager.js').CommandManager} */
   get commands() {
@@ -593,22 +598,30 @@ export class Editor {
   }
 
   /**
-   * 撤销一步历史。
+   * 撤销一步设计内容。
    *
-   * @returns {Editor} 当前编辑器实例。
+   * @returns {Promise<boolean>} 是否成功撤销。
    */
-  undo() {
-    this.#commands.undo()
-    return this
+  async undo() {
+    return await (this.history?.undo?.() ?? false)
   }
 
   /**
-   * 重做一步历史。
+   * 重做一步设计内容。
+   *
+   * @returns {Promise<boolean>} 是否成功重做。
+   */
+  async redo() {
+    return await (this.history?.redo?.() ?? false)
+  }
+
+  /**
+   * 将当前设计设为新的历史起点。
    *
    * @returns {Editor} 当前编辑器实例。
    */
-  redo() {
-    this.#commands.redo()
+  clearHistory() {
+    this.history?.reset?.()
     return this
   }
 

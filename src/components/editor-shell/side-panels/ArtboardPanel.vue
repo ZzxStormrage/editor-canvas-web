@@ -19,9 +19,7 @@
 
     <div class="panel-heading">
       <span>画板</span>
-      <span class="panel-size">
-        {{ editor.artboardWidth.value }} x {{ editor.artboardHeight.value }}
-      </span>
+      <span class="panel-size"> {{ editor.artboardWidth.value }} x {{ editor.artboardHeight.value }} </span>
     </div>
     <div class="panel-subtext">
       {{ editor.artboardMillimeterSize.value }}
@@ -31,13 +29,7 @@
       <div class="panel-grid">
         <div class="slider-field">
           <label>宽度</label>
-          <v-number-input
-            v-model.number="editor.artboardWidth.value"
-            aria-label="宽度"
-            label=""
-            :min="120"
-            :step="1"
-          />
+          <v-number-input v-model.number="editor.artboardWidth.value" aria-label="宽度" label="" :min="120" :step="1" />
         </div>
         <div class="slider-field">
           <label>高度</label>
@@ -75,7 +67,7 @@
             variant="tonal"
             @click="editor.openBackgroundImagePicker"
           >
-            背景图
+            画布底图
           </v-btn>
           <v-btn
             class="editor-action-button canvas-action-button"
@@ -135,44 +127,25 @@
       </div>
 
       <div class="panel-grid">
-        <PanelNumberField
-          v-model="editor.printAreaX.value"
-          label="X 坐标"
-          suffix="px"
-        />
-        <PanelNumberField
-          v-model="editor.printAreaY.value"
-          label="Y 坐标"
-          suffix="px"
-        />
-        <PanelNumberField
-          v-model="editor.printAreaWidth.value"
-          label="宽度"
-          suffix="px"
-          :min="1"
-        />
-        <PanelNumberField
-          v-model="editor.printAreaHeight.value"
-          label="高度"
-          suffix="px"
-          :min="1"
-        />
+        <PanelNumberField v-model="editor.printAreaX.value" label="X 坐标" suffix="px" />
+        <PanelNumberField v-model="editor.printAreaY.value" label="Y 坐标" suffix="px" />
+        <PanelNumberField v-model="editor.printAreaWidth.value" label="宽度" suffix="px" :min="1" />
+        <PanelNumberField v-model="editor.printAreaHeight.value" label="高度" suffix="px" :min="1" />
       </div>
     </PanelGroup>
-
   </section>
 </template>
 
 <script setup>
-import PanelGroup from '../PanelGroup.vue';
-import PanelNumberField from '../PanelNumberField.vue';
+import PanelGroup from '../PanelGroup.vue'
+import PanelNumberField from '../PanelNumberField.vue'
 
 const props = defineProps({
   editor: {
     type: Object,
     required: true
   }
-});
+})
 
 /**
  * 把背景图上传 input 的 DOM 引用交回组合式逻辑。
@@ -182,7 +155,7 @@ const props = defineProps({
  */
 function setBackgroundInputRef(element) {
   if (props.editor?.backgroundInputRef) {
-    props.editor.backgroundInputRef.value = element;
+    props.editor.backgroundInputRef.value = element
   }
 }
 
@@ -194,7 +167,7 @@ function setBackgroundInputRef(element) {
  */
 function setMaskInputRef(element) {
   if (props.editor?.maskInputRef) {
-    props.editor.maskInputRef.value = element;
+    props.editor.maskInputRef.value = element
   }
 }
 </script>

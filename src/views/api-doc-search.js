@@ -33,6 +33,9 @@ const API_SEARCH_ALIASES = Object.freeze({
   'editor.captureCanvas': ['整图截图', '画布截图', '预览图'],
   'editor.groupSelection': ['组合元素', '组合节点'],
   'editor.ungroupSelection': ['解组', '取消组合'],
+  'editor.undo': ['上一步', '撤销', '历史回退'],
+  'editor.redo': ['下一步', '重做', '恢复撤销'],
+  'editor.clearHistory': ['清空历史', '重置历史'],
   'editor.eventBus.on': ['监听事件', '订阅事件'],
   'editor.destroy': ['销毁编辑器', '卸载编辑器']
 });

@@ -122,7 +122,7 @@ export class CommandManager {
 
   /** @returns {void} */
   #emitChanged() {
-    this.#bus.emit('history:changed', {
+    this.#bus.emit('command-history:changed', {
       canUndo: this.canUndo,
       canRedo: this.canRedo
     });

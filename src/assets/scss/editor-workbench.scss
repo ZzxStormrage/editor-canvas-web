@@ -530,6 +530,68 @@
   font-weight: 800;
 }
 
+.workspace-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: rgba(var(--v-theme-outline), 0.2);
+}
+
+.workspace-shortcuts-menu {
+  width: 260px;
+  padding: 10px;
+  border: 1px solid rgba(var(--v-theme-outline), 0.18);
+  box-shadow: var(--editor-workspace-shadow);
+}
+
+.workspace-shortcuts-menu__title {
+  padding: 2px 6px 8px;
+  color: var(--editor-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workspace-shortcuts-menu__list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.workspace-shortcuts-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  gap: 16px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--editor-text);
+  font-size: 12px;
+}
+
+.workspace-shortcuts-menu__item dt,
+.workspace-shortcuts-menu__item dd {
+  margin: 0;
+}
+
+.workspace-shortcuts-menu__item dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-shortcuts-menu__item kbd {
+  min-width: 24px;
+  padding: 3px 6px;
+  border: 1px solid rgba(var(--v-theme-outline), 0.24);
+  border-radius: 5px;
+  background: rgba(var(--v-theme-surface-variant), 0.7);
+  color: var(--editor-text);
+  font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .workspace-stage {
   min-width: 0;
   min-height: 0;
