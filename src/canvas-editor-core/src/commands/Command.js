@@ -1,23 +1,13 @@
+import { EditorError } from '../errors/editor-error.js';
+
 /**
- * 命令基类 —— **命令模式**
+ * 可记录到编辑器历史栈的命令基类。
  *
- * 所有编辑器操作封装为 Command，支持：
- *   - execute() — 执行操作
- *   - undo()    — 撤销
- *   - redo()    — 重做
- *
- * 子类必须实现 execute() 和 undo()。
- * 如果 undo() 未重写且操作不可逆，命令不可压入历史栈。
- *
- * 设计动机：《JavaScript设计模式与开发实践》第12章
- *   - 命令模式将请求封装为对象，实现参数化、队列化、可撤销
- *   - 是编辑器 undo/redo 的标准做法
- *
- * @author zzx
- * @since 2026-07-01
+ * 可逆命令必须实现 `execute()` 和 `undo()`。`redo()` 默认重新
+ * 执行命令，连续操作需要合并时由子类实现 `merge()`。
  */
 export class Command {
-  /** @type {boolean} — 是否可撤销 */
+  /** @type {boolean} 是否可撤销。 */
   reversible = true;
 
   /**
@@ -25,7 +15,7 @@ export class Command {
    * @returns {void}
    */
   execute() {
-    throw new Error('Command.execute() must be overridden.');
+    throw new EditorError('命令必须实现 execute()。', 'COMMAND_EXECUTE_REQUIRED');
   }
 
   /**
@@ -35,7 +25,7 @@ export class Command {
    */
   undo() {
     if (this.reversible) {
-      throw new Error('Reversible command must override undo().');
+      throw new EditorError('可撤销命令必须实现 undo()。', 'COMMAND_UNDO_REQUIRED');
     }
   }
 
@@ -51,10 +41,12 @@ export class Command {
    * 合并相邻的同类命令（可选优化）。
    * 例如连续缩放可合并为一个命令。
    *
-   * @param {Command} _cmd — 下一个命令
-   * @returns {boolean} — true 表示合并成功，历史栈不会新增
+   * 实现方需要把下一个命令的最终状态合并到当前命令。
+   *
+   * @param {Command} _command 下一个命令。
+   * @returns {boolean} 是否已合并；合并成功时历史栈不新增记录。
    */
-  merge(_cmd) {
+  merge(_command) {
     return false;
   }
 }

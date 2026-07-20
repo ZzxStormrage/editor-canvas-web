@@ -5,10 +5,8 @@
  * @since 2026-06-30
  */
 export class EventBus {
-  constructor() {
-    /** @private @type {Map<string, Set<Function>>} */
-    this._listeners = new Map();
-  }
+  /** @type {Map<string, Set<Function>>} */
+  #listeners = new Map();
 
   /**
    * 订阅事件。
@@ -18,11 +16,11 @@ export class EventBus {
    * @returns {Function} 取消订阅函数。
    */
   on(eventName, listener) {
-    if (!this._listeners.has(eventName)) {
-      this._listeners.set(eventName, new Set());
+    if (!this.#listeners.has(eventName)) {
+      this.#listeners.set(eventName, new Set());
     }
 
-    this._listeners.get(eventName).add(listener);
+    this.#listeners.get(eventName).add(listener);
 
     return () => this.off(eventName, listener);
   }
@@ -35,7 +33,12 @@ export class EventBus {
    * @returns {void}
    */
   off(eventName, listener) {
-    this._listeners.get(eventName)?.delete(listener);
+    const listeners = this.#listeners.get(eventName);
+    listeners?.delete(listener);
+
+    if (listeners?.size === 0) {
+      this.#listeners.delete(eventName);
+    }
   }
 
   /**
@@ -46,7 +49,7 @@ export class EventBus {
    * @returns {void}
    */
   emit(eventName, payload) {
-    const listeners = this._listeners.get(eventName);
+    const listeners = this.#listeners.get(eventName);
 
     if (!listeners) {
       return;
@@ -67,6 +70,6 @@ export class EventBus {
    * @returns {void}
    */
   clear() {
-    this._listeners.clear();
+    this.#listeners.clear();
   }
 }

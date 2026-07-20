@@ -1,98 +1,164 @@
+import { EditorError } from '../errors/editor-error.js';
+
+const DEFAULT_HISTORY_SIZE = 50;
+
 /**
- * 命令管理器 —— **命令模式**
+ * 管理显式命令的撤销和重做历史。
  *
- * 管理命令的执行和 undo/redo 历史栈。
- *
- * 使用说明：
- *   - editor.execute(new ZoomCommand(1.5))  → 执行并压栈
- *   - editor.undo()                         → 回退
- *   - editor.redo()                         → 前进
- *
- * @author zzx
- * @since 2026-07-01
+ * 只有通过 `execute()` 执行的命令会进入历史栈；图片、文字和图层
+ * 插件的直接写操作不会自动生成历史。
  */
 export class CommandManager {
   /** @type {import('./Command.js').Command[]} */
   #stack = [];
-  /** @type {number} — 当前位置指针，stack[0..pointer] 是已执行的 */
+
+  /** @type {number} 当前已执行命令的索引。 */
   #pointer = -1;
-  /** @type {number} — 最大历史步数 */
+
+  /** @type {number} */
   #maxSize;
-  /** @type {Proxy} */
-  #state;
+
   /** @type {import('../logic/event-bus.js').EventBus} */
   #bus;
 
   /**
-   * @param {Proxy} stateProxy
-   * @param {import('../logic/event-bus.js').EventBus} bus
-   * @param {number} [maxSize=50]
+   * @param {import('../logic/event-bus.js').EventBus} bus 编辑器事件总线。
+   * @param {number} [maxSize=50] 最大历史步数。
    */
-  constructor(stateProxy, bus, maxSize = 50) {
-    this.#state = stateProxy;
+  constructor(bus, maxSize = DEFAULT_HISTORY_SIZE) {
+    assertEventBus(bus);
     this.#bus = bus;
-    this.#maxSize = maxSize;
+    this.#maxSize = normalizeHistorySize(maxSize);
   }
 
   /**
-   * 执行命令并压入历史栈。
-   * @param {import('./Command.js').Command} command
+   * 执行命令并更新历史栈。
+   *
+   * 不可逆命令执行后会清空旧历史，避免将画布撤销到无法正确
+   * 还原的状态。
+   *
+   * @param {import('./Command.js').Command} command 待执行命令。
+   * @returns {void}
    */
   execute(command) {
+    assertCommand(command);
     command.execute();
 
-    // 尝试与前一个命令合并
-    if (this.#pointer >= 0 && this.#stack[this.#pointer].merge(command)) {
-      this.#stack[this.#pointer] = command;
-    } else {
-      // 清除 redo 栈：当前位置之后的操作被覆盖
-      this.#stack.splice(this.#pointer + 1);
+    if (command.reversible === false) {
+      this.clear();
+      return;
+    }
+
+    this.#stack.splice(this.#pointer + 1);
+    const currentCommand = this.#stack[this.#pointer];
+
+    if (!currentCommand || currentCommand.merge(command) !== true) {
       this.#stack.push(command);
-      this.#pointer++;
+      this.#pointer += 1;
     }
 
-    // 限制历史大小
-    if (this.#stack.length > this.#maxSize) {
-      this.#stack.shift();
-      this.#pointer--;
+    this.#trimHistory();
+    this.#emitChanged();
+  }
+
+  /** @returns {boolean} 是否成功撤销。 */
+  undo() {
+    if (!this.canUndo) {
+      return false;
     }
 
+    const command = this.#stack[this.#pointer];
+    command.undo();
+    this.#pointer -= 1;
+    this.#emitChanged();
+    return true;
+  }
+
+  /** @returns {boolean} 是否成功重做。 */
+  redo() {
+    if (!this.canRedo) {
+      return false;
+    }
+
+    const nextPointer = this.#pointer + 1;
+    this.#stack[nextPointer].redo();
+    this.#pointer = nextPointer;
+    this.#emitChanged();
+    return true;
+  }
+
+  /** @returns {boolean} 当前是否可以撤销。 */
+  get canUndo() {
+    return this.#pointer >= 0;
+  }
+
+  /** @returns {boolean} 当前是否可以重做。 */
+  get canRedo() {
+    return this.#pointer < this.#stack.length - 1;
+  }
+
+  /** @returns {void} */
+  clear() {
+    this.#stack = [];
+    this.#pointer = -1;
+    this.#emitChanged();
+  }
+
+  /** @returns {number} 当前历史记录数量。 */
+  get size() {
+    return this.#stack.length;
+  }
+
+  /** @returns {void} */
+  #trimHistory() {
+    if (this.#stack.length <= this.#maxSize) {
+      return;
+    }
+
+    const overflow = this.#stack.length - this.#maxSize;
+    this.#stack.splice(0, overflow);
+    this.#pointer -= overflow;
+  }
+
+  /** @returns {void} */
+  #emitChanged() {
     this.#bus.emit('history:changed', {
       canUndo: this.canUndo,
       canRedo: this.canRedo
     });
   }
+}
 
-  /** 撤销一步 */
-  undo() {
-    if (!this.canUndo) return;
-    const command = this.#stack[this.#pointer];
-    command.undo();
-    this.#pointer--;
-    this.#bus.emit('history:changed', { canUndo: this.canUndo, canRedo: this.canRedo });
+/** @param {*} bus 事件总线。 @returns {void} */
+function assertEventBus(bus) {
+  if (!bus || typeof bus.emit !== 'function') {
+    throw new EditorError(
+      '命令管理器需要有效的 EventBus。',
+      'COMMAND_EVENT_BUS_REQUIRED'
+    );
+  }
+}
+
+/** @param {*} command 命令对象。 @returns {void} */
+function assertCommand(command) {
+  const methods = ['execute', 'undo', 'redo', 'merge'];
+  const isValid = command && methods.every((method) => typeof command[method] === 'function');
+
+  if (!isValid) {
+    throw new EditorError(
+      '命令必须实现 execute、undo、redo 和 merge。',
+      'COMMAND_INVALID'
+    );
+  }
+}
+
+/** @param {*} value 历史步数。 @returns {number} 有效的正整数历史步数。 */
+function normalizeHistorySize(value) {
+  const size = Number(value);
+
+  if (!Number.isSafeInteger(size) || size <= 0) {
+    throw new EditorError('历史步数必须是正整数。', 'COMMAND_HISTORY_SIZE_INVALID');
   }
 
-  /** 重做一步 */
-  redo() {
-    if (!this.canRedo) return;
-    this.#pointer++;
-    const command = this.#stack[this.#pointer];
-    command.redo();
-    this.#bus.emit('history:changed', { canUndo: this.canUndo, canRedo: this.canRedo });
-  }
-
-  /** 是否可撤销 */
-  get canUndo() { return this.#pointer >= 0; }
-
-  /** 是否可重做 */
-  get canRedo() { return this.#pointer < this.#stack.length - 1; }
-
-  /** 清空历史 */
-  clear() {
-    this.#stack = [];
-    this.#pointer = -1;
-  }
-
-  /** 历史步数 */
-  get size() { return this.#stack.length; }
+  return size;
 }

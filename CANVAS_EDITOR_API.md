@@ -1868,6 +1868,9 @@ unsubscribe()
 ## 命令与历史
 
 ```js
+import { ZoomCommand } from '@/canvas-editor-core/src/index.js'
+
+editor.execute(new ZoomCommand(editor, 1.5))
 editor.execute(command)
 editor.undo()
 editor.redo()
@@ -1878,7 +1881,8 @@ editor.commands.clear()
 ```
 
 只有通过命令管理器执行的写操作才会进入历史栈。直接调用图片、文本或图层插件不会自动
-生成撤销记录。
+生成撤销记录。`ZoomCommand` 是当前内置的可撤销命令；其他业务操作在接入对应
+命令前，不应在界面上宣称支持撤销。
 
 ## 常见业务流程
 

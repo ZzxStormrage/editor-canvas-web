@@ -196,7 +196,7 @@ export class EditorBuilder {
 
     this.#viewport = new ViewportManager(this.#leafer, this.#view, this.#stage, this.#state.proxy, this.#eventBus)
 
-    this.#commandManager = new CommandManager(this.#state.proxy, this.#eventBus)
+    this.#commandManager = new CommandManager(this.#eventBus)
 
     // 操作按钮（锁定、复制、删除）
     this.#actionButtons = new EditorActionButtons(this.#innerEditor, this.#options.editor.theme, this.#eventBus)

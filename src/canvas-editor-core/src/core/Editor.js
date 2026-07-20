@@ -6,7 +6,7 @@ import { Bounds } from 'leafer-ui'
  * 为复杂的编辑器子系统提供统一的高层接口。
  * Editor 本身不实现业务逻辑，而是将调用委托给各个子系统：
  *   - ViewportManager → zoom/zoomIn/zoomOut/resetZoom
- *   - CommandManager  → 所有写操作（预留 undo/redo）
+ *   - CommandManager  → 显式命令的 undo/redo 历史
  *   - state (Proxy)   → 读操作
  *   - pluginManager   → 插件查询与销毁
  *
@@ -574,7 +574,7 @@ export class Editor {
     return this
   }
 
-  // ═══════════════════ 命令（预留 undo/redo） ═══════════════════
+  // ═══════════════════ 显式命令历史 ═══════════════════
 
   /** @returns {import('../commands/CommandManager.js').CommandManager} */
   get commands() {
@@ -785,7 +785,9 @@ export class Editor {
    * @returns {void}
    */
   destroy() {
-    if (this.#state.destroyed) return
+    if (this.#state.destroyed) {
+      return
+    }
 
     this.#resizeObserver?.takeRecords?.()
     this.#resizeObserver?.disconnect()
@@ -794,6 +796,7 @@ export class Editor {
     this.#artboard?.destroy()
     this.#viewport.destroy()
     this.#pluginManager.destroy()
+    this.#commands.clear()
     this.#bus.clear()
     this.#leafer.destroy()
     this.#state.destroyed = true
