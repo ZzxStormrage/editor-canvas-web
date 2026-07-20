@@ -4,8 +4,8 @@
       <div class="h5-docs-brand">
         <v-icon icon="mdi-clipboard-text-outline" size="21" />
         <div>
-          <strong>H5 模板运维手册</strong>
-          <span>配置、验收与故障排查</span>
+          <strong>H5 模板配置规则</strong>
+          <span>面向模板配置与运维人员</span>
         </div>
       </div>
 
@@ -43,8 +43,8 @@
         <div class="h5-docs-summary">
           <v-icon icon="mdi-shield-check-outline" size="20" />
           <div>
-            <strong>上线前按验收清单逐项确认</strong>
-            <span>模板属性必须通过图层面板保存，图层名称不能代替业务属性。</span>
+            <strong>先选择页面，再按该页面规则配置图层</strong>
+            <span>页面匹配的是图层属性，图层名称不能代替图片描述或文字描述。</span>
           </div>
         </div>
         <article ref="article" class="h5-docs-content" v-html="renderedMarkdown"></article>

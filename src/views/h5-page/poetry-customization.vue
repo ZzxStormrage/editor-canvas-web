@@ -59,31 +59,39 @@
             </div>
 
             <div class="theme-list">
-              <div
+              <button
                 v-for="option in aiThemeOptions"
                 :key="option.id"
+                type="button"
                 class="theme-item"
                 :class="{ 'is-selected': selectedAiThemeId === option.id }"
+                :disabled="!canSelectTheme || imageReplacing"
+                :aria-busy="imageReplacing && selectedAiThemeId === option.id"
+                @click="selectAiTheme(option)"
               >
                 <span class="theme-preview">
                   <img :src="option.url" alt="" />
                 </span>
                 <span class="theme-label">{{ option.label }}</span>
-              </div>
+              </button>
             </div>
 
             <div v-if="backgroundOptions.length" class="background-section">
               <h3>选择背景图</h3>
               <div class="background-list" aria-label="背景图片">
-                <div
+                <button
                   v-for="option in backgroundOptions"
                   :key="option.id"
+                  type="button"
                   class="background-option"
                   :class="{ 'is-selected': selectedBackgroundId === option.id }"
+                  :disabled="!canSelectBackground || imageReplacing"
                   :title="option.label"
+                  :aria-label="`选择${option.label}`"
+                  @click="selectBackground(option)"
                 >
                   <img :src="option.url" alt="" />
-                </div>
+                </button>
               </div>
             </div>
           </section>
@@ -222,14 +230,19 @@ const {
   canvasFrameStyle,
   canvasLoaded,
   canvasViewportRef,
+  canSelectBackground,
+  canSelectTheme,
   canSubmit,
   documentData,
   handleCanvasError,
   handleDocumentLoaded,
   imageFit,
+  imageReplacing,
   operationStatus,
   saveStatus,
   saving,
+  selectAiTheme,
+  selectBackground,
   selectedAiThemeId,
   selectedBackgroundId,
   setImageFit,
@@ -453,6 +466,12 @@ const {
   background: transparent;
   font: inherit;
   font-size: 9px;
+  cursor: pointer;
+}
+
+.theme-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .theme-preview {
@@ -515,7 +534,13 @@ const {
   border-radius: 8px;
   background: #e4e5e7;
   box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.08);
+  cursor: pointer;
   transition: border-color 180ms ease-out;
+}
+
+.background-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .background-option.is-selected {

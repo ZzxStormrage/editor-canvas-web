@@ -10,6 +10,7 @@
       </div>
 
       <nav class="api-docs-actions" aria-label="文档页面导航">
+        <router-link to="/h5-docs">H5 模板规则</router-link>
         <router-link to="/editor">编辑器</router-link>
       </nav>
     </header>
@@ -29,6 +30,23 @@
             <v-icon icon="mdi-close" size="15" />
           </button>
         </label>
+
+        <div v-if="searchQuery" class="api-docs-search-results" aria-live="polite">
+          <div class="api-docs-search-results-header">
+            <strong>快速定位</strong>
+            <span>{{ searchResults.length }} 条结果</span>
+          </div>
+          <button
+            v-for="item in searchResults"
+            :key="item.searchKey || item.id"
+            type="button"
+            @click="openSearchResult(item)"
+          >
+            <code>{{ item.apiName || item.title }}</code>
+            <span>{{ getModuleLabel(item.moduleKey) }} · {{ createSearchSummary(item.searchContent, searchTerms) }}</span>
+          </button>
+          <p v-if="searchResults.length === 0">未找到相关 API，请尝试方法名、中文功能或错误码。</p>
+        </div>
 
         <nav class="api-docs-toc" aria-label="API 文档目录">
           <section
@@ -64,14 +82,14 @@
               </button>
             </div>
           </section>
-          <p v-if="filteredTocModules.length === 0">没有找到“{{ searchQuery }}”相关内容</p>
+          <p v-if="filteredTocModules.length === 0 && !searchQuery">暂无目录内容</p>
         </nav>
       </aside>
 
       <main class="api-docs-main">
         <div class="api-docs-intro">
           <span>API Reference</span>
-          <strong>{{ documentStats.modules }} 个模块 · {{ documentStats.sections }} 个章节 · {{ documentStats.codeBlocks }} 个代码示例</strong>
+          <strong>{{ documentStats.modules }} 个模块 · {{ documentStats.apis }} 个 API · {{ documentStats.codeBlocks }} 个代码示例</strong>
         </div>
         <nav class="api-docs-module-index" aria-label="API 模块索引">
           <button
@@ -106,6 +124,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { Marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
 import hljs from 'highlight.js/lib/core';
@@ -118,7 +137,15 @@ import xml from 'highlight.js/lib/languages/xml';
 import markdownSource from '../../CANVAS_EDITOR_API.md?raw';
 import 'highlight.js/styles/github-dark.css';
 import '../assets/scss/api-docs.scss';
-import { buildHeadingSearchIndex, createSearchSummary, normalizeSearchText } from './api-doc-search.js';
+import {
+  buildHeadingSearchIndex,
+  buildApiSearchEntries,
+  createApiAnchorId,
+  createSearchSummary,
+  extractApiName,
+  normalizeSearchText,
+  rankHeadingSearchResults
+} from './api-doc-search.js';
 
 hljs.registerLanguage('css', css);
 hljs.registerLanguage('javascript', javascript);
@@ -209,6 +236,13 @@ const MODULE_DEFINITIONS = [
     headings: ['图片']
   },
   {
+    key: 'production',
+    label: '生产输出',
+    namespace: 'editor.production',
+    icon: 'mdi-crop',
+    headings: ['生产遮罩与打印区域']
+  },
+  {
     key: 'text',
     label: '文字',
     namespace: 'editor.text',
@@ -235,18 +269,31 @@ const MODULE_DEFINITIONS = [
     namespace: 'editor.elementData',
     icon: 'mdi-database-outline',
     headings: ['元素业务属性']
+  },
+  {
+    key: 'document',
+    label: 'JSON 文档',
+    namespace: 'editor.document',
+    icon: 'mdi-code-json',
+    headings: ['统一编辑器文档', 'H5 文档测试运行时']
   }
 ];
 
 const MODULE_BY_KEY = new Map(MODULE_DEFINITIONS.map((module) => [module.key, module]));
 const searchQuery = ref('');
+const route = useRoute();
+const router = useRouter();
 const activeHeadingId = ref('');
 const showBackToTop = ref(false);
 const scrollContainer = ref(null);
 const expandedModules = ref(new Set(['guide', 'core']));
 const toc = createTableOfContents(markdownSource);
+const apiSearchIndex = buildApiSearchEntries(toc);
 const tocModules = createTocModules(toc);
 let observer = null;
+
+const searchTerms = computed(() => normalizeSearchText(searchQuery.value).split(' ').filter(Boolean));
+const searchResults = computed(() => rankHeadingSearchResults(apiSearchIndex, searchQuery.value, 10));
 
 const filteredTocModules = computed(() => {
   const terms = normalizeSearchText(searchQuery.value).split(' ').filter(Boolean);
@@ -272,6 +319,7 @@ const apiModules = tocModules.filter((module) => module.key !== 'guide');
 const documentStats = {
   modules: apiModules.length,
   sections: toc.filter((item) => item.level === 2).length,
+  apis: new Set(apiSearchIndex.map((item) => item.apiName).filter(Boolean)).size,
   codeBlocks: (markdownSource.match(/```/g)?.length ?? 0) / 2
 };
 
@@ -287,6 +335,10 @@ onMounted(() => {
   headings.forEach((heading) => observer.observe(heading));
   scrollContainer.value?.addEventListener('scroll', updateScrollState, { passive: true });
   updateScrollState();
+  const initialHeadingId = decodeHeadingId(route.hash);
+  if (initialHeadingId) {
+    window.requestAnimationFrame(() => scrollToHeading(initialHeadingId, { behavior: 'auto', updateRoute: false }));
+  }
 });
 
 onBeforeUnmount(() => {
@@ -305,14 +357,16 @@ function createTableOfContents(markdown) {
     if (!match) return;
 
     const title = stripMarkdown(match[2]);
+    const apiName = extractApiName(title);
     if (match[1].length === 2) currentModule = resolveModule(title);
-    const baseId = createSlug(title);
+    const baseId = apiName ? createApiAnchorId(apiName) : createSlug(title);
     const count = slugCount.get(baseId) ?? 0;
     slugCount.set(baseId, count + 1);
 
     headings.push({
       level: match[1].length,
       title,
+      apiName,
       id: count ? `${baseId}-${count + 1}` : baseId,
       moduleKey: currentModule.key,
       lineIndex
@@ -349,7 +403,7 @@ function renderMarkdown(markdown, headings) {
         : '';
 
       if (Number(level) === 2) previousModuleKey = module?.key ?? previousModuleKey;
-      return `${moduleMarker}<h${level} id="${heading.id}">${content}</h${level}>`;
+      return `${moduleMarker}<h${level} id="${heading.id}"><button type="button" class="api-docs-heading-link" data-heading-link="${heading.id}" aria-label="定位到本节">#</button>${content}</h${level}>`;
     })
     .replace(/<pre><code/g, '<div class="api-docs-code"><button type="button" data-copy-code>复制</button><pre><code')
     .replace(/<\/code><\/pre>/g, '</code></pre></div>');
@@ -374,7 +428,7 @@ function createSlug(value) {
     .replace(/^-+|-+$/g, '') || 'section';
 }
 
-function scrollToHeading(id) {
+function scrollToHeading(id, options = {}) {
   const heading = document.getElementById(id);
   const container = scrollContainer.value;
 
@@ -384,13 +438,29 @@ function scrollToHeading(id) {
     - container.getBoundingClientRect().top
     + container.scrollTop
     - 68;
-  container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  container.scrollTo({ top: Math.max(0, top), behavior: options.behavior ?? 'smooth' });
+  activeHeadingId.value = id;
+  const activeItem = toc.find((item) => item.id === id);
+  if (activeItem) expandedModules.value = new Set([...expandedModules.value, activeItem.moduleKey]);
+  if (options.updateRoute !== false && route.hash !== `#${id}`) {
+    void router.replace({ hash: `#${id}` });
+  }
 }
 
 /** @returns {void} 定位当前第一条搜索结果。 */
 function openFirstSearchResult() {
-  const firstItem = filteredTocModules.value[0]?.items[0];
-  if (firstItem) scrollToHeading(firstItem.id);
+  const firstItem = searchResults.value[0] ?? filteredTocModules.value[0]?.items[0];
+  if (firstItem) openSearchResult(firstItem);
+}
+
+/** @param {Object} item 搜索结果。 @returns {void} */
+function openSearchResult(item) {
+  scrollToHeading(item.id);
+}
+
+/** @param {string} moduleKey 模块键。 @returns {string} 模块显示名。 */
+function getModuleLabel(moduleKey) {
+  return MODULE_BY_KEY.get(moduleKey)?.label ?? '接入指南';
 }
 
 function isModuleExpanded(moduleKey) {
@@ -430,6 +500,12 @@ function scrollToTop() {
 }
 
 async function handleDocumentClick(event) {
+  const headingLink = event.target.closest('[data-heading-link]');
+  if (headingLink) {
+    scrollToHeading(headingLink.dataset.headingLink);
+    return;
+  }
+
   const copyButton = event.target.closest('[data-copy-code]');
   if (!copyButton) return;
 
@@ -441,6 +517,15 @@ async function handleDocumentClick(event) {
     window.setTimeout(() => { copyButton.textContent = '复制'; }, 1200);
   } catch {
     copyButton.textContent = '复制失败';
+  }
+}
+
+/** @param {string} hash 路由 hash。 @returns {string} 解码后的标题 ID。 */
+function decodeHeadingId(hash) {
+  try {
+    return decodeURIComponent(String(hash ?? '').replace(/^#/, ''));
+  } catch {
+    return '';
   }
 }
 

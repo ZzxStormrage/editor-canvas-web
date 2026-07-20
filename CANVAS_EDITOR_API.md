@@ -19,6 +19,19 @@
 | 通过后台打开模板 | “自定义模板路由” → “统一编辑器文档” |
 | 排查问题 | “错误处理” → 对应模块 |
 
+### 快速定位 API
+
+在线文档左侧搜索支持三种输入方式，并按“精确 API → 中文功能别名 → 标题 → 正文”排序：
+
+| 输入方式 | 示例 | 首个结果 |
+| --- | --- | --- |
+| 中文功能 | `替换图片`、`打印区域截图`、`获取所有元素` | 对应的公开 API |
+| 方法名称 | `replaceImage`、`getElementsByRole`、`captureCanvas` | 完整方法签名 |
+| 业务字段或错误码 | `role`、`自定义属性`、`IMAGE_LOCKED` | 包含该字段的章节 |
+
+输入后点击结果，或按 Enter，页面会直接定位到相关 API。每个 API 标题左侧的 `#` 可以生成
+稳定深链接，例如 `#/docs#api-editor-replace-image`。参数名称后续调整不会改变这个地址。
+
 ## 快速开始
 
 ### 准备容器
@@ -1386,6 +1399,8 @@ editor.runLayerAction('forward')
 
 图层列表从视觉最上层到最下层排列，返回适合 Vue 渲染的 DTO，不直接暴露内部 Map。
 
+### `editor.layer.getList()`
+
 ```js
 const layers = editor.layer.getList()
 ```
@@ -1396,6 +1411,7 @@ const layers = editor.layer.getList()
 editor.layer.select(layerId)
 editor.layer.remove(layerId)
 editor.layer.toggleLock(layerId)
+editor.layer.toggleVisibility(layerId)
 editor.layer.togglePointerThrough(layerId)
 editor.layer.hover(layerId)
 editor.layer.hover(null)
@@ -1406,6 +1422,15 @@ editor.layer.hover(null)
 ```js
 editor.layer.reorder(orderedLayerIds)
 ```
+
+### `editor.layer.toggleVisibility(id)`
+
+切换图层显示状态。隐藏只修改 `visible`，不会删除元素，也不会改变图层顺序、锁定状态、
+自定义属性或 JSON 数据。隐藏中的图层仍会保留在图层列表，可以再次调用该方法恢复显示。
+
+### `editor.layer.reorder(orderedIds)`
+
+`orderedIds` 按面板从上到下排列。插件会转换为 Leafer 场景树顺序，并同步选区和画板覆盖层。
 
 图层排序、删除和锁定必须通过图层插件执行，以便同步选区、覆盖层和事件。
 
@@ -1460,7 +1485,7 @@ editor.elementData.setById(elementId, { productId: '1001' })
 
 ### 获取和查询元素
 
-推荐通过 Editor 外观 API 查询。三个方法始终返回数组，没有匹配结果时返回 `[]`：
+推荐通过 Editor 外观 API 查询。以下四个方法始终返回数组，没有匹配结果时返回 `[]`：
 
 ```js
 const allElements = editor.getAllElements()
@@ -1469,6 +1494,30 @@ const backgroundElements = editor.getElementsByRole('background')
 const imageElements = editor.getElementsByType('image')
 const textElements = editor.getElementsByType('text')
 ```
+
+#### `editor.getAllElements()`
+
+返回当前画布全部业务元素，递归包含组合中的子元素。运行时辅助线和编辑器控制节点不会返回。
+
+#### `editor.getElementsByRole(role)`
+
+按业务角色精确匹配元素，例如 `background`、`mask`、`ai-variable`。始终返回数组。
+
+#### `editor.getElementsByType(type)`
+
+按 `customType`、Leafer `tag` 或构造函数名称匹配，类型大小写不敏感，例如 `image`、`text`、
+`group`。
+
+#### `editor.getElementsByAttribute(path, value)`
+
+按自定义属性路径和值查询元素，例如：
+
+```js
+const replaceableImages = editor.getElementsByAttribute('image.description', '原图替换')
+const surnameTexts = editor.getElementsByAttribute('text.description', '姓')
+```
+
+`path` 相对于元素的 `attributes` 对象，不需要写 `attributes.` 前缀。没有匹配结果时返回 `[]`。
 
 也可以直接使用元素业务属性插件：
 
@@ -1999,6 +2048,7 @@ try {
 | 更新文字 | `editor.text.update(target, options)` |
 | 更新指定文字样式 | `editor.updateText(target, options)` |
 | 替换选中文字 | `editor.replaceSelectedText(content)` |
+| 替换指定文字 | `editor.replaceText(target, content)` |
 | 替换 H5 图片 | `await replaceH5Image(document, elementId, source, options)` |
 | 替换 H5 文字 | `replaceH5Text(document, elementId, content)` |
 | 创建通信消息 | `createBridgeMessage(type, payload, options)` |
@@ -2018,12 +2068,16 @@ try {
 | 排序图层 | `editor.layer.reorder(ids)` |
 | 删除图层 | `editor.layer.remove(id)` |
 | 锁定图层 | `editor.layer.toggleLock(id)` |
+| 显示/隐藏图层 | `editor.layer.toggleVisibility(id)` |
 | 点击穿透 | `editor.layer.togglePointerThrough(id)` |
 | 获取全部元素 | `editor.getAllElements()` |
 | 按角色获取元素 | `editor.getElementsByRole(role)` |
 | 按类型获取元素 | `editor.getElementsByType(type)` |
+| 按自定义属性获取元素 | `editor.getElementsByAttribute(path, value)` |
 | 写入业务属性 | `editor.elementData.set(target, attributes)` |
 | 导出业务属性 | `editor.elementData.export()` |
+| 加载编辑器 JSON | `await editor.loadDocument(document, options)` |
+| 导出编辑器 JSON | `editor.exportDocument()` |
 | 监听事件 | `editor.eventBus.on(name, handler)` |
 | 撤销/重做 | `editor.undo()` / `editor.redo()` |
 | 销毁编辑器 | `editor.destroy()` |

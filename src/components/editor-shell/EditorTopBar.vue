@@ -24,6 +24,19 @@
           API 文档
         </v-btn>
         <v-btn
+          class="top-bar-docs-button"
+          color="surface"
+          density="compact"
+          prepend-icon="mdi-clipboard-text-outline"
+          size="small"
+          target="_blank"
+          to="/h5-docs"
+          variant="text"
+          rel="noopener noreferrer"
+        >
+          H5 模板规则
+        </v-btn>
+        <v-btn
           class="top-bar-save-button"
           color="surface"
           density="compact"
