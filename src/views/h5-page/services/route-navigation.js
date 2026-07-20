@@ -16,6 +16,9 @@ const INTERNAL_QUERY_KEYS = new Set([
   'redirectPath',
   'templateId',
   'themeImages',
+  'themeFlowId',
+  'themeEntryId',
+  'themeName',
   'fromH5TryMore',
   'token'
 ])

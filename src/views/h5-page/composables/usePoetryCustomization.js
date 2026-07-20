@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useH5PageSave } from './useH5PageSave.js'
@@ -6,6 +6,12 @@ import { useH5TemplateDocument } from './useH5TemplateDocument.js'
 import { loadAiSubjectBackgroundOptions } from '../services/ai-subject-backgrounds.js'
 import { readRouteImageOptions } from '../services/route-image-options.js'
 import { readRouteValue } from '../services/route-navigation.js'
+import {
+  clearThemeFlow,
+  loadThemeFlow,
+  saveThemeFlow,
+  upsertTheme
+} from '../services/theme-flow-storage.js'
 import { wxAPI } from '../services/wx-api.js'
 
 const DEFAULT_IMAGE_TARGET_DESCRIPTIONS = Object.freeze([
@@ -15,18 +21,33 @@ const DEFAULT_IMAGE_TARGET_DESCRIPTIONS = Object.freeze([
   '原图定制'
 ])
 
-const AI_THEME_QUERY_KEYS = Object.freeze([
-  'themeImages',
-  'aiThemes',
-  'aiThemeUrls',
-  'aiThemeUrl',
-  'imageUrl'
-])
+const AI_THEME_QUERY_KEYS = Object.freeze(['imageUrl'])
 const BACKGROUND_QUERY_KEYS = Object.freeze([
   'background_img_urls',
   'backgroundImages',
   'backgroundImageUrls',
   'backgroundImageUrl'
+])
+const IMAGE_REPLACEMENT_TIMEOUT = 15000
+const TRY_MORE_EXCLUDED_QUERY_KEYS = new Set([
+  'Authorization',
+  'authorization',
+  'token',
+  'id',
+  'imageUrl',
+  'themeImages',
+  'aiThemes',
+  'aiThemeUrls',
+  'aiThemeUrl',
+  'themeEntryId',
+  'themeName',
+  'aiSubjectIds',
+  'background_img_urls',
+  'backgroundImages',
+  'backgroundImageUrls',
+  'backgroundImageUrl',
+  'fromH5TryMore',
+  'skuData'
 ])
 
 /**
@@ -65,7 +86,10 @@ export function usePoetryCustomization(options = {}) {
   const selectedBackgroundId = ref('')
   const textFields = ref([])
   const operationStatus = ref({ type: 'success', text: '' })
+  const themeFlowId = ref('')
+  let themeFlow = { themes: [], selectedThemeId: '' }
   let reloadRequestId = 0
+  let preserveThemeFlowOnExit = false
   const {
     documentData,
     templateLoading,
@@ -124,7 +148,11 @@ export function usePoetryCustomization(options = {}) {
   async function reloadTemplate() {
     const currentRequestId = ++reloadRequestId
     resetPageState()
-    aiThemeOptions.value = readRouteImageOptions(route.query, AI_THEME_QUERY_KEYS, 'ai-theme')
+    themeFlowId.value = String(readRouteValue(route.query.themeFlowId) || '')
+    const isTryMoreContinuation = String(readRouteValue(route.query.fromH5TryMore) || '') === '1'
+    if (!isTryMoreContinuation) clearThemeFlow(themeFlowId.value)
+    themeFlow = loadThemeFlow(themeFlowId.value)
+    const currentTheme = readRouteImageOptions(route.query, AI_THEME_QUERY_KEYS, 'ai-theme')[0]
     const routeBackgrounds = readRouteImageOptions(
       route.query,
       BACKGROUND_QUERY_KEYS,
@@ -133,13 +161,31 @@ export function usePoetryCustomization(options = {}) {
     try {
       const apiBackgrounds = await loadAiSubjectBackgroundOptions(route.query)
       if (currentRequestId !== reloadRequestId) return
-      backgroundOptions.value = (apiBackgrounds.length ? apiBackgrounds : routeBackgrounds)
-        .map((option) => ({ ...option }))
+      if (currentTheme) {
+        themeFlow = upsertTheme(themeFlow, {
+          id: readRouteValue(route.query.themeEntryId) || currentTheme.id,
+          label: readRouteValue(route.query.themeName) || currentTheme.label,
+          url: currentTheme.url,
+          subjectId: readRouteValue(route.query.id),
+          backgrounds: apiBackgrounds.length ? apiBackgrounds : routeBackgrounds
+        })
+        saveThemeFlow(themeFlowId.value, themeFlow)
+      }
     } catch (error) {
       if (currentRequestId !== reloadRequestId) return
       console.error('AI subject backgrounds failed to load.', error)
-      backgroundOptions.value = routeBackgrounds.map((option) => ({ ...option }))
+      if (currentTheme) {
+        themeFlow = upsertTheme(themeFlow, {
+          id: readRouteValue(route.query.themeEntryId) || currentTheme.id,
+          label: readRouteValue(route.query.themeName) || currentTheme.label,
+          url: currentTheme.url,
+          subjectId: readRouteValue(route.query.id),
+          backgrounds: routeBackgrounds
+        })
+        saveThemeFlow(themeFlowId.value, themeFlow)
+      }
     }
+    syncThemeOptionsFromFlow()
     await loadTemplateFromRoute(route.query)
   }
 
@@ -159,7 +205,40 @@ export function usePoetryCustomization(options = {}) {
     selectedBackgroundId.value = ''
     textFields.value = []
     operationStatus.value = { type: 'success', text: '' }
+    themeFlowId.value = ''
+    themeFlow = { themes: [], selectedThemeId: '' }
     resetSaveStatus()
+  }
+
+  /** @returns {void} 将流程存储中的主题及当前背景同步到界面。 */
+  function syncThemeOptionsFromFlow() {
+    aiThemeOptions.value = themeFlow.themes.map((theme) => ({
+      ...theme,
+      backgrounds: cloneBackgroundOptions(theme.backgrounds)
+    }))
+    selectedAiThemeId.value = themeFlow.selectedThemeId
+      || aiThemeOptions.value[aiThemeOptions.value.length - 1]?.id
+      || ''
+    const selectedTheme = aiThemeOptions.value.find((theme) => theme.id === selectedAiThemeId.value)
+      ?? aiThemeOptions.value[aiThemeOptions.value.length - 1]
+    backgroundOptions.value = cloneBackgroundOptions(selectedTheme?.backgrounds)
+    selectedBackgroundId.value = resolveInitialOption(backgroundOptions.value, '')?.id ?? ''
+  }
+
+  /** @returns {void} 保存当前主题和它的背景选中状态。 */
+  function persistThemeSelection() {
+    themeFlow.selectedThemeId = selectedAiThemeId.value
+    themeFlow.themes = themeFlow.themes.map((theme) => {
+      if (theme.id !== selectedAiThemeId.value) return theme
+      return {
+        ...theme,
+        backgrounds: backgroundOptions.value.map((background) => ({
+          ...background,
+          selected: background.id === selectedBackgroundId.value
+        }))
+      }
+    })
+    saveThemeFlow(themeFlowId.value, themeFlow)
   }
 
   /**
@@ -200,33 +279,45 @@ export function usePoetryCustomization(options = {}) {
     handleTemplateCanvasError(error)
   }
 
-  /** @returns {void} 返回小程序商品定制菜单继续生成主题。 */
+  /** @returns {void} 返回小程序 AI 主题选择页继续生成主题。 */
   function tryMoreThemes() {
     const productInfoId = readRouteValue(route.query.productInfoId)
     const skuId = readRouteValue(route.query.skuId)
+    const templateId = readRouteValue(route.query.templateId)
     const quantity = readRouteValue(route.query.quantity)
-    if (!productInfoId || !skuId || !quantity) {
-      operationStatus.value = { type: 'warning', text: '缺少商品参数，暂时无法继续选择主题。' }
+    if (!productInfoId || !skuId || !templateId || !quantity) {
+      operationStatus.value = { type: 'warning', text: '缺少定制参数，暂时无法继续选择主题。' }
       return
     }
 
-    const query = new URLSearchParams({
-      id: String(productInfoId),
-      skuId: String(skuId),
-      quantity: String(quantity),
-      fromH5TryMore: '1',
-      themeImages: JSON.stringify(aiThemeOptions.value.map((option) => ({
-        id: option.id,
-        label: option.label,
-        url: option.url,
-        selected: option.id === selectedAiThemeId.value
-      })))
+    persistThemeSelection()
+    const query = new URLSearchParams()
+    Object.entries(route.query).forEach(([key, value]) => {
+      if (TRY_MORE_EXCLUDED_QUERY_KEYS.has(key)) return
+      const values = Array.isArray(value) ? value : [value]
+      values.forEach((item) => {
+        if (item !== null && item !== undefined && item !== '') query.append(key, String(item))
+      })
     })
-    const url = `/subPackage2/home/productDetail/customization?${query.toString()}`
+    const skuData = readRouteValue(route.query.skuData)
+    const redirectPath = readRouteValue(route.query.redirectPath)
+    const aiSubjectIds = readRouteValue(route.query.aiSubjectIds)
+    if (aiSubjectIds) query.set('aiSubjectIds', normalizeAiSubjectIds(aiSubjectIds))
+    if (skuData) query.set('selectedSkuData', decodeRepeatedly(String(skuData)))
+    if (redirectPath) query.set('redirectPath', decodeRepeatedly(String(redirectPath)))
+    query.set('themeFlowId', themeFlowId.value)
+    query.set('fromH5TryMore', '1')
+    const url = `/subPackage2/template-list/ai-topic/index?${query.toString()}`
 
+    preserveThemeFlowOnExit = true
     if (!wxAPI.redirectTo({ url })) {
+      preserveThemeFlowOnExit = false
       operationStatus.value = { type: 'warning', text: '请在微信小程序中继续选择主题。' }
     }
+  }
+
+  function handlePageExit() {
+    if (!preserveThemeFlowOnExit) clearThemeFlow(themeFlowId.value)
   }
 
   /**
@@ -236,14 +327,11 @@ export function usePoetryCustomization(options = {}) {
    * @returns {Promise<void>} 路由图片应用完成。
    */
   async function applyInitialRouteImages(editor) {
-    const themeOption = resolveInitialOption(
-      aiThemeOptions.value,
-      String(imageTargets.value[0]?.url ?? '')
-    )
-    const backgroundOption = resolveInitialOption(
-      backgroundOptions.value,
-      String(backgroundTargets.value[0]?.url ?? '')
-    )
+    const themeOption = aiThemeOptions.value.find((option) => option.id === selectedAiThemeId.value)
+      ?? resolveInitialOption(aiThemeOptions.value, String(imageTargets.value[0]?.url ?? ''))
+    const backgroundOption = backgroundOptions.value.find((option) => {
+      return option.id === selectedBackgroundId.value
+    }) ?? resolveInitialOption(backgroundOptions.value, String(backgroundTargets.value[0]?.url ?? ''))
 
     selectedAiThemeId.value = themeOption?.id ?? ''
     selectedBackgroundId.value = backgroundOption?.id ?? ''
@@ -298,9 +386,19 @@ export function usePoetryCustomization(options = {}) {
     imageReplacing.value = true
     operationStatus.value = { type: 'success', text: '' }
     try {
-      await replaceImages(editor, option.url)
+      await withTimeout(replaceImages(editor, option.url), IMAGE_REPLACEMENT_TIMEOUT)
       selectedAiThemeId.value = option.id
       imagePreviewUrl.value = option.url
+      backgroundOptions.value = cloneBackgroundOptions(option.backgrounds)
+      const backgroundOption = resolveInitialOption(backgroundOptions.value, '')
+      selectedBackgroundId.value = backgroundOption?.id ?? ''
+      if (backgroundOption && backgroundTargets.value.length > 0) {
+        await withTimeout(
+          replaceImageTargets(editor, backgroundOption.url, backgroundTargets.value, 'stretch'),
+          IMAGE_REPLACEMENT_TIMEOUT
+        )
+      }
+      persistThemeSelection()
     } catch (error) {
       console.error('Poetry AI theme replacement failed.', error)
       operationStatus.value = { type: 'error', text: '主题图片切换失败。' }
@@ -352,8 +450,12 @@ export function usePoetryCustomization(options = {}) {
     imageReplacing.value = true
     operationStatus.value = { type: 'success', text: '' }
     try {
-      await replaceImageTargets(editor, option.url, backgroundTargets.value, 'stretch')
+      await withTimeout(
+        replaceImageTargets(editor, option.url, backgroundTargets.value, 'stretch'),
+        IMAGE_REPLACEMENT_TIMEOUT
+      )
       selectedBackgroundId.value = option.id
+      persistThemeSelection()
     } catch (error) {
       console.error('Poetry background replacement failed.', error)
       operationStatus.value = { type: 'error', text: '背景图片切换失败。' }
@@ -408,7 +510,10 @@ export function usePoetryCustomization(options = {}) {
     () => [
       route.query.templateId,
       route.query.partnerId,
-      route.query.themeImages,
+      route.query.themeFlowId,
+      route.query.themeEntryId,
+      route.query.themeName,
+      route.query.fromH5TryMore,
       route.query.imageUrl,
       route.query.id,
       route.query.aiSubjectIds,
@@ -425,6 +530,12 @@ export function usePoetryCustomization(options = {}) {
     },
     { immediate: true }
   )
+
+  onMounted(() => window.addEventListener('pagehide', handlePageExit))
+  onBeforeUnmount(() => {
+    window.removeEventListener('pagehide', handlePageExit)
+    handlePageExit()
+  })
 
   return {
     activeTab,
@@ -494,6 +605,10 @@ function resolveInitialOption(options, currentUrl) {
     ?? options[0]
 }
 
+function cloneBackgroundOptions(options) {
+  return (Array.isArray(options) ? options : []).map((option) => ({ ...option }))
+}
+
 /**
  * @param {Object} editor 编辑器实例。
  * @param {{ replacement: string, title: string }} labels 页面文案标签。
@@ -557,6 +672,46 @@ async function replaceImageTargets(editor, imageUrl, targets, fit) {
       allowLocked: true
     }))
   )
+}
+
+function withTimeout(promise, timeout) {
+  let timer
+  return Promise.race([
+    promise,
+    new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('图片加载超时，请重试。')), timeout)
+    })
+  ]).finally(() => clearTimeout(timer))
+}
+
+function decodeRepeatedly(value) {
+  let result = value
+
+  for (let round = 0; round < 5; round += 1) {
+    try {
+      const decoded = decodeURIComponent(result)
+      if (decoded === result) break
+      result = decoded
+    } catch {
+      break
+    }
+  }
+
+  return result
+}
+
+function normalizeAiSubjectIds(value) {
+  const decoded = decodeRepeatedly(String(value)).trim()
+  if (!decoded) return ''
+
+  try {
+    const parsed = JSON.parse(decoded)
+    if (Array.isArray(parsed)) return parsed.map(String).join(',')
+  } catch {
+    // Comma-separated values are the normal route format.
+  }
+
+  return decoded.split(',').map((item) => item.trim()).filter(Boolean).join(',')
 }
 
 /** @param {string} value 文字描述。 @returns {string} 归一化描述。 */
