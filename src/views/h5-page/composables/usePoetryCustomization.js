@@ -5,6 +5,8 @@ import { useH5PageSave } from './useH5PageSave.js'
 import { useH5TemplateDocument } from './useH5TemplateDocument.js'
 import { loadAiSubjectBackgroundOptions } from '../services/ai-subject-backgrounds.js'
 import { readRouteImageOptions } from '../services/route-image-options.js'
+import { readRouteValue } from '../services/route-navigation.js'
+import { wxAPI } from '../services/wx-api.js'
 
 const DEFAULT_IMAGE_TARGET_DESCRIPTIONS = Object.freeze([
   '诗词配图',
@@ -13,7 +15,13 @@ const DEFAULT_IMAGE_TARGET_DESCRIPTIONS = Object.freeze([
   '原图定制'
 ])
 
-const AI_THEME_QUERY_KEYS = Object.freeze(['imageUrl', 'aiThemeUrl', 'aiThemeUrls', 'aiThemes'])
+const AI_THEME_QUERY_KEYS = Object.freeze([
+  'themeImages',
+  'aiThemes',
+  'aiThemeUrls',
+  'aiThemeUrl',
+  'imageUrl'
+])
 const BACKGROUND_QUERY_KEYS = Object.freeze([
   'background_img_urls',
   'backgroundImages',
@@ -116,7 +124,7 @@ export function usePoetryCustomization(options = {}) {
   async function reloadTemplate() {
     const currentRequestId = ++reloadRequestId
     resetPageState()
-    aiThemeOptions.value = readRouteImageOptions(route.query, AI_THEME_QUERY_KEYS, 'ai-theme').slice(0, 1)
+    aiThemeOptions.value = readRouteImageOptions(route.query, AI_THEME_QUERY_KEYS, 'ai-theme')
     const routeBackgrounds = readRouteImageOptions(
       route.query,
       BACKGROUND_QUERY_KEYS,
@@ -190,6 +198,35 @@ export function usePoetryCustomization(options = {}) {
   function handleCanvasError(error) {
     canvasLoaded.value = false
     handleTemplateCanvasError(error)
+  }
+
+  /** @returns {void} 返回小程序商品定制菜单继续生成主题。 */
+  function tryMoreThemes() {
+    const productInfoId = readRouteValue(route.query.productInfoId)
+    const skuId = readRouteValue(route.query.skuId)
+    const quantity = readRouteValue(route.query.quantity)
+    if (!productInfoId || !skuId || !quantity) {
+      operationStatus.value = { type: 'warning', text: '缺少商品参数，暂时无法继续选择主题。' }
+      return
+    }
+
+    const query = new URLSearchParams({
+      id: String(productInfoId),
+      skuId: String(skuId),
+      quantity: String(quantity),
+      fromH5TryMore: '1',
+      themeImages: JSON.stringify(aiThemeOptions.value.map((option) => ({
+        id: option.id,
+        label: option.label,
+        url: option.url,
+        selected: option.id === selectedAiThemeId.value
+      })))
+    })
+    const url = `/subPackage2/home/productDetail/customization?${query.toString()}`
+
+    if (!wxAPI.redirectTo({ url })) {
+      operationStatus.value = { type: 'warning', text: '请在微信小程序中继续选择主题。' }
+    }
   }
 
   /**
@@ -371,7 +408,9 @@ export function usePoetryCustomization(options = {}) {
     () => [
       route.query.templateId,
       route.query.partnerId,
+      route.query.themeImages,
       route.query.imageUrl,
+      route.query.id,
       route.query.aiSubjectIds,
       route.query.aiThemeUrl,
       route.query.aiThemeUrls,
@@ -416,6 +455,7 @@ export function usePoetryCustomization(options = {}) {
     templateError,
     templateLoading,
     textFields,
+    tryMoreThemes,
     updateTextField
   }
 }

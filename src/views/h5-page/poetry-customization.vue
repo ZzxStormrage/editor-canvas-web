@@ -74,6 +74,13 @@
                 </span>
                 <span class="theme-label">{{ option.label }}</span>
               </button>
+
+              <button type="button" class="theme-item add-theme" @click="tryMoreThemes">
+                <span class="theme-preview">
+                  <v-icon icon="mdi-plus" size="22" />
+                </span>
+                <span class="theme-label">尝试更多</span>
+              </button>
             </div>
 
             <div v-if="backgroundOptions.length" class="background-section">
@@ -251,6 +258,7 @@ const {
   templateError,
   templateLoading,
   textFields,
+  tryMoreThemes,
   updateTextField
 } = usePoetryCustomization({
   pageId: props.pageId,
@@ -489,6 +497,11 @@ const {
 
 .theme-item.is-selected .theme-preview {
   border: 2px solid #e6002d;
+}
+
+.theme-item.add-theme .theme-preview {
+  border: 1px dashed #e6002d;
+  background: #ffffff;
 }
 
 .theme-preview img {
