@@ -137,7 +137,7 @@ export class ImagePlugin {
   /**
    * 读取图片原始像素尺寸，不创建画布节点。
    *
-   * 图片解析仍由 ImagePlugin 统一负责，避免 Vue composable 重复实现 URL、SVG、
+   * 图片解析仍由 ImagePlugin 统一负责，避免外部调用方重复实现 URL、SVG、
    * File 和 Blob 的兼容逻辑。
    *
    * @param {string | File | Blob} source 图片来源。

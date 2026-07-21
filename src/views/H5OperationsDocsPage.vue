@@ -76,7 +76,7 @@ let observer = null
 const filteredToc = computed(() => {
   const query = searchQuery.value.toLocaleLowerCase()
   return query
-    ? toc.value.filter((item) => item.title.toLocaleLowerCase().includes(query))
+    ? toc.value.filter((item) => item.searchText.includes(query))
     : toc.value
 })
 
@@ -89,7 +89,8 @@ onMounted(async () => {
     return {
       id,
       level: Number(heading.tagName.slice(1)),
-      title: heading.textContent?.trim() || `章节 ${index + 1}`
+      title: heading.textContent?.trim() || `章节 ${index + 1}`,
+      searchText: getSectionSearchText(heading).toLocaleLowerCase()
     }
   })
 
@@ -122,6 +123,31 @@ function scrollToHeading(id) {
 
 function scrollToTop() {
   scrollContainer.value?.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+/**
+ * 收集标题及其所属章节正文，使目录搜索可以命中规则、属性值和错误说明。
+ *
+ * @param {Element} heading 当前章节标题。
+ * @returns {string} 当前章节可搜索文本。
+ */
+function getSectionSearchText(heading) {
+  const level = Number(heading.tagName.slice(1))
+  const textParts = [heading.textContent ?? '']
+  let sibling = heading.nextElementSibling
+
+  while (sibling) {
+    const siblingLevel = /^H[1-6]$/.test(sibling.tagName)
+      ? Number(sibling.tagName.slice(1))
+      : null
+    if (siblingLevel !== null && siblingLevel <= level) {
+      break
+    }
+    textParts.push(sibling.textContent ?? '')
+    sibling = sibling.nextElementSibling
+  }
+
+  return textParts.join(' ')
 }
 </script>
 

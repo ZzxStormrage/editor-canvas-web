@@ -18,7 +18,7 @@ import { toCssObjectFit } from '../../../utils/image-fit.js';
  * 统一编辑器文档插件。
  *
  * 负责 JSON 校验、资源预加载、Leafer 官方反序列化、业务元数据恢复和无损导出。
- * 页面与 Vue 组件不得自行创建场景节点。
+ * 外部调用方应通过文档 API 恢复场景，不应自行创建节点代替反序列化流程。
  */
 export class DocumentPlugin {
   constructor() {
@@ -54,7 +54,7 @@ export class DocumentPlugin {
   /**
    * 加载统一编辑器文档。
    *
-   * 默认保留文档内的交互、锁定和生产标记状态，调用方可以按页面需求覆盖。
+   * 默认保留文档内的交互、锁定和生产标记状态，调用方可以按展示需求覆盖。
    *
    * @param {string | Object} value JSON 字符串或文档对象。
    * @param {{ interactive?: boolean, productionVisibility?: 'preserve' | 'hidden' }} [options={}] 加载选项。

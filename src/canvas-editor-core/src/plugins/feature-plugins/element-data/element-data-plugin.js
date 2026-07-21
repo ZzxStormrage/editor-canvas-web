@@ -10,8 +10,8 @@ const DATA_CHANGED_EVENT = 'element-data:changed'
 /**
  * 元素业务属性插件。
  *
- * 用独立命名空间保存 H5 所需业务数据，不修改 Leafer 渲染属性，也不参与现有
- * 文字、图片、选区和图层流程。Vue 组件应只调用本插件公开方法。
+ * 用独立命名空间保存外部业务数据，不修改 Leafer 渲染属性，也不参与现有
+ * 文字、图片、选区和图层流程。外部调用方应只使用本插件公开方法。
  */
 export class ElementDataPlugin {
   constructor() {
@@ -280,7 +280,7 @@ export class ElementDataPlugin {
   }
 
   /**
-   * 导出供 H5 消费的元素业务属性列表。
+   * 导出供外部业务消费的元素属性列表。
    *
    * 默认忽略未配置业务属性的元素，避免输出无意义数据。
    *

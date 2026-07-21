@@ -39,8 +39,8 @@ const THUMBNAIL_CHANGE_DELAY = 120
 /**
  * 图层插件 —— 将 Leafer 场景树转换为稳定的图层列表 API。
  *
- * 插件负责场景树监听、排序、锁定、删除、选中和 hover；Vue 层只消费序列化
- * 后的图层 DTO，不直接操作 contentLayer，保持应用层到内核层的单向依赖。
+ * 插件负责场景树监听、排序、锁定、删除、选中和 hover；外部视图层只消费
+ * 序列化图层 DTO，不直接操作 contentLayer，保持应用层到内核层的单向依赖。
  */
 export class LayerPlugin {
   constructor() {
@@ -191,7 +191,7 @@ export class LayerPlugin {
   /**
    * 按业务 role 将顶层元素移动到最底层或最顶层。
    *
-   * 未命中的普通图层保持原始相对顺序，适合页面在无损加载后显式应用展示策略。
+   * 未命中的普通图层保持原始相对顺序，适合调用方在无损加载后显式应用展示策略。
    *
    * @param {{ back?: string[], front?: string[] }} [options={}] role 排列配置。
    * @returns {void}
@@ -482,7 +482,7 @@ export class LayerPlugin {
       count += 1
     }
 
-    // 文本规则可以暂存但关闭；只有 H5 实际启用时才向运维展示“已配置”标记。
+    // 文本规则可以暂存但关闭；只有启用后才计入已配置属性。
     if (this._isPlainObject(attributes.textInput) && attributes.textInput.enabled === true) {
       count += 1
     }

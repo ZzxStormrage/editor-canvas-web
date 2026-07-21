@@ -206,7 +206,7 @@ export class TextPlugin {
     this._setFontUrl(target, source.fontUrl)
     this._ensureTextEditConfig(target)
 
-    // Capture the document's first measurable bounds before any page-level
+    // Capture the document's first measurable bounds before any external
     // content or font replacement can resize the node. Vertical text uses
     // this geometry directly; keeping it for all text nodes also makes a
     // later writing-mode change deterministic.
@@ -979,7 +979,7 @@ export class TextPlugin {
    *
    * @param {LeaferText} text Text node.
    * @param {{ x: number, y: number }} [centerOverride] Optional center supplied
-   * by a document/page restore path.
+   * by a document restoration flow.
    * @returns {{ x: number, y: number, width: number, height: number, center: { x: number, y: number } } | null}
    * Initial text geometry, or null when the node has no measurable bounds yet.
    * @private
@@ -1390,7 +1390,7 @@ export class TextPlugin {
    * 使用浏览器原生 dblclick 补足触控板双击事件。
    *
    * Leafer 仍负责常规 double_tap；仅当它尚未打开内部编辑器时，才使用
-   * 当前单选文本和官方 EditBox 边界进入编辑，避免 Vue 层参与画布命中。
+   * 当前单选文本和官方 EditBox 边界进入编辑，避免外部视图层参与画布命中。
    *
    * @param {MouseEvent} event 浏览器双击事件。
    * @returns {void}

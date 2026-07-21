@@ -2,7 +2,7 @@
  * @Author: zzx 452436275@qq.com
  * @Date: 2026-05-12 17:53:58
  * @LastEditors: zzx 452436275@qq.com
- * @LastEditTime: 2026-06-22 19:17:19
+ * @LastEditTime: 2026-07-21 15:36:32
  * @FilePath: /ele-editor-v2/README.md
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 -->
@@ -95,3 +95,5 @@ canvas-editor-core/
 ├── tests/                            # 单元测试
 ├── package.json
 └── tsconfig.json
+
+https://ele-editor-v2.ele007.com

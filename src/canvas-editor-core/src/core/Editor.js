@@ -712,7 +712,7 @@ export class Editor {
   }
 
   /**
-   * 获取 Vue 选区工具条所需的状态和世界坐标边界。
+   * 获取外部选区工具条所需的状态和世界坐标边界。
    *
    * @returns {ReturnType<import('../plugins/action-buttons.js').EditorActionButtons['getSelectionToolbarState']>}
    * 选区工具条状态。

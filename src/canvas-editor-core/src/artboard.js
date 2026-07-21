@@ -343,7 +343,7 @@ export class ArtboardManager {
   /**
    * 同步内容层的画板外淡化显示。
    *
-   * 选择框属于官方 Editor 的 sky 层，Vue 操作条属于 DOM Overlay，二者始终保持正常不透明；
+   * 选择框属于官方 Editor 的 sky 层，外部操作条属于 DOM Overlay，二者始终保持正常不透明；
    * 真实内容层留在 stage 中负责交互，裁剪预览层只负责把画板内视觉恢复为正常不透明。
    *
    * @returns {void}

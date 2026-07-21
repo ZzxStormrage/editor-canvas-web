@@ -8,7 +8,7 @@ import { isTextElement } from '../utils/text.js'
 /**
  * 编辑器选区交互管理器。
  *
- * 负责选区行为、编辑框控制点和可序列化选区状态。操作工具条由 Vue 组件
+ * 负责选区行为、编辑框控制点和可序列化选区状态。操作工具条由外部视图层
  * 渲染，只通过本类的公开方法执行锁定、复制、删除和层级操作。
  *
  * @author zzx
@@ -689,7 +689,7 @@ export class EditorActionButtons {
   }
 
   /**
-   * 获取 Vue 选区工具条需要的可序列化状态。
+   * 获取外部选区工具条需要的可序列化状态。
    *
    * @returns {{
    *   visible: boolean,
@@ -807,7 +807,7 @@ export class EditorActionButtons {
   }
 
   /**
-   * 合并同一帧内的连续变换事件，再通知 Vue 更新工具条位置。
+   * 合并同一帧内的连续变换事件，再通知外部视图层更新工具条位置。
    *
    * @returns {void}
    */
@@ -832,7 +832,7 @@ export class EditorActionButtons {
   }
 
   /**
-   * 关闭 Vue Overlay 层级菜单。
+   * 通知外部视图层关闭选区层级菜单。
    *
    * @returns {void}
    */
@@ -1496,7 +1496,7 @@ export class EditorActionButtons {
     })
     this.#innerEditor.update?.()
 
-    // 等 Leafer 完成 editBox 的锁定态更新后，再刷新控制点和 Vue 状态。
+    // 等 Leafer 完成 editBox 的锁定态更新后，再刷新控制点和外部选区状态。
     requestAnimationFrame(() => {
       if (!this.#disposed) {
         this.#syncSelectionControls(selected)
@@ -1581,7 +1581,7 @@ export class EditorActionButtons {
   }
 
   /**
-   * 执行当前选区的层级操作，供 Vue 菜单组件调用。
+   * 执行当前选区的层级操作，供外部菜单调用。
    *
    * @param {'front' | 'forward' | 'backward' | 'back'} action 层级动作。
    * @returns {void}
@@ -1598,7 +1598,7 @@ export class EditorActionButtons {
   }
 
   /**
-   * 获取当前选区层级菜单的 Vue 渲染数据。
+   * 获取当前选区层级菜单的可序列化渲染数据。
    *
    * @param {import('leafer-ui').UI[]} [selected] 当前选中元素。
    * @returns {Array<{ key: string, label: string, shortcut: string, disabled: boolean }>}
@@ -1613,7 +1613,7 @@ export class EditorActionButtons {
   }
 
   /**
-   * 获取当前选区可执行的层级操作，供 Vue 工具条调用。
+   * 获取当前选区可执行的层级操作，供外部工具条调用。
    *
    * @returns {Array<{ key: string, label: string, shortcut: string, disabled: boolean }>}
    * 层级菜单项。
