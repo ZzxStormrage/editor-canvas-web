@@ -2,7 +2,8 @@ import { customerAiSubjectApi } from '../api/customer-ai-subject.js'
 import { readRouteValue } from './route-navigation.js'
 
 export async function loadAiSubjectBackgroundOptions(query = {}) {
-  const ids = normalizeSubjectIds(readRouteValue(query.aiSubjectIds))
+  const selectedSubjectId = readRouteValue(query.id)
+  const ids = normalizeSubjectIds(selectedSubjectId || readRouteValue(query.aiSubjectIds))
   if (!ids) return []
 
   const response = await customerAiSubjectApi.listByIds(ids)
