@@ -19,6 +19,8 @@ import { useTextControls } from './canvas-editor/useTextControls.js'
  * @param {Object} [options={}] 应用层配置。
  * @param {((message: string, type: 'success' | 'error') => void) | null} [options.onMessage]
  * 消息通知方法。
+ * @param {((request: Object) => void) | null} [options.onOpenLayerAttributes]
+ * 请求切换到图层属性面板的方法。
  * @returns {Object} 编辑器状态、DOM 引用和操作方法。
  */
 export function useCanvasEditor(options = {}) {
@@ -30,7 +32,9 @@ export function useCanvasEditor(options = {}) {
   const canUndo = ref(false)
   const canRedo = ref(false)
   const historyBusy = ref(false)
+  const attributeEditorRequest = ref(null)
   let editor = null
+  let attributeEditorRequestId = 0
   let unsubscribeEvents = []
   const readyWaiters = new Set()
 
@@ -54,6 +58,9 @@ export function useCanvasEditor(options = {}) {
   }
 
   const notify = typeof options.onMessage === 'function' ? options.onMessage : null
+  const openLayerAttributes = typeof options.onOpenLayerAttributes === 'function'
+    ? options.onOpenLayerAttributes
+    : null
   const textControls = useTextControls(getEditor)
   const artboardControls = useArtboardControls(getEditor, notify)
   const assetControls = useAssetControls(getEditor, artboardControls.getArtboardBounds, textControls.fontFamily, notify)
@@ -62,6 +69,44 @@ export function useCanvasEditor(options = {}) {
   const layerControls = useLayerControls(getEditor)
   const elementDataControls = useElementDataControls(getEditor)
   const imageControls = useImageControls(getEditor)
+
+  /**
+   * 请求打开当前单选文字或图片的图层属性。
+   *
+   * @returns {boolean} 是否创建了属性面板请求。
+   */
+  function openSelectedElementAttributes() {
+    layerControls.refreshLayers()
+    const selectedLayers = layerControls.layers.value.filter((layer) => layer.selected)
+    const layer = selectedLayers.length === 1 ? selectedLayers[0] : null
+
+    if (!layer || (layer.type !== 'text' && layer.type !== 'image')) {
+      return false
+    }
+
+    attributeEditorRequestId += 1
+    const request = {
+      requestId: attributeEditorRequestId,
+      elementId: layer.elementId,
+      layerId: layer.id
+    }
+    attributeEditorRequest.value = request
+    layerMenuControls.hideLayerMenu()
+    openLayerAttributes?.(request)
+    return true
+  }
+
+  /**
+   * 消费已完成的属性面板请求，避免切换 Tab 后重复展开。
+   *
+   * @param {number} requestId 请求编号。
+   * @returns {void}
+   */
+  function clearElementAttributesRequest(requestId) {
+    if (attributeEditorRequest.value?.requestId === requestId) {
+      attributeEditorRequest.value = null
+    }
+  }
 
   /**
    * 初始化编辑器并建立应用层事件桥接。
@@ -397,16 +442,23 @@ export function useCanvasEditor(options = {}) {
     captureCanvas: artboardControls.captureCanvas,
     imageInputRef: assetControls.imageInputRef,
     imageUploading: assetControls.imageUploading,
+    imageReplacementInputRef: assetControls.imageReplacementInputRef,
+    imageReplacing: assetControls.imageReplacing,
     imageProperties: imageControls.imageProperties,
     watermarkValue: assetControls.watermarkValue,
     openImagePicker: assetControls.openImagePicker,
     handleImageChange: assetControls.handleImageChange,
+    openSelectedImageReplacementPicker: assetControls.openSelectedImageReplacementPicker,
+    handleSelectedImageReplacementChange: assetControls.handleSelectedImageReplacementChange,
     updateSelectedImageProperties: imageControls.updateSelectedImageProperties,
     resetSelectedImageSize: imageControls.resetSelectedImageSize,
     addWatermark: assetControls.addWatermark,
     deleteWatermark: assetControls.deleteWatermark,
     layerMenu: layerMenuControls.layerMenu,
     selectionToolbar: selectionToolbarControls.selectionToolbar,
+    attributeEditorRequest,
+    openSelectedElementAttributes,
+    clearElementAttributesRequest,
     toggleSelectionLock: selectionToolbarControls.toggleSelectionLock,
     duplicateSelection: selectionToolbarControls.duplicateSelection,
     deleteSelection: selectionToolbarControls.deleteSelection,

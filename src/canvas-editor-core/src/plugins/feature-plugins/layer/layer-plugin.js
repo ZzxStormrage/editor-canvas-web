@@ -2,6 +2,7 @@ import { ChildEvent, PropertyEvent } from 'leafer-ui'
 import { EditorEvent } from '@leafer-in/editor'
 import { EditorError } from '../../../errors/editor-error.js'
 import { getElementDataContainer } from '../../../utils/element-data.js'
+import { normalizeTextLayout } from '../../../utils/text-layout.js'
 
 const LAYER_EVENT = 'layers:changed'
 const OBSERVED_PROPERTIES = new Set([
@@ -13,7 +14,8 @@ const OBSERVED_PROPERTIES = new Set([
   'name',
   'customType',
   'text',
-  'url'
+  'url',
+  'fill'
 ])
 const IMAGE_ROLES = new Set(['background', 'mask', 'ai-variable'])
 const THUMBNAIL_STABLE_PROPERTIES = new Set([
@@ -454,6 +456,7 @@ export class LayerPlugin {
       thumbnailSource: type === 'image' ? this._getImageThumbnailSource(node) : null,
       thumbnailVersion: this._getThumbnailVersion(node),
       imageRole: type === 'image' ? this._getImageRole(elementData.attributes) : null,
+      textLayoutMode: type === 'text' ? this._getTextLayoutMode(elementData.attributes) : null,
       customAttributeCount,
       locked: Boolean(node.locked),
       visible: node.visible !== false,
@@ -481,6 +484,10 @@ export class LayerPlugin {
 
     // 文本规则可以暂存但关闭；只有 H5 实际启用时才向运维展示“已配置”标记。
     if (this._isPlainObject(attributes.textInput) && attributes.textInput.enabled === true) {
+      count += 1
+    }
+
+    if (this._getTextLayoutMode(attributes)) {
       count += 1
     }
 
@@ -512,6 +519,18 @@ export class LayerPlugin {
   /** @private */
   _getImageRole(attributes = {}) {
     return IMAGE_ROLES.has(attributes.image?.role) ? attributes.image.role : null
+  }
+
+  /** @private @param {Object} attributes 元素属性。 @returns {string | null} 文本显示模式。 */
+  _getTextLayoutMode(attributes = {}) {
+    if (
+      attributes.textInput?.enabled === true
+      && attributes.textInput.singleVerticalLine === true
+    ) {
+      return 'vertical'
+    }
+    const layout = normalizeTextLayout(attributes.textLayout)
+    return layout.mode === 'single-line' || layout.mode === 'vertical' ? layout.mode : null
   }
 
   /** @private */
@@ -552,7 +571,10 @@ export class LayerPlugin {
    * @returns {string | null} 可直接复用的图片地址。
    */
   _getImageThumbnailSource(node) {
-    return typeof node.url === 'string' && node.url ? node.url : null
+    const inputFill = node.__?.__input?.fill
+    const imagePaint = Array.isArray(inputFill) ? inputFill[0] : inputFill
+    const source = node.url ?? imagePaint?.url
+    return typeof source === 'string' && source ? source : null
   }
 
   /**

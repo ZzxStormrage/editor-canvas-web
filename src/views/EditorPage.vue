@@ -39,7 +39,10 @@ const route = useRoute()
 const router = useRouter()
 const activePanel = ref('text')
 const message = reactive({ visible: false, text: '', color: 'error' })
-const editor = useCanvasEditor({ onMessage: showMessage })
+const editor = useCanvasEditor({
+  onMessage: showMessage,
+  onOpenLayerAttributes: openLayerAttributesPanel
+})
 const templatePersistence = useCustomTemplatePersistence({
   editor,
   route,
@@ -54,6 +57,11 @@ const removeAuthExpiredSubscription = subscribeAuthExpired((error) => {
 })
 
 onBeforeUnmount(removeAuthExpiredSubscription)
+
+/** @returns {void} 切换到图层面板以响应选区属性请求。 */
+function openLayerAttributesPanel() {
+  activePanel.value = 'layers'
+}
 
 /** @returns {Promise<void>} 创建或更新当前自定义模板。 */
 async function saveCustomTemplate() {

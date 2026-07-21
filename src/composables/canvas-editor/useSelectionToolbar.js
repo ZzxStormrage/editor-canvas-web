@@ -13,9 +13,13 @@ const EMPTY_TOOLBAR = {
   width: TOOLBAR_BASE_WIDTH,
   locked: false,
   selectionCount: 0,
+  isImageSelection: false,
+  canEditAttributes: false,
   canGroup: false,
   canUngroup: false,
   disabled: {
+    replace: true,
+    attributes: true,
     duplicate: true,
     delete: true,
     layer: true,
@@ -173,8 +177,10 @@ function createToolbarViewState(state, host) {
   }
 
   const hostBounds = host.getBoundingClientRect()
-  const hasContextAction = state.selectionCount > 1 || state.canUngroup === true
-  const width = TOOLBAR_BASE_WIDTH + (hasContextAction ? TOOLBAR_CONTEXT_ACTION_WIDTH : 0)
+  const contextActionCount = Number(
+    state.selectionCount > 1 || state.canUngroup === true || state.isImageSelection === true
+  ) + Number(state.canEditAttributes === true)
+  const width = TOOLBAR_BASE_WIDTH + contextActionCount * TOOLBAR_CONTEXT_ACTION_WIDTH
   const position = getToolbarPosition(state.bounds, hostBounds, width)
 
   return {
@@ -184,9 +190,13 @@ function createToolbarViewState(state, host) {
     width,
     locked: Boolean(state.locked),
     selectionCount: Number(state.selectionCount) || 0,
+    isImageSelection: Boolean(state.isImageSelection),
+    canEditAttributes: Boolean(state.canEditAttributes),
     canGroup: Boolean(state.canGroup),
     canUngroup: Boolean(state.canUngroup),
     disabled: {
+      replace: Boolean(state.disabled?.replace),
+      attributes: Boolean(state.disabled?.attributes),
       duplicate: Boolean(state.disabled?.duplicate),
       delete: Boolean(state.disabled?.delete),
       layer: Boolean(state.disabled?.layer),

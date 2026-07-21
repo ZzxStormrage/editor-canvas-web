@@ -143,18 +143,20 @@
               <textarea
                 v-if="field.multiline"
                 :value="field.value"
-                :maxlength="field.maxLength"
                 rows="3"
                 :placeholder="`请输入${field.label}`"
-                @input="updateTextField(field.id, $event.target.value)"
+                @compositionstart="handleTextCompositionStart"
+                @compositionend="handleTextCompositionEnd(field.id, $event)"
+                @input="handleTextFieldInput(field.id, $event)"
               ></textarea>
               <input
                 v-else
                 type="text"
                 :value="field.value"
-                :maxlength="field.maxLength"
                 :placeholder="`请输入${field.label}`"
-                @input="updateTextField(field.id, $event.target.value)"
+                @compositionstart="handleTextCompositionStart"
+                @compositionend="handleTextCompositionEnd(field.id, $event)"
+                @input="handleTextFieldInput(field.id, $event)"
               />
             </label>
           </div>
@@ -191,6 +193,7 @@
 <script setup>
 import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
 import { usePoetryCustomization } from './composables/usePoetryCustomization.js'
+import { createH5TextInputController } from './services/text-input-rules.js'
 
 const props = defineProps({
   pageTitle: {
@@ -259,6 +262,34 @@ const {
   replacementTextLabel: props.replacementTextLabel,
   titleTextLabel: props.titleTextLabel
 })
+
+const textInputController = createH5TextInputController()
+
+/** @param {string} fieldId 文字字段 ID。 @param {Event} event 输入事件。 @returns {void} */
+function handleTextFieldInput(fieldId, event) {
+  textInputController.handleInput(event, resolveTextFieldRules(fieldId), (nextValue) => {
+    updateTextField(fieldId, nextValue)
+  })
+}
+
+/** @param {CompositionEvent} event 组合输入开始事件。 @returns {void} */
+function handleTextCompositionStart(event) {
+  textInputController.handleCompositionStart(event)
+}
+
+/** @param {string} fieldId 文字字段 ID。 @param {CompositionEvent} event 事件。 @returns {void} */
+function handleTextCompositionEnd(fieldId, event) {
+  textInputController.handleCompositionEnd(
+    event,
+    resolveTextFieldRules(fieldId),
+    (nextValue) => updateTextField(fieldId, nextValue)
+  )
+}
+
+/** @param {string} fieldId 文字字段 ID。 @returns {Object} 对应的输入规则。 */
+function resolveTextFieldRules(fieldId) {
+  return textFields.value.find((field) => field.id === fieldId)?.rules ?? {}
+}
 </script>
 
 <style lang="scss" scoped>

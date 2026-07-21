@@ -6,11 +6,18 @@ import { EditorError } from '../../../errors/editor-error.js'
 import { getElementDataContainer } from '../../../utils/element-data.js'
 import { loadFontFace } from '../../../utils/font.js'
 import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
+import { applyTextInputRules, normalizeTextInputRules } from '../../../utils/text-input-rules.js'
+import {
+  normalizeSingleLineText,
+  normalizeTextLayout,
+  resolveSingleLineFontSize
+} from '../../../utils/text-layout.js'
 
 const FONT_URL_KEY = '__canvasEditorFontUrl'
 const RAW_TEXT_KEY = '__canvasEditorRawText'
 const INITIAL_TEXT_GEOMETRY_KEY = '__canvasEditorInitialTextGeometry'
 const VERTICAL_FONT_CENTER_KEY = '__canvasEditorVerticalFontCenter'
+const TEXT_LAYOUT_BASELINE_KEY = '__canvasEditorTextLayoutBaseline'
 const MIN_TEXT_PIXEL = 1
 const VISUAL_ITALIC_KEY = '__canvasEditorVisualItalic'
 const VISUAL_ITALIC_SKEW_X = -12
@@ -118,6 +125,7 @@ export class TextPlugin {
       text.updateLayout?.()
       contentLayer.add(text)
       this._captureInitialTextGeometry(text)
+      this._captureTextLayoutBaseline(text)
       this._activeText = text
       this._context.innerEditor?.select(text)
       eventBus.emit('text:added', { text })
@@ -203,6 +211,7 @@ export class TextPlugin {
     // this geometry directly; keeping it for all text nodes also makes a
     // later writing-mode change deterministic.
     this._captureInitialTextGeometry(target)
+    this._captureTextLayoutBaseline(target)
 
     return target
   }
@@ -237,6 +246,69 @@ export class TextPlugin {
       content: String(content ?? '')
     })
     return updatedText
+  }
+
+  /**
+   * 按元素 textLayout 属性替换文字。
+   *
+   * 单行适配保持模板宽度和中心点，从模板字号向下缩小；竖排显示会清除主动换行并
+   * 强制使用竖排方向。未配置特殊显示策略时与 replace() 行为一致。
+   *
+   * @param {LeaferText} target 指定文本节点。
+   * @param {string | number} content 新文本内容。
+   * @param {{ select?: boolean, layout?: Object }} [options={}] 替换配置。
+   * @returns {LeaferText} 已替换内容的原文本节点。
+   */
+  replaceWithLayout(target, content, options = {}) {
+    this._assertReady()
+
+    if (!isTextElement(target)) {
+      throw new EditorError('text.replaceWithLayout requires a Text node.', 'TEXT_TARGET_INVALID')
+    }
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+      throw new EditorError('text layout options must be an object.', 'TEXT_LAYOUT_OPTIONS_INVALID')
+    }
+
+    const layout = normalizeTextLayout(options.layout ?? this._getConfiguredTextLayout(target))
+    if (layout.mode === 'single-line') {
+      return this._replaceSingleLine(target, content, layout, options)
+    }
+    if (layout.mode === 'vertical') {
+      return this._replaceVertical(target, content, layout, options)
+    }
+
+    return this.replace(target, content, { select: options.select === true })
+  }
+
+  /**
+   * 按元素 textInput 和 textLayout 属性替换文字。
+   *
+   * @param {LeaferText} target 指定文本节点。
+   * @param {string | number} content 原始用户输入。
+   * @param {{ select?: boolean, rules?: Object, layout?: Object }} [options={}] 规则覆盖值。
+   * @returns {LeaferText} 已替换内容的原文本节点。
+   */
+  replaceWithRules(target, content, options = {}) {
+    this._assertReady()
+
+    if (!isTextElement(target)) {
+      throw new EditorError('text.replaceWithRules requires a Text node.', 'TEXT_TARGET_INVALID')
+    }
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+      throw new EditorError('text rule options must be an object.', 'TEXT_RULE_OPTIONS_INVALID')
+    }
+
+    const attributes = getElementDataContainer(target)?.attributes ?? {}
+    const rules = normalizeTextInputRules(options.rules ?? attributes.textInput)
+    const normalizedContent = applyTextInputRules(content, rules)
+    if (rules.enabled && rules.singleVerticalLine) {
+      return this.replaceWithLayout(target, normalizedContent, {
+        ...options,
+        layout: { mode: 'vertical' }
+      })
+    }
+
+    return this.replaceWithLayout(target, normalizedContent, options)
   }
 
   /**
@@ -311,7 +383,9 @@ export class TextPlugin {
       lineHeight: this._normalizePixelValue(text.lineHeight ?? data.lineHeight ?? data.__lineHeight),
       writingMode: text.writingMode ?? data.writingMode,
       width: text.width ?? data.width,
-      verticalAlign: text.verticalAlign ?? data.verticalAlign
+      verticalAlign: text.verticalAlign ?? data.verticalAlign,
+      textWrap: text.textWrap ?? data.textWrap,
+      textOverflow: text.textOverflow ?? data.textOverflow
     })
 
     return {
@@ -481,6 +555,167 @@ export class TextPlugin {
       ...(renderOptions.editConfig ?? {}),
       editSize: 'font-size'
     }
+  }
+
+  /**
+   * 使用固定模板宽度执行单行替换。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @param {string | number} content 新文本内容。
+   * @param {{ minFontSize: number | null }} layout 显示策略。
+   * @param {{ select?: boolean }} options 替换配置。
+   * @returns {LeaferText} 更新后的文本节点。
+   */
+  _replaceSingleLine(text, content, layout, options) {
+    const baseline = this._captureTextLayoutBaseline(text)
+    const singleLineText = normalizeSingleLineText(content)
+    const style = this.getStyle(text) ?? {}
+    const fontSize = resolveSingleLineFontSize({
+      frameWidth: baseline.width,
+      baseFontSize: baseline.fontSize,
+      minFontSize: layout.minFontSize,
+      measureWidth: (candidate) => this._measureTextWidth(singleLineText, {
+        ...style,
+        fontSize: candidate
+      })
+    })
+    const updateOptions = this._createSingleLineUpdateOptions(
+      singleLineText,
+      baseline,
+      fontSize
+    )
+    const updatedText = this.update(text, updateOptions, {
+      select: options.select === true,
+      preserveLayoutBaseline: true
+    })
+
+    this._context.eventBus.emit('text:replaced', {
+      text: updatedText,
+      content: singleLineText,
+      layout: { ...layout, appliedFontSize: fontSize }
+    })
+    return updatedText
+  }
+
+  /**
+   * 清理主动换行并强制使用竖排方向替换文字。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @param {string | number} content 新文本内容。
+   * @param {Object} layout 显示策略。
+   * @param {{ select?: boolean }} options 替换配置。
+   * @returns {LeaferText} 更新后的文本节点。
+   */
+  _replaceVertical(text, content, layout, options) {
+    const baseline = this._captureTextLayoutBaseline(text)
+    const verticalText = normalizeSingleLineText(content)
+    const updateOptions = {
+      text: verticalText,
+      fontSize: baseline.fontSize,
+      writingMode: 'y',
+      textWrap: 'none',
+      textOverflow: 'show'
+    }
+    if (baseline.lineHeight) {
+      updateOptions.lineHeight = baseline.lineHeight
+    }
+    const updatedText = this.update(text, updateOptions, {
+      select: options.select === true,
+      preserveLayoutBaseline: true
+    })
+
+    this._context.eventBus.emit('text:replaced', {
+      text: updatedText,
+      content: verticalText,
+      layout: { ...layout }
+    })
+    return updatedText
+  }
+
+  /**
+   * 生成单行替换所需的渲染属性。
+   *
+   * @private
+   * @param {string} content 单行文字。
+   * @param {Object} baseline 模板基准样式。
+   * @param {number} fontSize 应用字号。
+   * @returns {Object} 文本更新属性。
+   */
+  _createSingleLineUpdateOptions(content, baseline, fontSize) {
+    const options = {
+      text: content,
+      width: baseline.width,
+      fontSize,
+      writingMode: 'x',
+      textWrap: 'none',
+      textOverflow: 'show'
+    }
+
+    if (baseline.lineHeight) {
+      options.lineHeight = this._roundPixel(
+        baseline.lineHeight * fontSize / baseline.fontSize
+      )
+    }
+
+    return options
+  }
+
+  /**
+   * 获取元素显式配置的文本显示策略。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @returns {Object} 原始 textLayout 属性。
+   */
+  _getConfiguredTextLayout(text) {
+    return getElementDataContainer(text)?.attributes?.textLayout ?? {}
+  }
+
+  /**
+   * 保存模板初始宽度、字号和行高，防止连续输入后累计缩小。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @returns {{ width: number, fontSize: number, lineHeight: number | null }} 模板基准。
+   */
+  _captureTextLayoutBaseline(text) {
+    const existing = text?.[TEXT_LAYOUT_BASELINE_KEY]
+    if (existing && [existing.width, existing.fontSize].every(this._isPositiveNumber)) {
+      return existing
+    }
+
+    const geometry = this._captureInitialTextGeometry(text)
+    const style = this.getStyle(text) ?? {}
+    const baseline = {
+      width: this._positiveNumber(geometry?.width ?? style.width, 1),
+      fontSize: this._positiveNumber(style.fontSize, 12),
+      lineHeight: this._nullablePositiveNumber(style.lineHeight)
+    }
+
+    text[TEXT_LAYOUT_BASELINE_KEY] = baseline
+    return baseline
+  }
+
+  /** @private @param {*} value 输入值。 @returns {boolean} 是否为正数。 */
+  _isPositiveNumber(value) {
+    return Number.isFinite(Number(value)) && Number(value) > 0
+  }
+
+  /** @private @param {*} value 输入值。 @param {number} fallback 默认值。 @returns {number} 正数。 */
+  _positiveNumber(value, fallback) {
+    return this._isPositiveNumber(value) ? Number(value) : fallback
+  }
+
+  /** @private @param {*} value 输入值。 @returns {number | null} 正数或 null。 */
+  _nullablePositiveNumber(value) {
+    return this._isPositiveNumber(value) ? Number(value) : null
+  }
+
+  /** @private @param {number} value 像素值。 @returns {number} 两位小数像素值。 */
+  _roundPixel(value) {
+    return Number(Number(value).toFixed(2))
   }
 
   /**
@@ -659,6 +894,11 @@ export class TextPlugin {
     void loadFontFace(options.fontFamily ?? text.fontFamily, options.fontUrl)
       .then(() => {
         if (!this._isUsableText(text)) {
+          return
+        }
+
+        if (normalizeTextLayout(this._getConfiguredTextLayout(text)).mode !== 'wrap') {
+          this.replaceWithLayout(text, this._getRawText(text))
           return
         }
 

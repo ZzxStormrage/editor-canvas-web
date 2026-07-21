@@ -26,7 +26,11 @@
       @end="editor.endLayerDrag"
     >
       <template #item="{ element }">
-        <div class="layer-entry" role="listitem">
+        <div
+          :ref="(elementRef) => setLayerEntryRef(element.elementId, elementRef)"
+          class="layer-entry"
+          role="listitem"
+        >
           <div
             class="layer-item"
             :class="{
@@ -54,6 +58,13 @@
               >
                 {{ getImageRoleLabel(element.imageRole) }}
               </span>
+              <span
+                v-if="element.textLayoutMode"
+                class="layer-text-layout-badge"
+                :class="`layer-text-layout-badge--${element.textLayoutMode}`"
+              >
+                {{ getTextLayoutLabel(element.textLayoutMode) }}
+              </span>
             </div>
             <LayerActionButtons
               :layer="element"
@@ -66,7 +77,10 @@
             />
           </div>
 
-          <transition name="layer-attribute-expand">
+          <transition
+            name="layer-attribute-expand"
+            @after-enter="scrollLayerIntoView(element.elementId)"
+          >
             <ElementAttributesEditor
               v-if="editingElementId === element.elementId"
               :editor="editor"
@@ -83,12 +97,17 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import ElementAttributesEditor from '../layers/ElementAttributesEditor.vue';
 import LayerActionButtons from '../layers/LayerActionButtons.vue';
 import LayerPreview from '../layers/LayerPreview.vue';
 import { getImageRoleLabel } from '../layers/layerDisplay.js';
+
+const TEXT_LAYOUT_LABELS = Object.freeze({
+  'single-line': '单行适配',
+  vertical: '竖行'
+});
 
 const props = defineProps({
   editor: {
@@ -98,10 +117,22 @@ const props = defineProps({
 });
 
 const editingElementId = ref(null);
+const layerEntryRefs = new Map();
+
+/**
+ * 获取文字显示策略的图层标记。
+ *
+ * @param {string} mode 文字显示策略。
+ * @returns {string} 图层标记文字。
+ */
+function getTextLayoutLabel(mode) {
+  return TEXT_LAYOUT_LABELS[mode] ?? '';
+}
 
 function openAttributeEditor(layer) {
   props.editor.selectLayer(layer.id);
   editingElementId.value = layer.elementId;
+  void nextTick(() => scrollLayerIntoView(layer.elementId));
 }
 
 function toggleAttributeEditor(layer) {
@@ -115,6 +146,51 @@ function toggleAttributeEditor(layer) {
 function closeAttributeEditor() {
   editingElementId.value = null;
 }
+
+/**
+ * 保存图层列表项 DOM 引用，用于属性请求到达后定位目标图层。
+ *
+ * @param {string} elementId 元素 ID。
+ * @param {HTMLElement | null} element 图层列表项。
+ * @returns {void}
+ */
+function setLayerEntryRef(elementId, element) {
+  if (element) layerEntryRefs.set(elementId, element);
+  else layerEntryRefs.delete(elementId);
+}
+
+/**
+ * 将目标图层及展开后的属性区域滚动到可视范围。
+ *
+ * @param {string} elementId 元素 ID。
+ * @returns {void}
+ */
+function scrollLayerIntoView(elementId) {
+  layerEntryRefs.get(elementId)?.scrollIntoView?.({ block: 'nearest' });
+}
+
+/**
+ * 响应悬浮工具栏发出的属性面板请求。
+ *
+ * @param {{ requestId: number, elementId: string } | null} request 属性请求。
+ * @param {Object[]} layers 当前图层列表。
+ * @returns {void}
+ */
+function handleAttributeEditorRequest(request, layers) {
+  if (!request) return;
+
+  const layer = layers.find((item) => item.elementId === request.elementId);
+  if (!layer || (layer.type !== 'text' && layer.type !== 'image')) return;
+
+  openAttributeEditor(layer);
+  props.editor.clearElementAttributesRequest(request.requestId);
+}
+
+watch(
+  [() => props.editor.attributeEditorRequest.value, () => props.editor.layers.value],
+  ([request, layers]) => handleAttributeEditorRequest(request, layers),
+  { immediate: true }
+);
 
 watch(
   () => props.editor.layers.value,

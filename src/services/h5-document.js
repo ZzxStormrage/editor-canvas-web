@@ -68,14 +68,16 @@ async function serializeH5Element(editor, artboardBounds, item) {
   const { element, nested, opacity } = item;
   const data = element.toJSON?.() ?? {};
   const transform = nested ? resolveFlattenedTransform(element, editor.contentLayer) : data;
+  const imageSource = editor.image?.getSource?.(element) ?? data.url;
   const imageFit = editor.image?.getFit?.(element);
 
   delete data.children;
+  if (imageSource) delete data.fill;
 
   return {
     ...data,
     ...transform,
-    url: await normalizeImageUrl(data.url),
+    url: await normalizeImageUrl(imageSource),
     x: Number(transform.x ?? element.x ?? 0) - artboardBounds.x,
     y: Number(transform.y ?? element.y ?? 0) - artboardBounds.y,
     opacity,

@@ -56,15 +56,39 @@
         <div class="date-inputs">
           <label>
             <span>年</span>
-            <input v-model="year" inputmode="numeric" maxlength="4" placeholder="1990" />
+            <input
+              :value="year"
+              inputmode="numeric"
+              maxlength="4"
+              placeholder="1990"
+              @compositionstart="handleDateCompositionStart"
+              @compositionend="handleDateCompositionEnd('年', $event)"
+              @input="handleDateInput('年', $event)"
+            />
           </label>
           <label>
             <span>月</span>
-            <input v-model="month" inputmode="numeric" maxlength="2" placeholder="01" />
+            <input
+              :value="month"
+              inputmode="numeric"
+              maxlength="2"
+              placeholder="01"
+              @compositionstart="handleDateCompositionStart"
+              @compositionend="handleDateCompositionEnd('月', $event)"
+              @input="handleDateInput('月', $event)"
+            />
           </label>
           <label>
             <span>日</span>
-            <input v-model="day" inputmode="numeric" maxlength="2" placeholder="01" />
+            <input
+              :value="day"
+              inputmode="numeric"
+              maxlength="2"
+              placeholder="01"
+              @compositionstart="handleDateCompositionStart"
+              @compositionend="handleDateCompositionEnd('日', $event)"
+              @input="handleDateInput('日', $event)"
+            />
           </label>
         </div>
       </div>
@@ -99,6 +123,11 @@ import { useRoute, useRouter } from 'vue-router'
 import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
 import { useH5PageSave } from './composables/useH5PageSave.js'
 import { useH5TemplateDocument } from './composables/useH5TemplateDocument.js'
+import {
+  applyTextInputRules,
+  createH5TextInputController,
+  normalizeTextInputRules
+} from './services/text-input-rules.js'
 
 const type = ref(1)
 const canvasViewportRef = ref(null)
@@ -107,6 +136,9 @@ const router = useRouter()
 const year = ref('')
 const month = ref('')
 const day = ref('')
+const yearRules = ref(normalizeTextInputRules())
+const monthRules = ref(normalizeTextInputRules())
+const dayRules = ref(normalizeTextInputRules())
 const canvasLoaded = ref(false)
 const h5CanvasFitOptions = Object.freeze({
   padding: 8,
@@ -116,10 +148,11 @@ const h5CanvasFitOptions = Object.freeze({
 const h5CanvasLoadOptions = Object.freeze({ interactive: false })
 const h5CanvasZoomLimits = Object.freeze({ minRatio: 1, maxRatio: 2 })
 const dateTextBindings = [
-  { description: '年', value: year },
-  { description: '月', value: month },
-  { description: '日', value: day }
+  { description: '年', value: year, rules: yearRules },
+  { description: '月', value: month, rules: monthRules },
+  { description: '日', value: day, rules: dayRules }
 ]
+const textInputController = createH5TextInputController()
 const animalList = [
   { type: 1, name: '鼠', icon: 'https://xiaoxiang.ele007.com/file/image/animal1.png' },
   { type: 2, name: '牛', icon: 'https://xiaoxiang.ele007.com/file/image/animal2.png' },
@@ -202,11 +235,60 @@ function selectType(item) {
 
 /** @param {{ editor: Object }} payload 文档加载事件。 @returns {void} */
 function handleDocumentLoaded(payload) {
+  syncDateRulesFromDocument(payload.document)
   syncDateValuesFromEditor(payload.editor)
   applySelectedAnimal(payload.editor)
   applyDateTextValues(payload.editor)
   canvasLoaded.value = true
   templateError.value = ''
+}
+
+/**
+ * 从模板读取年月日各自的 H5 输入限制，避免页面写死业务规则。
+ *
+ * @param {Object} document 已加载的统一文档。
+ * @returns {void}
+ */
+function syncDateRulesFromDocument(document) {
+  dateTextBindings.forEach(({ description, rules }) => {
+    const element = flattenElements(document?.elements).find((item) => {
+      return item.attributes?.text?.description === description
+    })
+    rules.value = normalizeTextInputRules(element?.attributes?.textInput)
+  })
+}
+
+/** @param {string} description 文字描述。 @param {Event} event 输入事件。 @returns {void} */
+function handleDateInput(description, event) {
+  const binding = dateTextBindings.find((item) => item.description === description)
+  if (!binding) {
+    return
+  }
+
+  textInputController.handleInput(event, binding.rules.value, (nextValue) => {
+    binding.value.value = nextValue
+  })
+}
+
+/** @param {CompositionEvent} event 输入法组合开始事件。 @returns {void} */
+function handleDateCompositionStart(event) {
+  textInputController.handleCompositionStart(event)
+}
+
+/**
+ * @param {string} description 文字描述。
+ * @param {CompositionEvent} event 输入法组合结束事件。
+ * @returns {void}
+ */
+function handleDateCompositionEnd(description, event) {
+  const binding = dateTextBindings.find((item) => item.description === description)
+  if (!binding) {
+    return
+  }
+
+  textInputController.handleCompositionEnd(event, binding.rules.value, (nextValue) => {
+    binding.value.value = nextValue
+  })
 }
 
 /**
@@ -247,7 +329,7 @@ function applyDateTextValues(editor) {
 
   dateTextBindings.forEach(({ description, value }) => {
     activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
-      activeEditor.replaceText(element, value.value)
+      activeEditor.replaceTextWithRules(element, value.value)
     })
   })
 }
@@ -269,12 +351,21 @@ function syncDateValuesFromEditor(editor) {
     return
   }
 
-  dateTextBindings.forEach(({ description, value }) => {
+  dateTextBindings.forEach(({ description, value, rules }) => {
     const element = editor.getElementsByAttribute('text.description', description)[0]
     if (element) {
-      value.value = String(element.text ?? '')
+      value.value = applyTextInputRules(element.text, rules.value)
     }
   })
+}
+
+/** @param {Object[] | undefined} elements 文档元素。 @returns {Object[]} 展平元素。 */
+function flattenElements(elements) {
+  if (!Array.isArray(elements)) {
+    return []
+  }
+
+  return elements.flatMap((element) => [element, ...flattenElements(element.children)])
 }
 
 watch([year, month, day], () => {

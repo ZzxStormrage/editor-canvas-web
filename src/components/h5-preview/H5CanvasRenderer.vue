@@ -14,7 +14,9 @@
         :aria-label="element.attributes?.text?.description || element.name || '文本输入'"
         :data-description="element.attributes?.text?.description || undefined"
         :style="resolveElementStyle(element)"
-        :wrap="element.attributes?.textInput?.maxCharactersPerLine ? 'hard' : 'soft'"
+        :wrap="resolveTextInputWrap(element)"
+        @compositionstart="handleTextCompositionStart"
+        @compositionend="handleTextCompositionEnd(element, $event)"
         @input="updateTextInput(element, $event)"
       />
       <div
@@ -44,14 +46,16 @@
 <script setup>
 import { reactive, watch } from 'vue';
 
-import { loadDocumentFonts } from '../../canvas-editor-core/src/index.js';
+import { loadDocumentFonts } from '../../canvas-editor-core/src/utils/font.js';
 import { resolveH5ElementType } from '../../services/h5-document.js';
+import { createH5TextInputController } from '../../views/h5-page/services/text-input-rules.js';
 
 const props = defineProps({
   document: { type: Object, required: true }
 });
 
 const inputValues = reactive({});
+const textInputController = createH5TextInputController();
 
 watch(
   () => props.document,
@@ -111,7 +115,9 @@ function resolveElementStyle(element) {
     lineHeight: element.lineHeight ? String(Number(element.lineHeight) / Number(element.fontSize || 16)) : undefined,
     textAlign: element.textAlign,
     textDecoration: resolveTextDecoration(element.textDecoration),
-    writingMode: element.writingMode === 'y' ? 'vertical-rl' : undefined,
+    writingMode: isSingleVerticalLine(element) || element.writingMode === 'y' ? 'vertical-rl' : undefined,
+    whiteSpace: isSingleVerticalLine(element) ? 'pre' : undefined,
+    overflowWrap: isSingleVerticalLine(element) ? 'normal' : undefined,
     objectFit: resolveH5ElementType(element) === 'image' ? element.objectFit ?? 'fill' : undefined,
     objectPosition: resolveH5ElementType(element) === 'image'
       ? element.objectPosition ?? 'center center'
@@ -119,65 +125,46 @@ function resolveElementStyle(element) {
   };
 }
 
+/**
+ * 获取 H5 文本输入框的换行策略。
+ *
+ * @param {Object} element 文本元素。
+ * @returns {'off' | 'hard' | 'soft'} textarea 换行模式。
+ */
+function resolveTextInputWrap(element) {
+  if (isSingleVerticalLine(element)) return 'off'
+  return element.attributes?.textInput?.maxCharactersPerLine ? 'hard' : 'soft'
+}
+
+/**
+ * 判断元素是否启用了 H5 单列竖行约束。
+ *
+ * @param {Object} element 文本元素。
+ * @returns {boolean} 是否强制单列竖行。
+ */
+function isSingleVerticalLine(element) {
+  return element.attributes?.textInput?.enabled === true
+    && element.attributes.textInput.singleVerticalLine === true
+}
+
 function updateTextInput(element, event) {
-  const rules = element.attributes.textInput;
-  const nextValue = applyTextRules(event.target.value, rules);
-  inputValues[element.elementId] = nextValue;
-  event.target.value = nextValue;
+  textInputController.handleInput(event, element.attributes.textInput, (nextValue) => {
+    if (inputValues[element.elementId] !== nextValue) {
+      inputValues[element.elementId] = nextValue;
+    }
+  });
 }
 
-function applyTextRules(value, rules) {
-  let result = String(value ?? '');
-
-  if (!rules.allowManualNewline) result = result.replaceAll(/\r?\n/g, '');
-  if (rules.characterSet === 'latin') result = result.replaceAll(/[^\x20-\x7E\r\n]/g, '');
-  if (!rules.allowSymbols) result = result.replaceAll(/[^\p{L}\p{N}\s]/gu, '');
-  if (rules.maxCharacters) result = truncateByWeightedLength(result, rules.maxCharacters);
-  if (rules.maxCharactersPerLine) result = wrapByWeightedLength(result, rules.maxCharactersPerLine);
-  if (rules.maxLines) result = result.split(/\r?\n/).slice(0, rules.maxLines).join('\n');
-
-  return result;
+function handleTextCompositionStart(event) {
+  textInputController.handleCompositionStart(event);
 }
 
-function truncateByWeightedLength(value, maxLength) {
-  let length = 0;
-  let result = '';
-
-  for (const character of value) {
-    const characterLength = getWeightedCharacterLength(character);
-    if (length + characterLength > maxLength) break;
-    length += characterLength;
-    result += character;
-  }
-  return result;
-}
-
-function wrapByWeightedLength(value, maxLength) {
-  return value
-    .split(/\r?\n/)
-    .flatMap((line) => {
-      const lines = [];
-      let current = '';
-      let length = 0;
-
-      for (const character of line) {
-        const characterLength = getWeightedCharacterLength(character);
-        if (current && length + characterLength > maxLength) {
-          lines.push(current);
-          current = '';
-          length = 0;
-        }
-        current += character;
-        length += characterLength;
-      }
-      lines.push(current);
-      return lines;
-    })
-    .join('\n');
-}
-
-function getWeightedCharacterLength(character) {
-  return character.codePointAt(0) <= 0xff ? 1 : 2;
+function handleTextCompositionEnd(element, event) {
+  textInputController.handleCompositionEnd(event, element.attributes.textInput, (nextValue) => {
+    if (inputValues[element.elementId] !== nextValue) {
+      inputValues[element.elementId] = nextValue;
+    }
+  });
 }
 
 function estimateTextHeight(element) {

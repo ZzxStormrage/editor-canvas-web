@@ -18,6 +18,7 @@ import {
 const ORIGINAL_WIDTH_KEY = '__canvasEditorOriginalWidth';
 const ORIGINAL_HEIGHT_KEY = '__canvasEditorOriginalHeight';
 const IMAGE_FIT_KEY = '__canvasEditorImageFit';
+const IMAGE_SOURCE_URL_KEY = '__canvasEditorImageSourceUrl';
 
 /**
  * 图片插件 —— 全部基于 leafer-ui 原生 API。
@@ -107,6 +108,7 @@ export class ImagePlugin {
       image[ORIGINAL_WIDTH_KEY] = imageSize.width;
       image[ORIGINAL_HEIGHT_KEY] = imageSize.height;
       image[IMAGE_FIT_KEY] = 'stretch';
+      image[IMAGE_SOURCE_URL_KEY] = imageSource.url;
       getElementDataContainer(image, true);
       contentLayer.add(image);
       if (imageSource.ownedObjectUrl) {
@@ -163,13 +165,14 @@ export class ImagePlugin {
   }
 
   /**
-   * 替换当前严格单选图片的资源，并保留节点外框、位置和全部变换属性。
+   * 替换当前严格单选图片的资源。
    *
    * 默认使用 contain 在原外框内等比缩放并水平、垂直居中。资源会先完成加载，
    * 再一次性写入节点，避免先显示原始尺寸造成闪烁。
    *
    * @param {string | File | Blob} source 新图片 URL、File 或 Blob。
-   * @param {{ fit?: 'contain' | 'cover' | 'stretch' }} [options={}] 替换配置。
+   * @param {{ fit?: 'contain' | 'cover' | 'stretch', preserveFrame?: boolean }} [options={}]
+   * 替换配置。
    * @returns {Promise<LeaferImage>} 已替换资源的原图片节点。
    * @throws {EditorError} 当未单选图片、图片已锁定或资源加载失败时抛出。
    */
@@ -180,11 +183,12 @@ export class ImagePlugin {
   }
 
   /**
-   * 替换指定图片节点的资源，并保留节点外框、位置、层级和变换属性。
+   * 替换指定图片节点的资源，并保留节点层级和业务属性。
    *
    * @param {LeaferImage} target 指定图片节点。
    * @param {string | File | Blob} source 新图片 URL、File 或 Blob。
-   * @param {{ fit?: 'contain' | 'cover' | 'stretch', allowLocked?: boolean }} [options={}]
+   * @param {{ fit?: 'contain' | 'cover' | 'stretch', allowLocked?: boolean,
+   * preserveFrame?: boolean }} [options={}]
    * 替换配置。
    * @returns {Promise<LeaferImage>} 已替换资源的原图片节点。
    * @throws {EditorError} 当目标不是图片、图片已锁定或资源加载失败时抛出。
@@ -202,9 +206,15 @@ export class ImagePlugin {
     try {
       imageSource = await this._normalizeSource(source);
       const imageSize = await this._loadImageSize(imageSource.url);
-      const previousUrl = image.url;
+      const previousUrl = this.getSource(image);
 
-      this._applyReplacement(image, imageSource.url, imageSize, replacementOptions.fit);
+      this._applyReplacement(
+        image,
+        imageSource.url,
+        imageSize,
+        replacementOptions.fit,
+        replacementOptions.preserveFrame
+      );
       this._commitObjectUrlReplacement(previousUrl, imageSource);
       this._notifyImageReplaced(image, replacementOptions.fit);
       return image;
@@ -229,17 +239,34 @@ export class ImagePlugin {
       return null;
     }
 
-    if (target[IMAGE_FIT_KEY]) {
-      return target[IMAGE_FIT_KEY];
+    const inputFill = target.__?.__input?.fill;
+    const imagePaint = Array.isArray(inputFill) ? inputFill[0] : inputFill;
+    if (imagePaint?.url) {
+      if (imagePaint.mode === 'fit') {
+        return 'contain';
+      }
+
+      return imagePaint.mode === 'cover' ? 'cover' : 'stretch';
+    }
+
+    return target[IMAGE_FIT_KEY] ?? 'stretch';
+  }
+
+  /**
+   * 获取图片节点当前资源 URL。
+   *
+   * @param {Object} target 图片节点。
+   * @returns {string | null} 图片 URL；非图片或未配置时返回 null。
+   */
+  getSource(target) {
+    if (!(target instanceof LeaferImage)) {
+      return null;
     }
 
     const inputFill = target.__?.__input?.fill;
     const imagePaint = Array.isArray(inputFill) ? inputFill[0] : inputFill;
-    if (imagePaint?.mode === 'fit') {
-      return 'contain';
-    }
-
-    return imagePaint?.mode === 'cover' ? 'cover' : 'stretch';
+    const source = target.url ?? imagePaint?.url ?? target[IMAGE_SOURCE_URL_KEY];
+    return typeof source === 'string' && source ? source : null;
   }
 
   /**
@@ -256,20 +283,18 @@ export class ImagePlugin {
     }
 
     const fit = normalizeImageReplacementFit(source.objectFit === 'fill' ? 'stretch' : source.objectFit ?? 'stretch');
-    const url = source.url ?? target.url;
+    const url = source.url ?? this.getSource(target);
 
-    target.set?.({
+    this._setImageResourceAndFit(
+      target,
       url,
-      fill: {
-        type: 'image',
-        mode: toLeaferImageMode(fit),
-        align: this._resolveDocumentImageAlign(source.objectPosition),
-        url
-      }
-    });
+      fit,
+      this._resolveDocumentImageAlign(source.objectPosition)
+    );
     target[ORIGINAL_WIDTH_KEY] = Number(source.sourceWidth ?? resource?.width ?? target.width ?? 0);
     target[ORIGINAL_HEIGHT_KEY] = Number(source.sourceHeight ?? resource?.height ?? target.height ?? 0);
     target[IMAGE_FIT_KEY] = fit;
+    target[IMAGE_SOURCE_URL_KEY] = url;
     return target;
   }
 
@@ -436,7 +461,8 @@ export class ImagePlugin {
    *
    * @private
    * @param {Object} options 替换配置。
-   * @returns {{ fit: 'contain' | 'cover' | 'stretch', allowLocked: boolean }} 标准配置。
+   * @returns {{ fit: 'contain' | 'cover' | 'stretch', allowLocked: boolean,
+   * preserveFrame: boolean }} 标准配置。
    */
   _normalizeReplacementOptions(options) {
     if (!options || typeof options !== 'object' || Array.isArray(options)) {
@@ -453,9 +479,17 @@ export class ImagePlugin {
       );
     }
 
+    if (options.preserveFrame !== undefined && typeof options.preserveFrame !== 'boolean') {
+      throw new EditorError(
+        'Image replacement preserveFrame must be a boolean.',
+        'IMAGE_REPLACEMENT_PRESERVE_FRAME_INVALID'
+      );
+    }
+
     return {
       fit: normalizeImageReplacementFit(options.fit),
-      allowLocked: options.allowLocked === true
+      allowLocked: options.allowLocked === true,
+      preserveFrame: options.preserveFrame !== false
     };
   }
 
@@ -483,25 +517,22 @@ export class ImagePlugin {
   }
 
   /**
-   * 一次性替换图片资源和填充模式，不改变节点几何属性。
+   * 一次性替换图片资源、填充模式和可选节点几何。
    *
    * @private
    * @param {LeaferImage} image 图片节点。
    * @param {string} url 已加载的新图片 URL。
    * @param {{ width: number, height: number }} imageSize 新图片原始尺寸。
    * @param {'contain' | 'cover' | 'stretch'} fit 适配方式。
+   * @param {boolean} preserveFrame 是否保持原节点外框。
    * @returns {void}
    */
-  _applyReplacement(image, url, imageSize, fit) {
-    image.set?.({
-      url,
-      fill: {
-        type: 'image',
-        mode: toLeaferImageMode(fit),
-        align: 'center',
-        url
-      }
-    });
+  _applyReplacement(image, url, imageSize, fit, preserveFrame) {
+    if (!preserveFrame) {
+      this._resizeReplacementToFrame(image, imageSize);
+    }
+
+    this._setImageResourceAndFit(image, url, fit, 'center');
     image[ORIGINAL_WIDTH_KEY] = imageSize.width;
     image[ORIGINAL_HEIGHT_KEY] = imageSize.height;
     image[IMAGE_FIT_KEY] = fit;
@@ -510,6 +541,76 @@ export class ImagePlugin {
     this._context.innerEditor?.update?.();
     this._context.innerEditor?.updateEditBox?.();
     this._context.artboard?.syncAllElements?.();
+  }
+
+  /**
+   * 更新资源和适配模式，避免 Leafer URL 处理将 fill 强制重置为 stretch。
+   *
+   * @private
+   * @param {LeaferImage} image 图片节点。
+   * @param {string} url 图片 URL。
+   * @param {'contain' | 'cover' | 'stretch'} fit 适配方式。
+   * @param {string} align Leafer 对齐方式。
+   * @returns {void}
+   */
+  _setImageResourceAndFit(image, url, fit, align) {
+    // Image.url 是 stretch 快捷属性，固定外框的 contain/cover 必须由 fill 渲染。
+    image.set?.({ url: undefined });
+    image.set?.({
+      fill: {
+        type: 'image',
+        mode: toLeaferImageMode(fit),
+        align,
+        url
+      }
+    });
+    image[IMAGE_SOURCE_URL_KEY] = url;
+  }
+
+  /**
+   * 以原选框为最大范围计算新尺寸，保留原缩放和世界中心。
+   *
+   * @private
+   * @param {LeaferImage} image 当前图片节点。
+   * @param {{ width: number, height: number }} imageSize 新图片原始尺寸。
+   * @returns {void}
+   */
+  _resizeReplacementToFrame(image, imageSize) {
+    // 1. 保留变换属性，仅将原节点尺寸作为 contain 的最大范围。
+    const baseWidth = this._getPositiveNumber(image.width ?? image.__?.width, 1);
+    const baseHeight = this._getPositiveNumber(image.height ?? image.__?.height, 1);
+    const worldCenter = this._getImageWorldCenter(image);
+
+    // 2. 按新图原始比例完整放入原范围，不改动 scaleX/scaleY。
+    const fitScale = Math.min(
+      baseWidth / imageSize.width,
+      baseHeight / imageSize.height
+    );
+    image.set({
+      width: imageSize.width * fitScale,
+      height: imageSize.height * fitScale,
+      lockRatio: true
+    });
+
+    // 3. 尺寸更新后只补偿位置，确保世界中心不漂移。
+    const nextCenter = this._getImageWorldCenter(image);
+    image.moveWorld(worldCenter.x - nextCenter.x, worldCenter.y - nextCenter.y);
+  }
+
+  /**
+   * 获取图片选框的世界坐标中心。
+   *
+   * @private
+   * @param {LeaferImage} image 图片节点。
+   * @returns {{ x: number, y: number }} 世界中心坐标。
+   */
+  _getImageWorldCenter(image) {
+    image.updateLayout?.();
+    const bounds = image.boxBounds;
+    return image.getWorldPoint({
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2
+    });
   }
 
   /**

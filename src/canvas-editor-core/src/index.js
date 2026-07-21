@@ -18,6 +18,18 @@ export {
 export { DocumentPlugin } from './plugins/feature-plugins/document/document-plugin.js';
 export { EDITOR_DOCUMENT_VERSION, parseEditorDocument } from './utils/editor-document.js';
 export { loadDocumentFonts, loadFontFace } from './utils/font.js';
+export {
+  DEFAULT_TEXT_LAYOUT,
+  normalizeSingleLineText,
+  normalizeTextLayout,
+  resolveSingleLineFontSize
+} from './utils/text-layout.js';
+export {
+  applyTextInputRules,
+  DEFAULT_TEXT_INPUT_RULES,
+  normalizeTextInputRules,
+  supportsMultilineInput
+} from './utils/text-input-rules.js';
 export { TextPlugin } from './plugins/feature-plugins/text/text-plugin.js';
 export { ImagePlugin } from './plugins/feature-plugins/image/image-plugin.js';
 export { LayerPlugin } from './plugins/feature-plugins/layer/layer-plugin.js';

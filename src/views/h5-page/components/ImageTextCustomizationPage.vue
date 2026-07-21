@@ -73,13 +73,27 @@
           <h2>输入文字</h2>
         </div>
 
-        <input
-          v-model="textValue"
+        <textarea
+          v-if="textInputMultiline"
           class="text-input"
-          type="text"
-          maxlength="100"
+          :value="textValue"
+          rows="3"
           placeholder="自定义输入"
           :disabled="!canvasLoaded || !hasTextTarget"
+          @compositionstart="handleTextCompositionStart"
+          @compositionend="handleTextCompositionEnd"
+          @input="handleTextInput"
+        ></textarea>
+        <input
+          v-else
+          class="text-input"
+          type="text"
+          :value="textValue"
+          placeholder="自定义输入"
+          :disabled="!canvasLoaded || !hasTextTarget"
+          @compositionstart="handleTextCompositionStart"
+          @compositionend="handleTextCompositionEnd"
+          @input="handleTextInput"
         />
       </div>
 
@@ -142,6 +156,11 @@ import CanvasDocumentViewport from './CanvasDocumentViewport.vue'
 import { customerPictureApi } from '../api/customer-picture.js'
 import { useH5PageSave } from '../composables/useH5PageSave.js'
 import { useH5TemplateDocument } from '../composables/useH5TemplateDocument.js'
+import {
+  createH5TextInputController,
+  normalizeTextInputRules,
+  supportsMultilineInput
+} from '../services/text-input-rules.js'
 
 const props = defineProps({
   pageTitle: {
@@ -177,9 +196,11 @@ const imagePreviewUrl = ref('')
 const hasUploadedImage = ref(false)
 const showImagePickerSheet = ref(false)
 const textValue = ref('')
+const textRules = ref(normalizeTextInputRules())
 const hasImageTarget = ref(false)
 const hasTextTarget = ref(false)
 const operationStatus = ref({ type: 'success', text: '' })
+const textInputController = createH5TextInputController()
 const {
   documentData,
   templateLoading,
@@ -220,6 +241,8 @@ const canSubmit = computed(() => {
   return canvasLoaded.value && !templateLoading.value && !imageReplacing.value && !saving.value
 })
 
+const textInputMultiline = computed(() => supportsMultilineInput(textRules.value))
+
 /** @returns {Promise<void>} 根据路由模板 ID 加载 customer 模板。 */
 async function reloadTemplate() {
   resetPageState()
@@ -233,6 +256,7 @@ function resetPageState() {
   hasUploadedImage.value = false
   showImagePickerSheet.value = false
   textValue.value = ''
+  textRules.value = normalizeTextInputRules()
   hasImageTarget.value = false
   hasTextTarget.value = false
   operationStatus.value = { type: 'success', text: '' }
@@ -250,8 +274,9 @@ function handleDocumentLoaded(payload) {
 
   hasImageTarget.value = imageTargets.length > 0
   hasTextTarget.value = textTargets.length > 0
-  imagePreviewUrl.value = String(imageTargets[0]?.url ?? '')
+  imagePreviewUrl.value = String(editor.image?.getSource?.(imageTargets[0]) ?? '')
   textValue.value = String(textTargets[0]?.text ?? '')
+  textRules.value = resolveTextInputRules(payload.document, props.textDescription)
   canvasLoaded.value = true
   templateError.value = ''
 
@@ -373,16 +398,58 @@ async function handleImageChange(event) {
   }
 }
 
-/** @returns {void} 将输入内容同步到所有文本替换节点。 */
-function applyTextValue() {
+/** @param {Event} event 文字输入事件。 @returns {void} */
+function handleTextInput(event) {
+  textInputController.handleInput(event, textRules.value, applyTextValue)
+}
+
+/** @param {string} nextValue 过滤后的文字。 @returns {void} */
+function applyTextValue(nextValue) {
+  textValue.value = nextValue
   const editor = canvasViewportRef.value?.getEditor?.()
   if (!editor || !canvasLoaded.value) {
     return
   }
 
   getTextTargets(editor).forEach((target) => {
-    editor.replaceText(target, textValue.value)
+    if (String(target.text ?? '') !== nextValue) {
+      editor.replaceTextWithRules(target, nextValue)
+    }
   })
+}
+
+/** @param {CompositionEvent} event 输入法组合开始事件。 @returns {void} */
+function handleTextCompositionStart(event) {
+  textInputController.handleCompositionStart(event)
+}
+
+/** @param {CompositionEvent} event 组合输入结束事件。 @returns {void} */
+function handleTextCompositionEnd(event) {
+  textInputController.handleCompositionEnd(event, textRules.value, applyTextValue)
+}
+
+/**
+ * 从统一文档中读取目标文字的 H5 输入规则。
+ *
+ * @param {Object} document 已加载的统一文档。
+ * @param {string} description 文字描述。
+ * @returns {Object} 归一化后的输入规则。
+ */
+function resolveTextInputRules(document, description) {
+  const target = flattenElements(document?.elements).find((element) => {
+    return element.attributes?.text?.description === description
+  })
+
+  return normalizeTextInputRules(target?.attributes?.textInput)
+}
+
+/** @param {Object[]} elements 文档元素。 @returns {Object[]} 递归展平后的元素。 */
+function flattenElements(elements) {
+  if (!Array.isArray(elements)) {
+    return []
+  }
+
+  return elements.flatMap((element) => [element, ...flattenElements(element.children)])
 }
 
 /** @returns {Promise<void>} 生成保存数据并通知小程序。 */
@@ -417,7 +484,6 @@ function createMissingMarkerMessage() {
     : `模板未配置“${props.imageDescription}”标记。`
 }
 
-watch(textValue, applyTextValue)
 watch(
   () => [route.query.templateId, route.query.partnerId],
   () => {
@@ -632,6 +698,14 @@ watch(
   transition:
     border-color 160ms ease-out,
     box-shadow 160ms ease-out;
+}
+
+textarea.text-input {
+  height: auto;
+  min-height: 82px;
+  padding: 9px 11px;
+  line-height: 1.55;
+  resize: vertical;
 }
 
 .text-input::placeholder {

@@ -5,6 +5,11 @@ import { useH5PageSave } from './useH5PageSave.js'
 import { useH5TemplateDocument } from './useH5TemplateDocument.js'
 import { loadAiSubjectBackgroundOptions } from '../services/ai-subject-backgrounds.js'
 import { readRouteImageOptions } from '../services/route-image-options.js'
+import {
+  applyTextInputRules,
+  normalizeTextInputRules,
+  supportsMultilineInput
+} from '../services/text-input-rules.js'
 
 const DEFAULT_IMAGE_TARGET_DESCRIPTIONS = Object.freeze([
   '诗词配图',
@@ -201,19 +206,19 @@ export function usePoetryCustomization(options = {}) {
   async function applyInitialRouteImages(editor) {
     const themeOption = resolveInitialOption(
       aiThemeOptions.value,
-      String(imageTargets.value[0]?.url ?? '')
+      getImageSource(editor, imageTargets.value[0])
     )
     const backgroundOption = resolveInitialOption(
       backgroundOptions.value,
-      String(backgroundTargets.value[0]?.url ?? '')
+      getImageSource(editor, backgroundTargets.value[0])
     )
 
     selectedAiThemeId.value = themeOption?.id ?? ''
     selectedBackgroundId.value = backgroundOption?.id ?? ''
-    imagePreviewUrl.value = themeOption?.url ?? String(imageTargets.value[0]?.url ?? '')
+    imagePreviewUrl.value = themeOption?.url ?? getImageSource(editor, imageTargets.value[0])
 
-    const currentThemeUrl = String(imageTargets.value[0]?.url ?? '')
-    const currentBackgroundUrl = String(backgroundTargets.value[0]?.url ?? '')
+    const currentThemeUrl = getImageSource(editor, imageTargets.value[0])
+    const currentBackgroundUrl = getImageSource(editor, backgroundTargets.value[0])
     const tasks = []
     if (themeOption && imageTargets.value.length > 0 && themeOption.url !== currentThemeUrl) {
       tasks.push(() => replaceImages(editor, themeOption.url))
@@ -341,20 +346,24 @@ export function usePoetryCustomization(options = {}) {
    *
    * @param {string} fieldId 文字字段 ID。
    * @param {string} value 新文字内容。
-   * @returns {void}
+   * @returns {string} 实际写入的文字。
    */
   function updateTextField(fieldId, value) {
     const field = textFields.value.find((item) => item.id === fieldId)
     const editor = getEditor()
 
     if (!field || !editor) {
-      return
+      return String(value ?? '')
     }
 
-    field.value = value
+    const nextValue = applyTextInputRules(value, field.rules)
+    field.value = nextValue
     editor.getElementsByAttribute('text.description', field.description).forEach((element) => {
-      editor.replaceText(element, value)
+      if (String(element.text ?? '') !== nextValue) {
+        editor.replaceTextWithRules(element, nextValue)
+      }
     })
+    return nextValue
   }
 
   /** @returns {Promise<void>} 保存统一 JSON、预览图和打印区域。 */
@@ -440,6 +449,15 @@ function resolveBackgroundTargets(editor) {
 }
 
 /**
+ * @param {Object} editor 编辑器实例。
+ * @param {Object | undefined} target 图片节点。
+ * @returns {string} 图片 URL。
+ */
+function getImageSource(editor, target) {
+  return String(editor.image?.getSource?.(target) ?? '')
+}
+
+/**
  * @param {Object[]} options 路由图片选项。
  * @param {string} currentUrl 模板当前图片地址。
  * @returns {Object | null} 初始选项。
@@ -473,14 +491,14 @@ function createTextFields(editor, labels) {
       return
     }
 
-    const rules = element.attributes?.textInput ?? {}
+    const rules = normalizeTextInputRules(element.attributes?.textInput)
     fields.set(description, {
       id: String(element.elementId ?? description),
       description,
       label: resolveTextLabel(description, labels),
       value: String(element.text ?? ''),
       multiline: resolveMultilineField(description, rules),
-      maxLength: normalizeMaxLength(rules.maxCharacters)
+      rules
     })
   })
 
@@ -508,13 +526,15 @@ function flattenDocumentElements(elements) {
  * @param {string} imageUrl 新图片地址。
  * @param {Object[]} targets 可替换图片节点。
  * @param {'contain' | 'cover'} fit 图片适配方式。
+ * @param {boolean} [preserveFrame=true] 是否保持原节点外框。
  * @returns {Promise<void>} 全部图片替换完成。
  */
-async function replaceImageTargets(editor, imageUrl, targets, fit) {
+async function replaceImageTargets(editor, imageUrl, targets, fit, preserveFrame = true) {
   await Promise.all(
     targets.map((target) => editor.replaceImage(target, imageUrl, {
       fit,
-      allowLocked: true
+      allowLocked: true,
+      preserveFrame
     }))
   )
 }
@@ -531,7 +551,7 @@ function normalizeDescription(value) {
  */
 function resolveMultilineField(description, rules) {
   if (rules.enabled === true) {
-    return Number(rules.maxLines) > 1 || Boolean(rules.allowManualNewline)
+    return supportsMultilineInput(rules)
   }
 
   return /(诗词|正文|内容|文案)/.test(description)
@@ -566,10 +586,4 @@ function normalizeDescriptionList(value) {
     .filter(Boolean)
 
   return descriptions.length ? [...new Set(descriptions)] : [...DEFAULT_IMAGE_TARGET_DESCRIPTIONS]
-}
-
-/** @param {*} value 模板字符限制。 @returns {number} 安全的 maxlength。 */
-function normalizeMaxLength(value) {
-  const maxLength = Number(value)
-  return Number.isInteger(maxLength) && maxLength > 0 ? Math.min(maxLength, 5000) : 500
 }

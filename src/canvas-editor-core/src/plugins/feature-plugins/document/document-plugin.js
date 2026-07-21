@@ -197,7 +197,13 @@ export class DocumentPlugin {
       result.y = Number(renderData.y ?? element.y ?? 0) - Number(artboard.y ?? 0);
     }
 
-    const fit = this._context.pluginManager?.get('image')?.getFit?.(element);
+    const imagePlugin = this._context.pluginManager?.get('image');
+    const imageSource = imagePlugin?.getSource?.(element);
+    const fit = imagePlugin?.getFit?.(element);
+    if (imageSource) {
+      result.url = imageSource;
+      delete result.fill;
+    }
     if (fit) {
       result.objectFit = toCssObjectFit(fit);
       result.objectPosition = source.objectPosition ?? 'center center';

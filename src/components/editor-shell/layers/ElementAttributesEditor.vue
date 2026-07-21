@@ -61,40 +61,90 @@
       <transition name="text-rule-reveal">
         <div v-if="textDraft.enabled" class="text-rule-content">
           <div class="text-rule-section">
+            <span class="text-rule-section-title">显示方式</span>
+            <label class="text-rule-toggle">
+              <span>
+                <strong>仅支持竖行</strong>
+                <small>从上往下单列排列，不换到第二列</small>
+              </span>
+              <v-switch
+                v-model="singleVerticalLineModel"
+                color="primary"
+                density="compact"
+                hide-details
+                inset
+              />
+            </label>
+            <v-btn-toggle
+              v-if="!isVerticalLayout"
+              v-model="textDraft.layoutMode"
+              class="text-layout-mode-toggle"
+              color="primary"
+              density="compact"
+              divided
+              mandatory
+              variant="outlined"
+            >
+              <v-btn value="wrap">自动换行</v-btn>
+              <v-btn value="single-line">单行适配</v-btn>
+            </v-btn-toggle>
+            <CompactNumberField
+              v-if="isSingleLineLayout"
+              v-model="textDraft.minFontSize"
+              label="最小字号"
+              :max="500"
+            />
+            <label v-if="!hasFixedTextFlow" class="text-rule-toggle">
+              <span>
+                <strong>允许用户主动换行</strong>
+                <small>允许输入回车；达到单行长度后仍会自动换行</small>
+              </span>
+              <v-switch
+                v-model="manualNewlineModel"
+                color="primary"
+                density="compact"
+                :disabled="hasFixedTextFlow"
+                hide-details
+                inset
+              />
+            </label>
+          </div>
+
+          <div class="text-rule-section">
             <span class="text-rule-section-title">字符规则</span>
             <label class="text-rule-toggle">
               <span>
                 <strong>仅支持英文</strong>
-                <small>允许英文字母、数字和空格</small>
+                <small>{{ englishOnlyHint }}</small>
               </span>
               <v-switch v-model="textDraft.englishOnly" color="primary" density="compact" hide-details inset />
             </label>
             <label class="text-rule-toggle">
               <span>
-                <strong>支持符号和 Emoji</strong>
-                <small>关闭后仅保留文字、数字和空格</small>
+                <strong>{{ symbolRuleLabel }}</strong>
+                <small>{{ symbolRuleHint }}</small>
               </span>
               <v-switch v-model="textDraft.allowSymbols" color="primary" density="compact" hide-details inset />
-            </label>
-            <label class="text-rule-toggle">
-              <span>
-                <strong>允许用户主动换行</strong>
-                <small>达到单行限制时仍会自动换行</small>
-              </span>
-              <v-switch v-model="textDraft.allowManualNewline" color="primary" density="compact" hide-details inset />
             </label>
           </div>
 
           <div class="text-rule-section">
             <span class="text-rule-section-title">长度规则</span>
+            <p class="text-rule-unit-note">中文计 2，英文计 1；限制两个中文时填写 4。</p>
             <div class="text-rule-number-grid">
               <CompactNumberField
+                v-if="showsLineLimits"
                 v-model="textDraft.maxCharactersPerLine"
-                label="单行字符限制（中文计 2，英文计 1）"
+                label="单行长度"
                 :max="200"
               />
-              <CompactNumberField v-model="textDraft.maxCharacters" label="最大字符限制" :max="5000" />
-              <CompactNumberField v-model="textDraft.maxLines" label="最大行数" :max="100" />
+              <CompactNumberField v-model="textDraft.maxCharacters" label="最大内容长度" :max="5000" />
+              <CompactNumberField
+                v-if="showsLineLimits"
+                v-model="textDraft.maxLines"
+                label="最大行数"
+                :max="100"
+              />
             </div>
             <p class="text-rule-summary">{{ textRuleSummary }}</p>
           </div>
@@ -115,17 +165,9 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue'
+import { DEFAULT_TEXT_INPUT_RULES } from '../../../canvas-editor-core/src/utils/text-input-rules.js'
+import { normalizeTextLayout } from '../../../canvas-editor-core/src/utils/text-layout.js'
 import CompactNumberField from './CompactNumberField.vue'
-
-const DEFAULT_TEXT_RULES = Object.freeze({
-  enabled: false,
-  characterSet: 'any',
-  allowManualNewline: true,
-  allowSymbols: true,
-  maxCharactersPerLine: null,
-  maxCharacters: null,
-  maxLines: null
-})
 const IMAGE_ROLE_OPTIONS = Object.freeze([
   { label: '普通图片', value: '' },
   { label: '背景图', value: 'background' },
@@ -149,13 +191,62 @@ const imageDraft = reactive({
   role: IMAGE_ROLE_VALUES.has(attributes.image?.role) ? attributes.image.role : ''
 })
 const textDescription = ref(typeof attributes.text?.description === 'string' ? attributes.text.description : '')
-const textDraft = reactive(createTextDraft(attributes.textInput))
+const textDraft = reactive(createTextDraft(attributes.textInput, attributes.textLayout))
 
 const editorTitle = computed(() => (props.layerType === 'image' ? '图片属性' : '文字属性'))
+const isSingleLineLayout = computed(() => textDraft.layoutMode === 'single-line')
+const isVerticalLayout = computed(() => textDraft.singleVerticalLine)
+const hasFixedTextFlow = computed(() => isSingleLineLayout.value || isVerticalLayout.value)
+const showsLineLimits = computed(() => !isVerticalLayout.value && textDraft.layoutMode === 'wrap')
+const singleVerticalLineModel = computed({
+  get: () => textDraft.singleVerticalLine,
+  set: (value) => {
+    textDraft.singleVerticalLine = Boolean(value)
+    if (value) textDraft.layoutMode = 'wrap'
+  }
+})
+const manualNewlineModel = computed({
+  get: () => (hasFixedTextFlow.value ? false : textDraft.allowManualNewline),
+  set: (value) => {
+    textDraft.allowManualNewline = Boolean(value)
+  }
+})
+const englishOnlyHint = computed(() => {
+  return textDraft.allowSymbols
+    ? '保留英文、数字、空格和英文符号'
+    : '仅保留英文字母、数字和空格'
+})
+const symbolRuleLabel = computed(() => {
+  return textDraft.englishOnly ? '支持英文符号' : '支持符号和 Emoji'
+})
+const symbolRuleHint = computed(() => {
+  return textDraft.englishOnly
+    ? 'Emoji 会被英文限制过滤'
+    : '默认关闭；关闭后仅保留文字、数字和空格'
+})
 const textRuleSummary = computed(() => {
   const perLine = normalizeOptionalInteger(textDraft.maxCharactersPerLine)
   const maxLines = normalizeOptionalInteger(textDraft.maxLines)
-  const maxCharacters = normalizeOptionalInteger(textDraft.maxCharacters)
+  const maxCharacters = normalizeOptionalInteger(
+    textDraft.maxCharacters ?? (isSingleLineLayout.value ? textDraft.maxCharactersPerLine : null)
+  )
+
+  if (isSingleLineLayout.value) {
+    const lengthSummary = maxCharacters
+      ? `最多约 ${Math.floor(maxCharacters / 2)} 个中文或 ${maxCharacters} 个英文。`
+      : '未限制输入长度。'
+    const minFontSummary = normalizeOptionalInteger(textDraft.minFontSize)
+      ? `最小字号 ${textDraft.minFontSize}px`
+      : '最小字号默认为模板字号的 60%'
+
+    return `${lengthSummary}${minFontSummary}，仍放不下时允许超出。`
+  }
+
+  if (isVerticalLayout.value) {
+    return maxCharacters
+      ? `单列竖行，最多约 ${Math.floor(maxCharacters / 2)} 个中文或 ${maxCharacters} 个英文。`
+      : '单列竖行，未限制输入长度。'
+  }
 
   if (perLine && maxLines) {
     const capacity = perLine * maxLines
@@ -199,6 +290,11 @@ function saveAttributes() {
     const textInput = buildTextInputPayload()
     if (!textInput) return
     nextAttributes.textInput = textInput
+
+    const textLayout = buildTextLayoutPayload()
+    if (attributeError.value) return
+    if (textLayout) nextAttributes.textLayout = textLayout
+    else delete nextAttributes.textLayout
   }
 
   props.editor.setElementAttributesById(props.elementId, nextAttributes, { replace: true })
@@ -207,21 +303,45 @@ function saveAttributes() {
 }
 
 function buildTextInputPayload() {
-  const maxCharactersPerLine = validateOptionalInteger(textDraft.maxCharactersPerLine, '单行字符限制', 200)
+  const maxCharactersPerLine = hasFixedTextFlow.value
+    ? null
+    : validateOptionalInteger(textDraft.maxCharactersPerLine, '单行长度', 200)
   if (attributeError.value) return null
-  const maxCharacters = validateOptionalInteger(textDraft.maxCharacters, '最大字符限制', 5000)
+  const maxCharactersSource = textDraft.maxCharacters
+    ?? (isSingleLineLayout.value ? textDraft.maxCharactersPerLine : null)
+  const maxCharacters = validateOptionalInteger(maxCharactersSource, '最大字符限制', 5000)
   if (attributeError.value) return null
-  const maxLines = validateOptionalInteger(textDraft.maxLines, '最大行数', 100)
+  const maxLines = isSingleLineLayout.value
+    ? 1
+    : isVerticalLayout.value
+      ? null
+      : validateOptionalInteger(textDraft.maxLines, '最大行数', 100)
   if (attributeError.value) return null
 
   return {
     enabled: Boolean(textDraft.enabled),
     characterSet: textDraft.englishOnly ? 'latin' : 'any',
-    allowManualNewline: Boolean(textDraft.allowManualNewline),
+    allowManualNewline: hasFixedTextFlow.value ? false : Boolean(textDraft.allowManualNewline),
     allowSymbols: Boolean(textDraft.allowSymbols),
+    singleVerticalLine: Boolean(textDraft.singleVerticalLine),
     maxCharactersPerLine,
     maxCharacters,
     maxLines
+  }
+}
+
+function buildTextLayoutPayload() {
+  if (!isSingleLineLayout.value) {
+    return null
+  }
+
+  const minFontSize = validateOptionalInteger(textDraft.minFontSize, '最小字号', 500)
+  if (attributeError.value) return null
+
+  return {
+    mode: 'single-line',
+    overflow: 'shrink-then-visible',
+    minFontSize
   }
 }
 
@@ -248,15 +368,27 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function createTextDraft(source = {}) {
+function createTextDraft(source = {}, layoutSource = {}) {
+  const layout = normalizeTextLayout(layoutSource)
+  const singleVerticalLine = source.singleVerticalLine === true || layout.mode === 'vertical'
+  const hasExplicitLayoutMode = isPlainObject(layoutSource)
+    && Object.prototype.hasOwnProperty.call(layoutSource, 'mode')
+  const isLegacySingleLine = !hasExplicitLayoutMode
+    && source.allowManualNewline === false
+    && Number(source.maxLines) === 1
+  const layoutMode = isLegacySingleLine || layout.mode === 'single-line' ? 'single-line' : 'wrap'
+
   return {
-    enabled: source.enabled ?? DEFAULT_TEXT_RULES.enabled,
+    enabled: source.enabled ?? DEFAULT_TEXT_INPUT_RULES.enabled,
     englishOnly: source.characterSet === 'latin',
-    allowManualNewline: source.allowManualNewline ?? DEFAULT_TEXT_RULES.allowManualNewline,
-    allowSymbols: source.allowSymbols ?? DEFAULT_TEXT_RULES.allowSymbols,
-    maxCharactersPerLine: source.maxCharactersPerLine ?? DEFAULT_TEXT_RULES.maxCharactersPerLine,
-    maxCharacters: source.maxCharacters ?? DEFAULT_TEXT_RULES.maxCharacters,
-    maxLines: source.maxLines ?? DEFAULT_TEXT_RULES.maxLines
+    allowManualNewline: source.allowManualNewline ?? DEFAULT_TEXT_INPUT_RULES.allowManualNewline,
+    allowSymbols: source.allowSymbols ?? DEFAULT_TEXT_INPUT_RULES.allowSymbols,
+    singleVerticalLine,
+    maxCharactersPerLine: source.maxCharactersPerLine ?? DEFAULT_TEXT_INPUT_RULES.maxCharactersPerLine,
+    maxCharacters: source.maxCharacters ?? DEFAULT_TEXT_INPUT_RULES.maxCharacters,
+    maxLines: source.maxLines ?? DEFAULT_TEXT_INPUT_RULES.maxLines,
+    layoutMode,
+    minFontSize: layout.minFontSize
   }
 }
 </script>

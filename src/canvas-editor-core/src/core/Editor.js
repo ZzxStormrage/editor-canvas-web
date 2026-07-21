@@ -284,10 +284,11 @@ export class Editor {
   }
 
   /**
-   * 替换当前严格单选图片，保留节点外框、位置和变换属性。
+   * 替换当前严格单选图片。
    *
    * @param {string | File | Blob} source 新图片来源。
-   * @param {{ fit?: 'contain' | 'cover' | 'stretch' }} [options={}] 替换配置。
+   * @param {{ fit?: 'contain' | 'cover' | 'stretch', preserveFrame?: boolean }} [options={}]
+   * 替换配置。
    * @returns {Promise<import('leafer-ui').Image> | undefined} 已替换资源的图片节点。
    */
   replaceSelectedImage(source, options = {}) {
@@ -295,11 +296,12 @@ export class Editor {
   }
 
   /**
-   * 替换指定图片节点，保留节点外框、位置、层级和变换属性。
+   * 替换指定图片节点，保留节点层级和业务属性。
    *
    * @param {import('leafer-ui').Image} target 指定图片节点。
    * @param {string | File | Blob} source 新图片来源。
-   * @param {{ fit?: 'contain' | 'cover' | 'stretch', allowLocked?: boolean }} [options={}]
+   * @param {{ fit?: 'contain' | 'cover' | 'stretch', allowLocked?: boolean,
+   * preserveFrame?: boolean }} [options={}]
    * 替换配置。
    * @returns {Promise<import('leafer-ui').Image> | undefined} 已替换资源的图片节点。
    */
@@ -316,6 +318,30 @@ export class Editor {
    */
   replaceText(target, content) {
     return this.text?.replace?.(target, content) ?? null
+  }
+
+  /**
+   * 按元素 textLayout 属性替换指定文本，不改变当前选区。
+   *
+   * @param {import('leafer-ui').Text} target 指定文本节点。
+   * @param {string | number} content 新文本内容。
+   * @param {{ layout?: Object }} [options={}] 可选显示策略覆盖值。
+   * @returns {import('leafer-ui').Text | null} 已替换内容的文本节点。
+   */
+  replaceTextWithLayout(target, content, options = {}) {
+    return this.text?.replaceWithLayout?.(target, content, options) ?? null
+  }
+
+  /**
+   * 按元素 textInput 和 textLayout 属性替换指定文本，不改变当前选区。
+   *
+   * @param {import('leafer-ui').Text} target 指定文本节点。
+   * @param {string | number} content 原始用户输入。
+   * @param {{ rules?: Object, layout?: Object }} [options={}] 可选规则覆盖值。
+   * @returns {import('leafer-ui').Text | null} 已替换内容的文本节点。
+   */
+  replaceTextWithRules(target, content, options = {}) {
+    return this.text?.replaceWithRules?.(target, content, options) ?? null
   }
 
   /**
@@ -697,9 +723,13 @@ export class Editor {
       bounds: null,
       locked: false,
       selectionCount: 0,
+      isImageSelection: false,
+      canEditAttributes: false,
       canGroup: false,
       canUngroup: false,
       disabled: {
+        replace: true,
+        attributes: true,
         duplicate: true,
         delete: true,
         layer: true,

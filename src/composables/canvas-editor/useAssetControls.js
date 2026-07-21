@@ -16,8 +16,11 @@ const WATERMARK_NODE_KEY = '__eleEditorWatermark'
 export function useAssetControls(getEditor, getArtboardBounds, fontFamily, notify = null) {
   const imageInputRef = ref(null)
   const imageUploading = ref(false)
+  const imageReplacementInputRef = ref(null)
+  const imageReplacing = ref(false)
   const watermarkValue = ref('')
   let addingWatermark = false
+  let imageReplacementTarget = null
 
   /** @returns {boolean} 是否正在批量创建水印。 */
   function isAddingWatermark() {
@@ -56,6 +59,58 @@ export function useAssetControls(getEditor, getArtboardBounds, fontFamily, notif
       notify?.(error.message || '图片上传失败。', 'error')
     } finally {
       imageUploading.value = false
+    }
+  }
+
+  /** @returns {void} */
+  function openSelectedImageReplacementPicker() {
+    const editor = getEditor()
+    const selected = editor?.selectedElements ?? []
+
+    if (
+      imageReplacing.value ||
+      selected.length !== 1 ||
+      !editor?.getSelectedImageProperties?.()
+    ) {
+      return
+    }
+
+    imageReplacementTarget = selected[0]
+    imageReplacementInputRef.value?.click()
+  }
+
+  /**
+   * 上传图片并替换打开选择器时选中的图片节点。
+   *
+   * @param {Event} event 文件选择事件。
+   * @returns {Promise<void>}
+   */
+  async function handleSelectedImageReplacementChange(event) {
+    const [file] = event.target.files ?? []
+    const editor = getEditor()
+    const target = imageReplacementTarget
+
+    event.target.value = ''
+    imageReplacementTarget = null
+
+    if (!file || !editor || !target || imageReplacing.value) {
+      return
+    }
+
+    imageReplacing.value = true
+
+    try {
+      const imageUrl = await pictureApi.upload(file)
+      await editor.replaceImage(target, imageUrl, {
+        fit: 'contain',
+        preserveFrame: false
+      })
+      notify?.('图片替换成功', 'success')
+    } catch (error) {
+      console.error('Image replacement failed.', error)
+      notify?.(error.message || '图片替换失败。', 'error')
+    } finally {
+      imageReplacing.value = false
     }
   }
 
@@ -140,10 +195,14 @@ export function useAssetControls(getEditor, getArtboardBounds, fontFamily, notif
   return {
     imageInputRef,
     imageUploading,
+    imageReplacementInputRef,
+    imageReplacing,
     watermarkValue,
     isAddingWatermark,
     openImagePicker,
     handleImageChange,
+    openSelectedImageReplacementPicker,
+    handleSelectedImageReplacementChange,
     addWatermark,
     deleteWatermark
   }

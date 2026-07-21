@@ -33,22 +33,26 @@
           <label>
             <span>姓氏（必填）</span>
             <input
-              v-model.trim="surname"
               type="text"
-              maxlength="2"
+              :value="surname"
               autocomplete="family-name"
               placeholder="请输入姓氏，如：王"
               aria-required="true"
+              @compositionstart="handleNameCompositionStart"
+              @compositionend="handleNameCompositionEnd('姓', $event)"
+              @input="handleNameInput('姓', $event)"
             />
           </label>
           <label>
             <span>名字（选填）</span>
             <input
-              v-model.trim="givenName"
               type="text"
-              maxlength="4"
+              :value="givenName"
               autocomplete="given-name"
               placeholder="请输入名字，如：小明"
+              @compositionstart="handleNameCompositionStart"
+              @compositionend="handleNameCompositionEnd('名', $event)"
+              @input="handleNameInput('名', $event)"
             />
           </label>
         </div>
@@ -89,7 +93,6 @@
           </button>
         </div>
 
-        <button class="advanced-edit" type="button" @click="onAdvancedEdit">高级编辑</button>
       </div>
     </section>
 
@@ -123,6 +126,12 @@ import { loadFontFace } from '../../canvas-editor-core/src/index.js'
 import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
 import { useH5PageSave } from './composables/useH5PageSave.js'
 import { useH5TemplateDocument } from './composables/useH5TemplateDocument.js'
+import {
+  applyTextInputRules,
+  createH5TextInputController,
+  DEFAULT_TEXT_INPUT_RULES,
+  normalizeTextInputRules
+} from './services/text-input-rules.js'
 
 const FONT_STYLE_MOCKS = [
   {
@@ -150,11 +159,27 @@ const FONT_STYLE_MOCKS = [
     fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202301/3e6dc58b785d499e9c5545344f3917f2.ttf'
   }
 ]
+const DEFAULT_NAME_INPUT_RULES = Object.freeze({
+  ...DEFAULT_TEXT_INPUT_RULES,
+  enabled: true,
+  allowManualNewline: false,
+  maxLines: 1
+})
+const DEFAULT_SURNAME_INPUT_RULES = Object.freeze({
+  ...DEFAULT_NAME_INPUT_RULES,
+  maxCharacters: 4
+})
+const DEFAULT_GIVEN_NAME_INPUT_RULES = Object.freeze({
+  ...DEFAULT_NAME_INPUT_RULES,
+  maxCharacters: 8
+})
 const canvasViewportRef = ref(null)
 const route = useRoute()
 const router = useRouter()
 const surname = ref('')
 const givenName = ref('')
+const surnameRules = ref(normalizeTextInputRules(DEFAULT_SURNAME_INPUT_RULES))
+const givenNameRules = ref(normalizeTextInputRules(DEFAULT_GIVEN_NAME_INPUT_RULES))
 const fontStyles = ref([])
 const selectedFontId = ref(null)
 const fontStylesLoading = ref(false)
@@ -162,11 +187,11 @@ const fontStylesError = ref('')
 const fontReplacing = ref(false)
 const fontReplaceError = ref('')
 const canvasLoaded = ref(false)
-const nameTextInitialGeometry = new WeakMap()
 const nameTextBindings = [
-  { description: '姓', value: surname },
-  { description: '名', value: givenName }
+  { description: '姓', value: surname, rules: surnameRules },
+  { description: '名', value: givenName, rules: givenNameRules }
 ]
+const textInputController = createH5TextInputController()
 
 const {
   documentData,
@@ -223,14 +248,9 @@ async function loadFontStyles() {
     fontStyles.value = await fetchFontStyles()
     void Promise.allSettled(fontStyles.value.map((style) => loadFontFace(style.fontName, style.fontUrl))).then(() => {
       const editor = getCanvasEditor()
-      if (!editor) {
-        return
+      if (editor) {
+        applyNameTextValues(editor)
       }
-
-      initializeNameTextCenters(editor)
-      nameTextBindings.forEach(({ description }) => {
-        editor.getElementsByAttribute('text.description', description).forEach(restoreNameTextCenter)
-      })
     })
     syncSelectedFontFromEditor()
   } catch (error) {
@@ -243,7 +263,7 @@ async function loadFontStyles() {
 
 /** @param {{ editor: Object }} payload 文档加载事件。 @returns {void} */
 function handleDocumentLoaded(payload) {
-  initializeNameTextCenters(payload.editor)
+  syncNameRulesFromDocument(payload.document)
   syncNameValuesFromEditor(payload.editor)
   syncSelectedFontFromEditor(payload.editor)
   applyNameTextValues(payload.editor)
@@ -259,178 +279,63 @@ function handleCanvasError(error) {
 
 /** @param {Object} editor 核心编辑器实例。 @returns {void} */
 function syncNameValuesFromEditor(editor) {
-  nameTextBindings.forEach(({ description, value }) => {
+  nameTextBindings.forEach(({ description, value, rules }) => {
     const element = editor.getElementsByAttribute('text.description', description)[0]
     if (element) {
-      value.value = String(element.text ?? '')
+      value.value = applyTextInputRules(element.text, rules.value)
     }
   })
 }
 
-/**
- * Record the initial center of the surname and given-name text nodes.
- *
- * The first document coordinates are kept for the lifetime of each node so
- * text and font changes can resize around the same center.
- *
- * @param {Object | null} editor Canvas editor instance.
- * @returns {void}
- */
-function initializeNameTextCenters(editor) {
-  if (!editor) {
-    return
-  }
-
-  nameTextBindings.forEach(({ description }) => {
-    editor.getElementsByAttribute('text.description', description).forEach((element) => {
-      if (nameTextInitialGeometry.has(element)) {
-        return
-      }
-
-      const existingGeometry = element.__canvasEditorInitialTextGeometry
-      if (isTextGeometry(existingGeometry)) {
-        nameTextInitialGeometry.set(element, existingGeometry)
-        logNameTextGeometry('首次加载', description, element)
-        return
-      }
-
-      const existingCenter = element.__canvasEditorVerticalFontCenter
-      if ([existingCenter?.x, existingCenter?.y].every(Number.isFinite)) {
-        const x = Number(element.x ?? element.__?.x)
-        const y = Number(element.y ?? element.__?.y)
-        const width = Number(element.width ?? element.__?.width)
-        const height = Number(element.height ?? element.__?.height)
-        if ([x, y, width, height].every(Number.isFinite)) {
-          nameTextInitialGeometry.set(element, {
-            x,
-            y,
-            width,
-            height,
-            center: { x: existingCenter.x, y: existingCenter.y }
-          })
-        }
-        logNameTextGeometry('首次加载', description, element)
-        return
-      }
-
-      const x = Number(element.x ?? element.__?.x)
-      const y = Number(element.y ?? element.__?.y)
-      const width = Number(element.width ?? element.__?.width)
-      const height = Number(element.height ?? element.__?.height)
-
-      if (![x, y, width, height].every(Number.isFinite)) {
-        return
-      }
-
-      const geometry = {
-        x,
-        y,
-        width,
-        height,
-        center: {
-          x: x + width / 2,
-          y: y + height / 2
-        }
-      }
-
-      nameTextInitialGeometry.set(element, geometry)
-      // Keep the same initial bounds for the text plugin's asynchronous font refresh.
-      element.__canvasEditorInitialTextGeometry = geometry
-      element.__canvasEditorVerticalFontCenter = geometry.center
-      logNameTextGeometry('首次加载', description, element)
+/** @param {Object} document 统一文档。 @returns {void} */
+function syncNameRulesFromDocument(document) {
+  nameTextBindings.forEach(({ description, rules }) => {
+    const element = flattenElements(document?.elements).find((item) => {
+      return item.attributes?.text?.description === description
     })
+    const fallback = description === '姓'
+      ? DEFAULT_SURNAME_INPUT_RULES
+      : DEFAULT_GIVEN_NAME_INPUT_RULES
+    rules.value = normalizeTextInputRules(element?.attributes?.textInput ?? fallback)
   })
 }
 
-/**
- * Print the current text coordinates and both current/initial centers.
- *
- * @param {string} stage Log stage.
- * @param {string} description Text description.
- * @param {Object | null} element Text node.
- * @param {Object} [details={}] Additional operation details.
- * @returns {void}
- */
-function logNameTextGeometry(stage, description, element, details = {}) {
-  const x = Number(element?.x ?? element?.__?.x)
-  const y = Number(element?.y ?? element?.__?.y)
-  const width = Number(element?.width ?? element?.__?.width)
-  const height = Number(element?.height ?? element?.__?.height)
-  const initialGeometry = nameTextInitialGeometry.get(element)
-  const initialCenter = initialGeometry?.center ?? element?.__canvasEditorVerticalFontCenter
-  const hasGeometry = [x, y, width, height].every(Number.isFinite)
-  const centerX = hasGeometry ? x + width / 2 : null
-  const centerY = hasGeometry ? y + height / 2 : null
-
-  console.log(`[百家姓][${stage}][${description}] 文字坐标与中心坐标`, {
-    text: String(element?.text ?? ''),
-    x,
-    y,
-    width,
-    height,
-    centerX,
-    centerY,
-    initialCenterX: initialCenter?.x ?? null,
-    initialCenterY: initialCenter?.y ?? null,
-    centerOffsetX: Number.isFinite(centerX) && initialCenter ? centerX - initialCenter.x : null,
-    centerOffsetY: Number.isFinite(centerY) && initialCenter ? centerY - initialCenter.y : null,
-    ...details
-  })
-}
-
-/**
- * Restore a name text node to its initial center after its dimensions change.
- *
- * @param {Object | null} element Text node.
- * @returns {void}
- */
-function restoreNameTextCenter(element) {
-  const initialGeometry = nameTextInitialGeometry.get(element)
-  const center = initialGeometry?.center ?? element?.__canvasEditorVerticalFontCenter
-  const width = Number(element?.width ?? element?.__?.width)
-  const height = Number(element?.height ?? element?.__?.height)
-
-  if (!center || ![width, height].every(Number.isFinite)) {
+/** @param {string} description 文字描述。 @param {Event} event 输入事件。 @returns {void} */
+function handleNameInput(description, event) {
+  const binding = nameTextBindings.find((item) => item.description === description)
+  if (!binding) {
     return
   }
 
-  element.set?.({
-    x: center.x - width / 2,
-    y: center.y - height / 2
+  textInputController.handleInput(event, binding.rules.value, (nextValue) => {
+    binding.value.value = nextValue
   })
 }
 
-/**
- * Restore after Leafer has completed its next layout pass. A second frame is
- * used because remote font metrics can settle one frame after the font face
- * promise resolves.
- *
- * @param {Object | null} element Text node.
- * @param {() => void} [onRestored] Optional callback after the first restore.
- * @returns {void}
- */
-function scheduleNameTextCenterRestore(element, onRestored) {
-  const schedule =
-    typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (callback) => setTimeout(callback, 0)
+/** @param {CompositionEvent} event 组合输入事件。 @returns {void} */
+function handleNameCompositionStart(event) {
+  textInputController.handleCompositionStart(event)
+}
 
-  schedule(() => {
-    restoreNameTextCenter(element)
-    onRestored?.()
-    schedule(() => restoreNameTextCenter(element))
+/** @param {string} description 文字描述。 @param {CompositionEvent} event 输入事件。 @returns {void} */
+function handleNameCompositionEnd(description, event) {
+  const binding = nameTextBindings.find((item) => item.description === description)
+  if (!binding) {
+    return
+  }
+
+  textInputController.handleCompositionEnd(event, binding.rules.value, (nextValue) => {
+    binding.value.value = nextValue
   })
 }
 
-/**
- * @param {Object | null} geometry Initial text geometry.
- * @returns {boolean} Whether the geometry contains finite bounds and center.
- */
-function isTextGeometry(geometry) {
-  return Boolean(
-    geometry &&
-      [geometry.x, geometry.y, geometry.width, geometry.height, geometry.center?.x, geometry.center?.y].every(
-        Number.isFinite
-      )
-  )
+/** @param {Object[] | undefined} elements 文档元素。 @returns {Object[]} 展平元素。 */
+function flattenElements(elements) {
+  if (!Array.isArray(elements)) {
+    return []
+  }
+
+  return elements.flatMap((element) => [element, ...flattenElements(element.children)])
 }
 
 /**
@@ -447,12 +352,7 @@ function applyNameTextValues(editor) {
 
   nameTextBindings.forEach(({ description, value }) => {
     activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
-      restoreNameTextCenter(element)
-      logNameTextGeometry('修改文字前', description, element, { nextText: value.value })
-      const updatedElement = activeEditor.replaceText(element, value.value)
-      const targetElement = updatedElement ?? element
-      restoreNameTextCenter(targetElement)
-      logNameTextGeometry('修改文字后', description, targetElement)
+      activeEditor.replaceTextWithRules(element, value.value)
     })
   })
 }
@@ -474,9 +374,6 @@ async function selectFontStyle(styleId) {
   fontReplacing.value = true
 
   try {
-    // Capture the baseline before the first font request can trigger a
-    // browser/Leafer text reflow. Subsequent switches reuse this snapshot.
-    initializeNameTextCenters(getCanvasEditor())
     await loadFontFace(style.fontName, style.fontUrl)
     applySelectedFontStyle(undefined, style)
   } catch (error) {
@@ -500,21 +397,13 @@ function applySelectedFontStyle(editor, style = selectedFontStyle.value) {
     return
   }
 
-  nameTextBindings.forEach(({ description }) => {
+  nameTextBindings.forEach(({ description, value }) => {
     activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
-      restoreNameTextCenter(element)
-      logNameTextGeometry('切换字体前', description, element, { nextFontFamily: style.fontName })
       const updatedElement = activeEditor.updateText(element, {
         fontFamily: style.fontName,
         fontUrl: style.fontUrl
       })
-      const targetElement = updatedElement ?? element
-      restoreNameTextCenter(targetElement)
-      scheduleNameTextCenterRestore(targetElement, () => {
-        logNameTextGeometry('切换字体后', description, targetElement, {
-          fontFamily: style.fontName
-        })
-      })
+      activeEditor.replaceTextWithRules(updatedElement ?? element, value.value)
     })
   })
 }
@@ -548,13 +437,6 @@ function toCssFontFamily(fontName) {
 watch([surname, givenName], () => {
   applyNameTextValues()
 })
-
-function onAdvancedEdit() {
-  if (import.meta.env.DEV) {
-    const editorJson = canvasViewportRef.value?.getEditor?.()?.exportDocument?.()
-    console.log('百家姓高级编辑数据：', editorJson)
-  }
-}
 
 /** @returns {Promise<void>} 保存当前 JSON，并按需获取打印区域截图。 */
 async function onSubmit() {
@@ -820,24 +702,8 @@ onMounted(loadFontStyles)
   font-size: 12px;
 }
 
-.advanced-edit {
-  justify-self: end;
-  padding: 2px 0;
-  border: 0;
-  color: #666666;
-  background: transparent;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.advanced-edit:hover {
-  color: #b51f2d;
-}
-
 .name-fields input:focus-visible,
 .font-option:focus-visible,
-.advanced-edit:focus-visible,
 .submit-button:focus-visible {
   outline: 2px solid #c92a38;
   outline-offset: 2px;

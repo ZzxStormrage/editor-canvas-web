@@ -11,6 +11,8 @@ const TEXT_DECORATION_VALUES = new Set(['none', 'under', 'delete', 'under-delete
 
 const WRITING_MODE_VALUES = new Set(['x', 'y', 'x-reverse', 'y-reverse'])
 
+const TEXT_WRAP_VALUES = new Set(['normal', 'none', 'break'])
+
 /**
  * 归一化文本配置。
  *
@@ -39,6 +41,8 @@ export function normalizeTextOptions(text = {}, baseText = {}) {
     fill: normalizeOptionalString(merged.fill, 'text.fill'),
     textAlign: normalizeTextAlign(merged.textAlign),
     verticalAlign: normalizeVerticalAlign(merged.verticalAlign),
+    textWrap: normalizeTextWrap(merged.textWrap),
+    textOverflow: normalizeTextOverflow(merged.textOverflow),
     writingMode: normalizeWritingMode(merged.writingMode),
     lineHeight,
     letterSpacing,
@@ -168,6 +172,22 @@ function normalizeWritingMode(value) {
   }
 
   return value
+}
+
+function normalizeTextWrap(value) {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+
+  if (!TEXT_WRAP_VALUES.has(value)) {
+    throw new EditorError('text.textWrap is invalid.', 'TEXT_WRAP_INVALID')
+  }
+
+  return value
+}
+
+function normalizeTextOverflow(value) {
+  return normalizeOptionalString(value, 'text.textOverflow')
 }
 
 function omitUndefined(value) {

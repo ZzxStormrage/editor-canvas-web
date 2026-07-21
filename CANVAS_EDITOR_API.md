@@ -949,21 +949,30 @@ console.log(replacedImage === image) // true，仍是原节点
 | --- | --- | --- | --- | --- | --- |
 | `source` | `string \| File \| Blob` | 是 | 无 | 图片 URL、SVG、`File`、`Blob` | 新图片来源；写入节点前会先完成资源加载。 |
 | `options` | `Object` | 否 | `{}` | 普通对象 | 替换配置。 |
-| `options.fit` | `string` | 否 | `'contain'` | `'contain'`、`'cover'`、`'stretch'` | 新图片在当前图片外框中的适配方式。 |
+| `options.fit` | `string` | 否 | `'contain'` | `'contain'`、`'cover'`、`'stretch'` | 保留外框时，新图片在当前外框中的适配方式。 |
+| `options.preserveFrame` | `boolean` | 否 | `true` | `true`、`false` | `true` 保持外框；`false` 仅保持中心，按新图比例更新选框。 |
 
 `fit` 行为：
 
-| 值 | 是否保持节点外框 | 是否保持图片比例 | 对齐方式 | 使用场景 |
+| 值 | `preserveFrame: true` 时的效果 | 是否保持图片比例 | 对齐方式 | 使用场景 |
 | --- | --- | --- | --- | --- |
 | `'contain'` | 是 | 是 | 水平、垂直居中 | 默认值；完整显示新图片，比例不一致时允许留白。 |
 | `'cover'` | 是 | 是 | 水平、垂直居中 | 填满原外框，比例不一致时裁切边缘。 |
 | `'stretch'` | 是 | 否 | 填满外框 | 严格铺满原外框，可能拉伸图片。 |
 
+`preserveFrame: false` 时，原节点尺寸作为 contain 的最大范围，新的
+`width/height` 按图片原始比例计算。`scaleX/scaleY` 及翻转方向完全沿用替换前的值，
+仅补偿节点位置以保持世界中心点不变。选框会自动更新为新图比例，图片不拉伸、不裁切。
+编辑器悬浮工具栏的“替换”使用该模式。
+
 替换只修改图片资源和填充模式，不重建节点，因此以下内容保持不变：
 
 - `elementId`、自定义属性和图片角色。
-- `x`、`y`、`width`、`height`、旋转、翻转、透明度和缩放。
+- 旋转、翻转、透明度和缩放。
 - 图层顺序、点击穿透状态和选中状态。
+
+`preserveFrame: true` 时还保留 `x`、`y`、`width`、`height`；设为 `false` 时会更新
+`x`、`y`、`width`、`height`，但替换前后的世界中心点不变。
 
 新资源会先加载，再一次性替换，避免先以原始尺寸绘制后再次缩放造成闪烁。图片锁定时
 不会替换，需要先解锁。`File` 和 `Blob` 产生的临时 URL 由图片插件统一释放。
@@ -992,6 +1001,7 @@ await Promise.all(
 | `options` | `Object` | 否 | `{}` | 普通对象 | 替换配置。 |
 | `options.fit` | `string` | 否 | `'contain'` | `'contain'`、`'cover'`、`'stretch'` | 图片在原节点外框中的适配方式。 |
 | `options.allowLocked` | `boolean` | 否 | `false` | `true`、`false` | 是否允许替换锁定模板槽位；仅生产端固定槽位应设为 `true`。 |
+| `options.preserveFrame` | `boolean` | 否 | `true` | `true`、`false` | 是否保留目标节点的原外框。 |
 
 默认不允许修改锁定图片，保持编辑器交互的保护规则。生产 H5 可对已明确标记的固定模板槽位
 显式传入 `allowLocked: true`。目标不是图片时抛出 `IMAGE_TARGET_INVALID`，目标锁定且未允许替换
@@ -1337,6 +1347,86 @@ yearElements.forEach((element) => {
 
 该方法保留 `elementId`、自定义属性、位置、样式和固定宽度，并返回原文本节点。目标不是文本
 节点时抛出 `TEXT_TARGET_INVALID`。
+
+### `editor.replaceTextWithRules(target, content, options?)`
+
+按文本元素的 `attributes.textInput` 和 `attributes.textLayout` 配置过滤并替换内容。
+该方法用于 H5 生产页面，原有 `replaceText()` 行为保持不变。
+
+```js
+const surname = editor.getElementsByAttribute('text.description', '姓')[0]
+
+editor.replaceTextWithRules(surname, '欧阳')
+```
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `target` | `Text` | 是 | 无 | 目标文本节点。 |
+| `content` | `string \| number` | 是 | 无 | 新文本内容。 |
+| `options.rules` | `object` | 否 | 元素的 `attributes.textInput` | 临时覆盖输入规则。 |
+| `options.layout` | `object` | 否 | 元素的 `attributes.textLayout` | 临时覆盖显示策略。 |
+
+显示策略配置：
+
+```json
+{
+  "attributes": {
+    "textInput": {
+      "enabled": true,
+      "allowManualNewline": false,
+      "maxCharacters": 4,
+      "maxLines": 1
+    },
+    "textLayout": {
+      "mode": "single-line",
+      "overflow": "shrink-then-visible",
+      "minFontSize": 24
+    }
+  }
+}
+```
+
+| 字段 | 类型 | 默认值 | 可选值或限制 | 说明 |
+| --- | --- | --- | --- | --- |
+| `textLayout.mode` | `string` | `wrap` | `wrap`、`single-line`、`vertical` | 自动换行、固定宽度单行适配或单列竖排。 |
+| `textLayout.overflow` | `string` | `shrink-then-visible` | `shrink-then-visible` | 先缩小字号，达到最小字号后允许超出。 |
+| `textLayout.minFontSize` | `number \| null` | 模板字号的 60% | 大于 `0` | 自动缩小的最小字号。 |
+
+`single-line` 模式会移除换行、保持模板宽度和中心点，并从模板初始字号向下查找可完整
+显示内容的最大字号。内容重新变短时会恢复模板字号，不会在上一次缩小结果上继续累计。
+达到最小字号仍无法完整显示时，文字保持单行并允许超出，不裁切、不换行。
+
+输入长度继续遵循 `textInput` 的加权规则：中文及非 ASCII 字符计 `2`，ASCII 字符计
+`1`。限制“欧阳”两个中文时，`maxCharacters` 应配置为 `4`，不是 `2`。
+
+H5 单列竖行约束：
+
+```json
+{
+  "attributes": {
+    "textInput": {
+      "enabled": true,
+      "singleVerticalLine": true,
+      "maxCharacters": 8
+    }
+  }
+}
+```
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `textInput.singleVerticalLine` | `boolean` | `false` | 是否限制 H5 用户输入按单列从上到下排列。 |
+
+`singleVerticalLine` 只在 `textInput.enabled: true` 时生效。开启后会移除用户换行、强制使用
+`writingMode: "y"`，并禁止换到第二竖列。该约束保持模板字号和元素中心，不执行单行缩小，
+同时忽略 `allowManualNewline`、`maxCharactersPerLine` 和 `maxLines`；内容长度只由
+`maxCharacters` 控制。
+
+低层调用 `editor.replaceTextWithLayout(target, content, { layout: { mode: 'vertical' } })` 仍可
+直接执行同样的单列竖排能力，主要用于不经过 H5 输入规则的业务场景。
+
+输入已经由调用方过滤时，也可以使用 `editor.replaceTextWithLayout(target, content)` 只执行
+显示策略。
 
 ### 编辑和读取
 
@@ -2071,6 +2161,7 @@ try {
 | 更新指定文字样式 | `editor.updateText(target, options)` |
 | 替换选中文字 | `editor.replaceSelectedText(content)` |
 | 替换指定文字 | `editor.replaceText(target, content)` |
+| 按模板规则替换文字 | `editor.replaceTextWithRules(target, content, options?)` |
 | 替换 H5 图片 | `await replaceH5Image(document, elementId, source, options)` |
 | 替换 H5 文字 | `replaceH5Text(document, elementId, content)` |
 | 创建通信消息 | `createBridgeMessage(type, payload, options)` |

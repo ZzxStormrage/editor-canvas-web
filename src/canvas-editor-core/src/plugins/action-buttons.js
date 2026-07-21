@@ -696,9 +696,13 @@ export class EditorActionButtons {
    *   bounds: { x: number, y: number, width: number, height: number } | null,
    *   locked: boolean,
    *   selectionCount: number,
+   *   isImageSelection: boolean,
+   *   canEditAttributes: boolean,
    *   canGroup: boolean,
    *   canUngroup: boolean,
    *   disabled: {
+   *     replace: boolean,
+   *     attributes: boolean,
    *     duplicate: boolean,
    *     delete: boolean,
    *     layer: boolean,
@@ -712,6 +716,9 @@ export class EditorActionButtons {
     const bounds = this.#getSelectionBounds(selected)
     const locked = this.#computeSharedAttributes(selected).locked === true
     const visible = selected.length > 0 && Boolean(bounds)
+    const isImageSelection = selected.length === 1 && selected[0] instanceof LeaferImage
+    const canEditAttributes = selected.length === 1
+      && (isImageSelection || isTextElement(selected[0]))
     const canGroup = this.#canGroupSelection(selected)
     const canUngroup = selected.length === 1 && this.#isEditorGroup(selected[0]) && !locked
 
@@ -720,9 +727,13 @@ export class EditorActionButtons {
       bounds: visible ? bounds : null,
       locked,
       selectionCount: selected.length,
+      isImageSelection,
+      canEditAttributes,
       canGroup,
       canUngroup,
       disabled: {
+        replace: !isImageSelection || locked,
+        attributes: !canEditAttributes,
         duplicate: !visible || locked,
         delete: !visible || locked,
         layer: !visible || locked,
@@ -1516,9 +1527,12 @@ export class EditorActionButtons {
     const parent = selected[0]?.parent
     if (parent?.addMany) {
       parent.addMany(...toAdd)
+      const nextSelection = toAdd.length === 1 ? toAdd[0] : toAdd
+      this.#innerEditor.select(nextSelection)
     }
 
     this.#innerEditor.updateEditBox?.()
+    this.#scheduleSelectionToolbarState()
   }
 
   /**
