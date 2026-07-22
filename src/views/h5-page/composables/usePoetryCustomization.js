@@ -6,6 +6,11 @@ import { useH5TemplateDocument } from './useH5TemplateDocument.js'
 import { loadAiSubjectBackgroundOptions } from '../services/ai-subject-backgrounds.js'
 import { readRouteImageOptions } from '../services/route-image-options.js'
 import { readRouteValue } from '../services/route-navigation.js'
+import {
+  applyTextInputRules,
+  normalizeTextInputRules,
+  supportsMultilineInput
+} from '../services/text-input-rules.js'
 import { clearThemeFlow, loadThemeFlow, saveThemeFlow, upsertTheme } from '../services/theme-flow-storage.js'
 import { wxAPI } from '../services/wx-api.js'
 

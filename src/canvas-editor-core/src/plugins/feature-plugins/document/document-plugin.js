@@ -184,6 +184,7 @@ export class DocumentPlugin {
     const source = cloneSerializable(element[DOCUMENT_NODE_SOURCE_KEY] ?? {});
     const renderData = element.toJSON?.() ?? {};
     delete renderData.children;
+    this._context.pluginManager?.get('text')?.sanitizeDocumentData?.(element, renderData);
     const container = getElementDataContainer(element, true);
     const result = {
       ...source,

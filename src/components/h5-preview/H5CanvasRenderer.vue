@@ -46,7 +46,10 @@
 <script setup>
 import { reactive, watch } from 'vue';
 
-import { loadDocumentFonts } from '../../canvas-editor-core/src/utils/font.js';
+import {
+  loadDocumentFonts,
+  resolveSyntheticFontWeightStroke
+} from '../../canvas-editor-core/src/utils/font.js';
 import { resolveH5ElementType } from '../../services/h5-document.js';
 import { createH5TextInputController } from '../../views/h5-page/services/text-input-rules.js';
 
@@ -86,6 +89,17 @@ function resolveElementStyle(element) {
   const width = Number(element.width ?? 0);
   const height = Number(element.height ?? estimateTextHeight(element));
   const transforms = [];
+  const syntheticWeightStroke = resolveSyntheticFontWeightStroke(
+    element.fontSize,
+    element.fontWeight,
+    element.fontUrl
+  );
+  const textStrokeWidth = Number(element.strokeWidth) > 0
+    ? Number(element.strokeWidth)
+    : syntheticWeightStroke;
+  const textStrokeColor = Number(element.strokeWidth) > 0
+    ? resolveColor(element.stroke, element.fill)
+    : 'currentColor';
 
   if (Number(element.rotation)) transforms.push(`rotate(${Number(element.rotation)}deg)`);
   if (Number(element.skewX)) transforms.push(`skewX(${Number(element.skewX)}deg)`);
@@ -110,6 +124,10 @@ function resolveElementStyle(element) {
     fontFamily: element.fontFamily,
     fontSize: toCanvasUnit(element.fontSize ?? 16, canvas.width),
     fontWeight: element.fontWeight,
+    WebkitTextStroke: resolveH5ElementType(element) === 'text' && textStrokeWidth
+      ? `${toCanvasUnit(textStrokeWidth, canvas.width)} ${textStrokeColor}`
+      : undefined,
+    paintOrder: textStrokeWidth ? 'stroke fill' : undefined,
     fontStyle: element.italic ? 'italic' : undefined,
     letterSpacing: toCanvasUnit(element.letterSpacing ?? 0, canvas.width),
     lineHeight: element.lineHeight ? String(Number(element.lineHeight) / Number(element.fontSize || 16)) : undefined,

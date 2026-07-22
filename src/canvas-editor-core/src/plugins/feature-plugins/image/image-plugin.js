@@ -351,10 +351,14 @@ export class ImagePlugin {
 
     const current = this._createPropertiesSnapshot(image);
     const patch = this._createTransformPatch(image, current, properties);
+    const preservedCenter = this._shouldPreserveWorldCenter(properties)
+      ? this._getImageWorldCenter(image)
+      : null;
 
     image.set?.(patch);
     image.forceUpdate?.();
     image.updateLayout?.();
+    this._restoreImageWorldCenter(image, preservedCenter);
     this._context.innerEditor?.update?.();
     this._context.innerEditor?.updateEditBox?.();
     this._context.artboard?.syncAllElements?.();
@@ -611,6 +615,53 @@ export class ImagePlugin {
       x: bounds.x + bounds.width / 2,
       y: bounds.y + bounds.height / 2
     });
+  }
+
+  /**
+   * 判断本次属性修改是否需要保留图片当前视觉中心。
+   *
+   * 显式修改 x 或 y 时以用户输入为准；仅调整尺寸、缩放、旋转或翻转时，
+   * 图片继续围绕当前位置变化，避免属性面板操作造成视觉位移。
+   *
+   * @private
+   * @param {Object} properties 图片属性补丁。
+   * @returns {boolean} 是否保留世界中心。
+   */
+  _shouldPreserveWorldCenter(properties) {
+    if (
+      Object.prototype.hasOwnProperty.call(properties, 'x') ||
+      Object.prototype.hasOwnProperty.call(properties, 'y')
+    ) {
+      return false;
+    }
+
+    return [
+      'width',
+      'height',
+      'scalePercentX',
+      'scalePercentY',
+      'rotation',
+      'flippedX',
+      'flippedY'
+    ].some((key) => Object.prototype.hasOwnProperty.call(properties, key));
+  }
+
+  /**
+   * 尺寸或旋转更新后补偿图片位置，使世界坐标中心保持不变。
+   *
+   * @private
+   * @param {LeaferImage} image 图片节点。
+   * @param {{ x: number, y: number } | null} center 更新前世界中心。
+   * @returns {void}
+   */
+  _restoreImageWorldCenter(image, center) {
+    if (![center?.x, center?.y].every(Number.isFinite)) {
+      return;
+    }
+
+    const nextCenter = this._getImageWorldCenter(image);
+    image.moveWorld(center.x - nextCenter.x, center.y - nextCenter.y);
+    image.updateLayout?.();
   }
 
   /**

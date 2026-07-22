@@ -181,8 +181,9 @@ if (coreEditor) {
 
 ## 自定义模板路由
 
-完整编辑器页面通过 `#/editor` 接收模板上下文。`id` 存在时会请求模板详情并调用
-`editor.loadDocument()` 还原 JSON；没有 `id` 时作为新模板。
+完整编辑器页面通过 `#/editor` 接收模板上下文，但不会自行请求模板详情。页面挂载后发送
+`template:load-requested`，宿主请求自己的接口，再通过 `template:load` 回传统一 JSON；没有
+`id` 时宿主回传空文档即可创建新模板。
 
 ```text
 # 新建模板
@@ -198,43 +199,50 @@ if (coreEditor) {
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `id` | `number` | 编辑时是 | 自定义模板 ID，可放在路径或查询参数。 |
-| `itemId` | `number` | 保存时是 | 商品 ID，优先使用路由值，否则使用详情接口值。 |
-| `templateName` | `string` | 否 | 模板名；未传且详情中没有时保存为“未命名模板”。 |
-| `previewImgUrl` | `string` | 否 | 预览图地址；编辑已有模板时默认保留接口值。 |
-| `userId` | `number` | 否 | 新增后回查模板 ID 时用于缩小列表范围。 |
-| `partnerId` | `number` | 否 | 写入 `X-Partner-Id` 请求头；兼容 `xPartnerId` 和 `X-Partner-Id`。 |
+| `itemId` | `number` | 否 | 商品 ID，随保存消息一并交给宿主。 |
+| `templateName` | `string` | 否 | 模板名，随保存消息一并交给宿主。 |
+| `previewImgUrl` | `string` | 否 | 预览图地址，随初始化和保存消息传递。 |
+| `userId` | `number` | 否 | 用户 ID，随模板上下文传给宿主。 |
+| `partnerId` | `number` | 否 | 分销商上下文；宿主请求接口时自行写入 `X-Partner-Id`。 |
 | `token` | `string` | 否 | 兼容路由鉴权，也支持 `authorization`。读取后会立即从地址栏删除。 |
 
 Token 优先通过 `postMessage` 的 `auth:token` 发送，避免出现在浏览器历史、截图或宿主日志中。
-源码不内置生产 Token；本地调试后台编辑器如确实需要临时 admin Token，应通过未提交的
-`VITE_TEMPORARY_ACCESS_TOKEN` 环境变量配置。API 请求最多等待 3 秒接收宿主 Token，超时后
-按无 Token 请求并由接口返回登录过期提示。
+模板初始化和保存接口由宿主请求，因此模板数据消息不需要携带 Token。编辑器自身的图片上传、
+字体等接口仍可使用 `auth:token` 提供的运行时 Token。
 
-页面使用独立的 `useCustomTemplatePersistence()` 管理持久化，不会把 HTTP 逻辑写入
-`canvas-editor-core`。“立即保存”的请求规则：
+页面使用独立的 `useCustomTemplatePersistence()` 管理模板初始化和保存消息，不会把 HTTP、
+Vue 或宿主通信逻辑写入 `canvas-editor-core`。当前规则：
 
-| 状态 | 请求 | 地址 | 行为 |
-| --- | --- | --- | --- |
-| 带 `id` 初始化 | `GET` | `https://xiaoxiang.ele007.com/admin/api/customTemplate/{id}` | 读取 `content` 并还原编辑器。 |
-| 没有 `id` 保存 | `POST` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 新增模板，返回 ID 后写回路由。 |
-| 已有 `id` 保存 | `PUT` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 修改当前模板。 |
-| 模板列表 | `GET` | `https://xiaoxiang.ele007.com/admin/api/customTemplate` | 按条件查询模板，也用于新增后补齐 ID。 |
+| 场景 | 执行方 | 行为 |
+| --- | --- | --- |
+| 请求初始化 | 编辑器页面 | 发送 `template:load-requested`，携带路由模板上下文。 |
+| 获取模板详情 | 外部宿主 | 根据 `template.id` 请求自己的详情接口。 |
+| 返回初始化 JSON | 外部宿主 | 发送 `template:load`，携带 `requestId`、`template`、`document`。 |
+| 还原画布 | 编辑器页面 | 调用 `editor.loadDocument()`，成功后发送 `editor:initialized`。 |
+| 点击“立即保存” | 编辑器页面 | 只调用 `editor.exportDocument()`，发送 `template:save-requested`。 |
+| 新增或修改模板 | 外部宿主 | 接收消息后自行调用保存接口、处理鉴权、重试和成功提示。 |
+| 保存结果回执 | 外部宿主 | 成功发送 `template:saved`，失败发送 `template:save-failed`。 |
 
-保存时 `content` 是 `editor.exportDocument()` 结果的 JSON 字符串：
+“立即保存”不会调用 `POST`、`PUT` 或模板列表接口。发送给宿主的核心 payload：
 
 ```js
 {
-  content: JSON.stringify(editor.exportDocument()),
-  id: 1001,
-  itemId: 2001,
-  previewImgUrl: 'https://cdn.example.com/template-preview.png',
-  templateName: '生肖模板'
+  action: 'update',
+  mode: 'edit',
+  template: {
+    id: 1001,
+    itemId: 2001,
+    userId: null,
+    partnerId: 10,
+    templateName: '生肖模板',
+    previewImgUrl: ''
+  },
+  document: editor.exportDocument()
 }
 ```
 
-接口域名使用 `VITE_XIAOXIANG_API_BASE_URL`，默认为
-`https://xiaoxiang.ele007.com`；路径可通过 `VITE_CUSTOM_TEMPLATE_API_PATH` 覆盖。
-`Authorization` 由 Alova 拦截器统一添加，`X-Partner-Id` 由模板 API 模块添加。
+宿主需要接口字符串时，使用 `JSON.stringify(payload.document)` 生成 `content`。不要在编辑器
+和宿主之间重复维护两套 JSON 格式。
 
 ## postMessage 跨端通信
 
@@ -244,8 +252,9 @@ Token 优先通过 `postMessage` 的 `auth:token` 发送，避免出现在浏览
 
 ### 自动初始化
 
-应用入口已经自动启动消息桥，并在通信层加载时发送 `editor:ready`。模板页面会继续发送
-初始化、加载和保存生命周期消息：
+应用入口已经自动启动消息桥，并在 Vue 页面挂载完成后发送 `editor:ready`。这样宿主立即回传
+初始化 JSON 时，编辑器组件已经完成消息订阅。模板页面会继续发送
+初始化、加载和保存请求消息：
 
 ```js
 import {
@@ -259,7 +268,9 @@ startMessageBridge()
 postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
   capabilities: [
     MESSAGE_TYPES.EDITOR_INITIALIZED,
-    MESSAGE_TYPES.TEMPLATE_SAVED,
+    MESSAGE_TYPES.TEMPLATE_LOAD_REQUESTED,
+    MESSAGE_TYPES.TEMPLATE_LOAD,
+    MESSAGE_TYPES.TEMPLATE_SAVE_REQUESTED,
     MESSAGE_TYPES.TEMPLATE_SAVE_FAILED
   ]
 })
@@ -277,12 +288,15 @@ postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
 | `MESSAGE_TYPES.AUTH_TOKEN` | `'auth:token'` | 双向 | 传递登录 Token；编辑器接收后会用于后续 API 请求。 |
 | `MESSAGE_TYPES.H5_AUTH_TOKEN` | `'h5:auth-token'` | 宿主 → H5 | 单独传递 H5 customer 接口 Token，不会覆盖编辑器 admin Token。 |
 | `MESSAGE_TYPES.AUTH_EXPIRED` | `'auth:expired'` | 编辑器 → 宿主 | 接口返回 401，宿主应清理登录态并引导重新登录。 |
-| `MESSAGE_TYPES.TEMPLATE_LOADING` | `'template:loading'` | 编辑器 → 宿主 | 开始请求模板详情。 |
+| `MESSAGE_TYPES.TEMPLATE_LOAD_REQUESTED` | `'template:load-requested'` | 编辑器 → 宿主 | 请求宿主提供当前模板的统一 JSON。 |
+| `MESSAGE_TYPES.TEMPLATE_LOAD` | `'template:load'` | 宿主 → 编辑器 | 返回模板上下文和统一 JSON。 |
+| `MESSAGE_TYPES.TEMPLATE_LOADING` | `'template:loading'` | 宿主 → 编辑器 | 可选状态消息；宿主正在获取模板。 |
 | `MESSAGE_TYPES.TEMPLATE_LOADED` | `'template:loaded'` | 编辑器 → 宿主 | 模板 JSON 已成功还原到编辑器。 |
-| `MESSAGE_TYPES.TEMPLATE_LOAD_FAILED` | `'template:load-failed'` | 编辑器 → 宿主 | 模板详情请求或 JSON 还原失败。 |
-| `MESSAGE_TYPES.TEMPLATE_SAVING` | `'template:saving'` | 编辑器 → 宿主 | 开始调用新增或修改接口。 |
-| `MESSAGE_TYPES.TEMPLATE_SAVED` | `'template:saved'` | 编辑器 → 宿主 | 保存接口成功，包含模板 ID 和统一 JSON。 |
-| `MESSAGE_TYPES.TEMPLATE_SAVE_FAILED` | `'template:save-failed'` | 编辑器 → 宿主 | 保存接口或 JSON 导出失败。 |
+| `MESSAGE_TYPES.TEMPLATE_LOAD_FAILED` | `'template:load-failed'` | 双向 | 宿主获取失败，或编辑器还原 JSON 失败。 |
+| `MESSAGE_TYPES.TEMPLATE_SAVE_REQUESTED` | `'template:save-requested'` | 编辑器 → 宿主 | 用户点击立即保存；包含模板上下文和统一 JSON。 |
+| `MESSAGE_TYPES.TEMPLATE_SAVING` | `'template:saving'` | 宿主 → 编辑器 | 可选回执；宿主已开始持久化。 |
+| `MESSAGE_TYPES.TEMPLATE_SAVED` | `'template:saved'` | 宿主 → 编辑器 | 可选回执；宿主接口保存成功。 |
+| `MESSAGE_TYPES.TEMPLATE_SAVE_FAILED` | `'template:save-failed'` | 双向 | JSON 导出/发送失败，或宿主持久化失败。 |
 | `MESSAGE_TYPES.H5_PAGE_SAVED` | `'h5:page-saved'` | H5 → 小程序 | H5 业务页面保存完成，包含页面标识、模板 JSON 和截图结果。 |
 
 自定义消息类型可以使用任意非空字符串，推荐采用 `模块:动作` 格式，例如
@@ -370,92 +384,119 @@ console.log(result.channels)
 `'mini-program'`、`'parent'`、`'opener'` 或 `'window'`；空数组表示当前页面没有可用宿主，
 不表示消息格式错误。
 
-### 编辑器向后台管理系统发送
+### 后台管理系统完整接入
 
-编辑器作为 iframe 嵌入后台时，使用 `parent` 通道。正式页面的保存成功通信已经由
-`EditorPage` 自动发送，后台只需要监听 `template:saved`：
-
-```js
-postBridgeMessage('document:saved', {
-  documentId: 'document-1001',
-  json: editorJson
-}, {
-  target: 'parent',
-  targetOrigin: 'https://admin.example.com'
-})
-```
-
-后台管理系统接收消息时必须同时校验来源和 iframe 窗口：
+后台管理系统负责模板详情、新增和修改接口。编辑器只收发 JSON，不需要知道接口地址。
+后台必须同时校验消息来源和 iframe 窗口：
 
 ```js
 const editorFrame = document.querySelector('#editor-frame')
 const editorOrigin = 'https://editor.example.com'
 
-window.addEventListener('message', (event) => {
+function sendToEditor(type, payload) {
+  editorFrame.contentWindow.postMessage({
+    channel: 'ele-editor',
+    version: 1,
+    id: crypto.randomUUID(),
+    type,
+    sender: 'admin',
+    timestamp: Date.now(),
+    payload
+  }, editorOrigin)
+}
+
+window.addEventListener('message', async (event) => {
   if (event.origin !== editorOrigin) return
   if (event.source !== editorFrame.contentWindow) return
 
   const message = event.data
   if (message?.channel !== 'ele-editor' || message.version !== 1) return
 
-  if (message.type === 'template:saved') {
-    const { id, itemId } = message.payload.template
-    console.log('模板保存成功', { id, itemId, json: message.payload.document })
+  if (message.type === 'editor:ready') {
+    sendToEditor('auth:token', { token: accessToken })
+    return
+  }
+
+  if (message.type === 'template:load-requested') {
+    const routeTemplate = message.payload.template
+    try {
+      const record = routeTemplate.id
+        ? await templateApi.detail(routeTemplate.id)
+        : routeTemplate
+
+      sendToEditor('template:load', {
+        requestId: message.id,
+        template: { ...routeTemplate, ...record },
+        document: record.content ?? null
+      })
+    } catch (error) {
+      sendToEditor('template:load-failed', {
+        requestId: message.id,
+        error: { message: error.message }
+      })
+    }
+    return
+  }
+
+  if (message.type === 'template:save-requested') {
+    const { action, template, document } = message.payload
+    try {
+      const dto = {
+        ...template,
+        content: JSON.stringify(document)
+      }
+      const record = action === 'create'
+        ? await templateApi.create(dto)
+        : await templateApi.update(dto)
+
+      sendToEditor('template:saved', {
+        requestId: message.id,
+        template: record
+      })
+    } catch (error) {
+      sendToEditor('template:save-failed', {
+        requestId: message.id,
+        error: { message: error.message }
+      })
+    }
   }
 })
 ```
 
+`templateApi` 是宿主项目自己的接口模块。详情接口的 `content` 可以是 JSON 字符串或普通对象；
+编辑器统一通过 `loadDocument()` 解析。新增接口必须在 `template:saved.payload.template.id` 返回
+新模板 ID，否则编辑器下一次仍会按 `create` 发送。宿主收到 `template:load-requested` 后应在
+15 秒内返回 `template:load` 或 `template:load-failed`，否则编辑器会结束 Loading 并提示超时。
+
 ### 模板生命周期通信示例
 
-初始化时先收到 `editor:ready`，模板页面完成新建或详情还原后收到
-`editor:initialized`。保存流程依次为 `template:saving`，成功时为 `template:saved`，失败时为
-`template:save-failed`。所有错误事件的 `payload.error` 都是普通对象，方便管理端序列化日志。
-
-```js
-const eventHandlers = {
-  'editor:initialized': ({ template }) => {
-    setEditorLoading(false)
-    setCurrentTemplate(template)
-  },
-  'template:loading': () => setEditorLoading(true),
-  'template:saving': () => setSaveLoading(true),
-  'template:saved': ({ template, document }) => {
-    setSaveLoading(false)
-    refreshTemplateList(template.id)
-    closeEditorLoading()
-    console.log('保存后的统一 JSON', document)
-  },
-  'template:load-failed': ({ error }) => showError(error.message),
-  'template:save-failed': ({ error }) => {
-    setSaveLoading(false)
-    showError(error.message)
-  },
-  'auth:expired': () => redirectToLogin()
-}
-
-window.addEventListener('message', (event) => {
-  if (event.origin !== editorOrigin || event.source !== editorFrame.contentWindow) return
-
-  const message = event.data
-  if (message?.channel !== 'ele-editor' || message.version !== 1) return
-
-  const handler = eventHandlers[message.type]
-  handler?.(message.payload, message)
-})
-```
+初始化时先收到 `editor:ready`，随后收到 `template:load-requested`。宿主返回 `template:load`，
+编辑器还原成功后发送 `template:loaded` 和 `editor:initialized`。点击保存时编辑器发送
+`template:save-requested`；宿主必须回传 `template:saved` 或 `template:save-failed`。
 
 消息 payload 约定：
 
 | 消息 | 关键字段 |
 | --- | --- |
+| `template:load-requested` | `mode`、`template`；消息自身 `id` 是本次请求 ID。 |
+| `template:load` | `requestId`、`template`、`document`；`requestId` 必须等于请求消息的 `id`。 |
 | `editor:initialized` | `mode`、`template`。`mode` 为 `'create'` 或 `'edit'`。 |
-| `template:loading` | `mode`、`template`。 |
 | `template:loaded` | `mode`、`template`。不重复发送完整 JSON。 |
-| `template:saving` | `action`、`template`。`action` 为 `'create'` 或 `'update'`。 |
-| `template:saved` | `success: true`、`action`、`template`、`document`。 |
+| `template:save-requested` | `action`、`template`、`document`。`action` 为 `'create'` 或 `'update'`。 |
+| `template:saved` | `requestId`、`template`；新增时 `template.id` 必须是后端生成的新 ID。 |
 | `template:load-failed` / `template:save-failed` | `error.code`、`error.message`、`error.status`。 |
 
-生命周期消息只通知宿主，不改变编辑器保存结果；即使宿主未监听或发送失败，模板接口请求仍然继续。
+编辑器不再直接调用保存接口，因此“保存数据已发送”只表示消息已交给宿主通道，不等于数据已经
+持久化成功。最终保存状态由宿主接口结果决定。
+
+### 初始化和保存的职责边界
+
+iframe 集成时，初始化与保存都由宿主负责：宿主统一处理 Token、接口域名、权限、错误
+重试和业务日志；编辑器只负责 `loadDocument()` 与 `exportDocument()`。这样同一套编辑器可以嵌入
+不同后台，而不需要知道各后台接口。
+
+当前版本已经按此边界实现，`EditorPage` 不再调用模板详情、新增或修改接口。HTTP 逻辑没有进入
+`canvas-editor-core`，宿主传入和接收的 `document` 使用同一种统一 JSON 格式。
 
 ### 后台管理系统向编辑器传 Token
 

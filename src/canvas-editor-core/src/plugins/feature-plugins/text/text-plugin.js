@@ -1,10 +1,14 @@
 import { Text as LeaferText } from 'leafer-ui'
-import { EditorEvent, EditorScaleEvent, InnerEditorEvent } from '@leafer-in/editor'
+import { EditorEvent, EditorMoveEvent, EditorScaleEvent, InnerEditorEvent } from '@leafer-in/editor'
 import '@leafer-in/text-editor'
 
 import { EditorError } from '../../../errors/editor-error.js'
 import { getElementDataContainer } from '../../../utils/element-data.js'
-import { loadFontFace } from '../../../utils/font.js'
+import {
+  loadFontFace,
+  resolveSyntheticFontWeightStroke,
+  sanitizeSyntheticFontWeightData
+} from '../../../utils/font.js'
 import { normalizeTextOptions, isTextElement } from '../../../utils/text.js'
 import { applyTextInputRules, normalizeTextInputRules } from '../../../utils/text-input-rules.js'
 import {
@@ -21,6 +25,8 @@ const TEXT_LAYOUT_BASELINE_KEY = '__canvasEditorTextLayoutBaseline'
 const MIN_TEXT_PIXEL = 1
 const VISUAL_ITALIC_KEY = '__canvasEditorVisualItalic'
 const VISUAL_ITALIC_SKEW_X = -12
+const VISUAL_WEIGHT_STROKE_KEY = '__canvasEditorVisualWeightStroke'
+const VISUAL_WEIGHT_ORIGINAL_KEY = '__canvasEditorVisualWeightOriginal'
 const NATIVE_DOUBLE_CLICK_TOLERANCE = 4
 const DIMENSION_TEXT_KEYS = new Set([
   'text',
@@ -86,6 +92,7 @@ export class TextPlugin {
     this._context = context
     this._view = context.leafer?.view ?? null
     context.innerEditor?.on_(EditorEvent.SELECT, this._handleSelect, this)
+    context.innerEditor?.on_(EditorMoveEvent.MOVE, this._handleMove, this)
     context.innerEditor?.on_(EditorScaleEvent.SCALE, this._handleScale, this)
     context.innerEditor?.on_(InnerEditorEvent.OPEN, this._handleInnerOpen, this)
     context.innerEditor?.on_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
@@ -121,6 +128,7 @@ export class TextPlugin {
       this._setFontUrl(text, textOptions.fontUrl)
       this._setRawText(text, rawText)
       this._applyVisualItalic(text, renderOptions)
+      this._applyVisualFontWeight(text)
       text.forceUpdate?.()
       text.updateLayout?.()
       contentLayer.add(text)
@@ -159,6 +167,11 @@ export class TextPlugin {
     const updateOptions = options === undefined ? target : options
     const normalizedOptions = TextPlugin.normalizeOptions(updateOptions ?? {})
     const previousFontFamily = text.fontFamily ?? text.__?.fontFamily
+    const shouldRefreshFont = this._shouldRefreshAfterFontLoad(
+      text,
+      normalizedOptions,
+      previousFontFamily
+    )
     const textCenter = this._getOrCreateVerticalFontCenter(text, normalizedOptions)
 
     const { renderOptions, rawText } = this._getRenderableTextOptions(normalizedOptions, text)
@@ -170,6 +183,7 @@ export class TextPlugin {
     this._setRawText(text, rawText)
     this._applyTextPatchFallback(text, renderOptions)
     this._applyVisualItalic(text, renderOptions)
+    this._applyVisualFontWeight(text)
     text.forceUpdate?.()
     text.updateLayout?.()
     this._restoreTextCenter(text, textCenter)
@@ -181,7 +195,7 @@ export class TextPlugin {
     }
 
     this._context.eventBus.emit('text:updated', { text, options: normalizedOptions })
-    this._refreshAfterFontLoad(text, normalizedOptions, textCenter)
+    this._refreshAfterFontLoad(text, normalizedOptions, textCenter, shouldRefreshFont)
 
     if (behavior.select !== false) {
       this._emitSelected(text)
@@ -205,6 +219,7 @@ export class TextPlugin {
     this._setRawText(target, source.text ?? target.text ?? '')
     this._setFontUrl(target, source.fontUrl)
     this._ensureTextEditConfig(target)
+    this._applyVisualFontWeight(target)
 
     // Capture the document's first measurable bounds before any external
     // content or font replacement can resize the node. Vertical text uses
@@ -431,6 +446,27 @@ export class TextPlugin {
   }
 
   /**
+   * 移除仅用于运行时显示的单文件字体字重补偿字段。
+   *
+   * H5 根据 fontUrl、fontSize 和 fontWeight 使用同一规则计算效果，因此无需把
+   * 补偿描边写入统一 JSON，避免污染调用方可见的数据结构。
+   *
+   * @param {LeaferText} target 文本节点。
+   * @param {Object} renderData Leafer 序列化数据。
+   * @returns {Object} 已清理的序列化数据。
+   */
+  sanitizeDocumentData(target, renderData) {
+    if (!isTextElement(target) || !target[VISUAL_WEIGHT_STROKE_KEY]) {
+      return renderData
+    }
+
+    return sanitizeSyntheticFontWeightData(
+      renderData,
+      target[VISUAL_WEIGHT_ORIGINAL_KEY]
+    )
+  }
+
+  /**
    * 销毁插件。
    *
    * @returns {void}
@@ -438,6 +474,7 @@ export class TextPlugin {
   destroy() {
     this._view?.removeEventListener('dblclick', this._handleNativeDoubleClick)
     this._context?.innerEditor?.off_(EditorEvent.SELECT, this._handleSelect, this)
+    this._context?.innerEditor?.off_(EditorMoveEvent.MOVE, this._handleMove, this)
     this._context?.innerEditor?.off_(EditorScaleEvent.SCALE, this._handleScale, this)
     this._context?.innerEditor?.off_(InnerEditorEvent.OPEN, this._handleInnerOpen, this)
     this._context?.innerEditor?.off_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
@@ -545,7 +582,10 @@ export class TextPlugin {
   }
 
   /**
-   * 为 Text 节点设置官方编辑配置，使四角缩放时同步修改 fontSize。
+   * 为 Text 节点设置尺寸编辑基线。
+   *
+   * 四角控制点由选区插件单独切换为 font-size 模式；左右手柄保持
+   * size 模式，只修改文本框宽度。
    *
    * @param {Object} renderOptions 文本渲染配置。
    * @returns {void}
@@ -553,7 +593,7 @@ export class TextPlugin {
   _applyTextEditConfig(renderOptions) {
     renderOptions.editConfig = {
       ...(renderOptions.editConfig ?? {}),
-      editSize: 'font-size'
+      editSize: 'size'
     }
   }
 
@@ -878,16 +918,41 @@ export class TextPlugin {
   }
 
   /**
+   * 判断本次更新是否真正切换了远程字体资源。
+   *
+   * 视图层可能在更新对齐等样式时携带完整字体配置；相同字体无需再次执行
+   * 异步尺寸刷新，否则会覆盖用户通过左右手柄设置的文本框宽度。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @param {Object} options 本次归一化配置。
+   * @param {string | undefined} previousFontFamily 更新前字体名称。
+   * @returns {boolean} 是否需要在字体加载后刷新布局。
+   */
+  _shouldRefreshAfterFontLoad(text, options, previousFontFamily) {
+    if (!options.fontUrl) {
+      return false
+    }
+
+    const previousUrl = this.getFontUrl(text) ?? ''
+    const nextUrl = String(options.fontUrl).trim()
+    const previousFamily = this._stripFontFamilyQuotes(previousFontFamily)
+    const nextFamily = this._stripFontFamilyQuotes(options.fontFamily ?? previousFontFamily)
+    return previousUrl !== nextUrl || previousFamily !== nextFamily
+  }
+
+  /**
    * 字体异步注册完成后刷新文本尺寸和选区。
    *
    * @private
    * @param {LeaferText} text 文本节点。
    * @param {Object} options 本次归一化配置。
    * @param {{ x: number, y: number } | null} [textCenter] 字体更新前保存的中心点。
+   * @param {boolean} [shouldRefresh=true] 是否需要执行异步布局刷新。
    * @returns {void}
    */
-  _refreshAfterFontLoad(text, options, textCenter = null) {
-    if (!options.fontUrl) {
+  _refreshAfterFontLoad(text, options, textCenter = null, shouldRefresh = true) {
+    if (!shouldRefresh || !options.fontUrl) {
       return
     }
 
@@ -908,7 +973,7 @@ export class TextPlugin {
         }
         text.forceUpdate?.()
         text.updateLayout?.()
-        this._restoreTextCenter(text, textCenter)
+        this._restoreTextCenter(text, text[VERTICAL_FONT_CENTER_KEY] ?? textCenter)
         this._refreshSelectedEditBox()
       })
       .catch((error) => {
@@ -931,22 +996,7 @@ export class TextPlugin {
       return null
     }
 
-    const savedCenter = text?.[VERTICAL_FONT_CENTER_KEY]
-    if ([savedCenter?.x, savedCenter?.y].every(Number.isFinite)) {
-      this._captureInitialTextGeometry(text, savedCenter)
-      return savedCenter
-    }
-
-    const center = this._captureInitialTextGeometry(text)?.center ?? this._getTextCenter(text)
-    if (center && text) {
-      text[VERTICAL_FONT_CENTER_KEY] = center
-    }
-
-    return center
-  }
-
-  _getTextCenter(text) {
-    return this._getTextGeometry(text)?.center ?? null
+    return this._syncTextGeometryAnchor(text)?.center ?? null
   }
 
   _getTextGeometry(text) {
@@ -1019,6 +1069,35 @@ export class TextPlugin {
     text[VERTICAL_FONT_CENTER_KEY] = center
 
     return initialGeometry
+  }
+
+  /**
+   * 将文字当前位置同步为后续样式更新的几何锚点。
+   *
+   * 模板字号和宽度基准由 TEXT_LAYOUT_BASELINE_KEY 独立保存；这里仅更新位置锚点，
+   * 防止文字拖动后修改内容、字体或字号时回到初始坐标。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @returns {{ x: number, y: number, width: number, height: number,
+   * center: { x: number, y: number } } | null} 当前几何信息。
+   */
+  _syncTextGeometryAnchor(text) {
+    if (!isTextElement(text)) {
+      return null
+    }
+
+    const geometry = this._getTextGeometry(text)
+    if (!geometry) {
+      return null
+    }
+
+    const anchor = {
+      ...geometry,
+      center: { ...geometry.center }
+    }
+    text[VERTICAL_FONT_CENTER_KEY] = anchor.center
+    return anchor
   }
 
   _restoreTextCenter(text, center) {
@@ -1143,6 +1222,75 @@ export class TextPlugin {
     return Number.isFinite(number) ? number : 0
   }
 
+  /**
+   * 为只有单个字体文件的远程字体补偿可见字重差异。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @returns {void}
+   */
+  _applyVisualFontWeight(text) {
+    if (!isTextElement(text)) {
+      return
+    }
+
+    const fontSize = text.fontSize ?? text.__?.fontSize
+    const fontWeight = text.fontWeight ?? text.__?.fontWeight
+    const strokeWidth = resolveSyntheticFontWeightStroke(
+      fontSize,
+      fontWeight,
+      this.getFontUrl(text)
+    )
+
+    this._captureVisualWeightOriginal(text)
+    if (!strokeWidth || !this._canApplyVisualWeightStroke(text)) {
+      this._restoreVisualWeightOriginal(text)
+      return
+    }
+
+    text[VISUAL_WEIGHT_STROKE_KEY] = true
+    text.set?.({
+      stroke: text.fill ?? text.__?.fill,
+      strokeWidth,
+      strokeAlign: 'center'
+    })
+  }
+
+  /** @private @param {LeaferText} text 文本节点。 @returns {void} */
+  _captureVisualWeightOriginal(text) {
+    if (text[VISUAL_WEIGHT_ORIGINAL_KEY]) {
+      return
+    }
+
+    const input = text.__?.__input ?? {}
+    text[VISUAL_WEIGHT_ORIGINAL_KEY] = {
+      stroke: input.stroke,
+      strokeWidth: input.strokeWidth,
+      strokeAlign: input.strokeAlign
+    }
+  }
+
+  /** @private @param {LeaferText} text 文本节点。 @returns {boolean} */
+  _canApplyVisualWeightStroke(text) {
+    const original = text[VISUAL_WEIGHT_ORIGINAL_KEY] ?? {}
+    const fill = text.fill ?? text.__?.fill
+    return !original.stroke && typeof fill === 'string' && Boolean(fill)
+  }
+
+  /** @private @param {LeaferText} text 文本节点。 @returns {void} */
+  _restoreVisualWeightOriginal(text) {
+    if (!text[VISUAL_WEIGHT_STROKE_KEY]) {
+      return
+    }
+
+    text.set?.(text[VISUAL_WEIGHT_ORIGINAL_KEY] ?? {
+      stroke: undefined,
+      strokeWidth: undefined,
+      strokeAlign: undefined
+    })
+    text[VISUAL_WEIGHT_STROKE_KEY] = false
+  }
+
   _restoreRawTextForEditing(text) {
     const rawText = this._getRawText(text)
 
@@ -1255,9 +1403,29 @@ export class TextPlugin {
 
     if (text) {
       this._ensureTextEditConfig(text)
+      this._syncTextGeometryAnchor(text)
       this._activeText = text
       this._emitSelected(text)
     }
+  }
+
+  /**
+   * 文字拖动完成后更新样式修改使用的位置锚点。
+   *
+   * @param {import('@leafer-in/interface').IEditorMoveEvent} event 移动事件。
+   * @returns {void}
+   * @private
+   */
+  _handleMove(event) {
+    const text = event?.target
+
+    if (!isTextElement(text) || this._context?.innerEditor?.list?.length !== 1) {
+      return
+    }
+
+    this._syncTextGeometryAnchor(text)
+    this._activeText = text
+    this._emitSelected(text)
   }
 
   /**
@@ -1275,6 +1443,7 @@ export class TextPlugin {
     }
 
     this._normalizeScaledTextPixels(text)
+    this._syncTextGeometryAnchor(text)
     this._activeText = text
     this._context?.innerEditor?.updateEditBox?.()
     this._emitSelected(text)
@@ -1382,7 +1551,7 @@ export class TextPlugin {
 
     text.editConfig = {
       ...(text.editConfig ?? {}),
-      editSize: 'font-size'
+      editSize: 'size'
     }
   }
 

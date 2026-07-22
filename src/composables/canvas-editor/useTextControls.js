@@ -270,9 +270,12 @@ export function useTextControls(getEditor) {
       return
     }
 
+    // 面板会提交完整样式快照，显式保留选框宽度，让左中右对齐只改变框内排版。
+    const selectedWidth = Number(selectedText.width)
     editor.text.update({
       text: textValue.value,
-      ...getTextOptions()
+      ...getTextOptions(),
+      ...(Number.isFinite(selectedWidth) && selectedWidth > 0 ? { width: selectedWidth } : {})
     })
   }
 

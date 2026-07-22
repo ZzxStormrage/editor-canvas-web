@@ -1,17 +1,20 @@
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
-import { customTemplateApi } from '../api/modules/custom-template.js'
-import { resolveCustomTemplateRecord } from '../services/custom-template-document.js'
 import { setAccessToken } from '../services/auth-token.js'
-import { MESSAGE_TYPES, postBridgeMessage } from '../services/message-bridge.js'
+import {
+  MESSAGE_TYPES,
+  postBridgeMessage,
+  subscribeBridgeMessage
+} from '../services/message-bridge.js'
 import { parsePositiveIntegerId } from '../services/positive-integer-id.js'
 
 const TOKEN_QUERY_KEYS = ['token', 'authorization', 'Authorization']
 const TEMPLATE_ID_ROUTE_KEYS = ['id', 'templateId']
 const ROUTE_CONTEXT_KEYS = ['id', 'itemId', 'userId', 'partnerId', 'templateName', 'previewImgUrl']
+const TEMPLATE_LOAD_TIMEOUT_MS = 15000
 
 /**
- * 管理编辑器路由与自定义模板接口之间的加载、创建和更新流程。
+ * 通过消息桥接收初始化 JSON，并将保存 JSON 交给外部宿主处理。
  *
  * @param {Object} options 持久化配置。
  * @param {Object} options.editor `useCanvasEditor()` 返回值。
@@ -26,10 +29,29 @@ export function useCustomTemplatePersistence(options) {
   const loading = ref(false)
   const saving = ref(false)
   const template = reactive(createTemplateState())
-  let routeContext = readRouteContext(route)
   let activeRouteKey = createRoutePersistenceKey(route)
-  let initializationQueued = false
+  let currentRouteContext = readRouteContext(route)
+  let initializationVersion = 0
+  let pendingLoadRequestId = null
+  let pendingSaveRequestId = null
+  let loadResponseTimer = null
   let isMounted = false
+  const unsubscribeTemplateLoad = subscribeBridgeMessage(
+    MESSAGE_TYPES.TEMPLATE_LOAD,
+    handleTemplateLoadMessage
+  )
+  const unsubscribeTemplateLoadFailed = subscribeBridgeMessage(
+    MESSAGE_TYPES.TEMPLATE_LOAD_FAILED,
+    handleTemplateLoadFailedMessage
+  )
+  const unsubscribeTemplateSaved = subscribeBridgeMessage(
+    MESSAGE_TYPES.TEMPLATE_SAVED,
+    handleTemplateSavedMessage
+  )
+  const unsubscribeTemplateSaveFailed = subscribeBridgeMessage(
+    MESSAGE_TYPES.TEMPLATE_SAVE_FAILED,
+    handleTemplateSaveFailedMessage
+  )
 
   const statusText = computed(() => {
     if (loading.value) {
@@ -40,92 +62,151 @@ export function useCustomTemplatePersistence(options) {
   })
 
   /**
-   * 根据路由上下文初始化模板。
+   * 根据路由上下文请求宿主提供初始化 JSON。
    *
-   * @returns {Promise<Object | null>} 已加载的模板记录。
+   * @returns {Promise<{ requestId: string, channels: string[] } | null>} 初始化请求结果。
    */
   async function initialize() {
-    if (loading.value) {
-      initializationQueued = true
-      return null
-    }
-
-    initializationQueued = false
+    const version = ++initializationVersion
     loading.value = true
+    clearLoadResponseTimer()
+    pendingLoadRequestId = null
     try {
       activeRouteKey = createRoutePersistenceKey(route)
-      const currentRouteContext = readRouteContext(route)
-      routeContext = currentRouteContext
+      currentRouteContext = readRouteContext(route)
       resetTemplateState(template)
       applyRouteContext(template, currentRouteContext)
-      if (currentRouteContext.id) {
-        postLifecycleMessage(
-          MESSAGE_TYPES.TEMPLATE_LOADING,
-          createTemplatePayload(template, {
-            mode: 'edit'
-          })
-        )
-      }
       await applyRouteAuthorization(currentRouteContext, route, router)
       const coreEditor = await editor.whenReady()
-      coreEditor.clearDocument?.()
 
-      if (!currentRouteContext.id) {
+      if (version !== initializationVersion) {
+        return null
+      }
+
+      coreEditor.clearDocument?.()
+      const transmission = postBridgeMessage(
+        MESSAGE_TYPES.TEMPLATE_LOAD_REQUESTED,
+        createTemplatePayload(template)
+      )
+      pendingLoadRequestId = transmission.message.id
+
+      if (transmission.channels.length === 0 && !currentRouteContext.id) {
+        loading.value = false
         postLifecycleMessage(
           MESSAGE_TYPES.EDITOR_INITIALIZED,
           createTemplatePayload(template, {
             mode: 'create'
           })
         )
-        return null
+        return {
+          requestId: pendingLoadRequestId,
+          channels: transmission.channels
+        }
       }
 
-      const response = await customTemplateApi.detail(currentRouteContext.id, createRequestOptions(template))
-      const record = resolveCustomTemplateRecord(response)
-
-      if (!record) {
-        throw new Error('模板详情接口未返回有效数据。')
+      if (transmission.channels.length === 0) {
+        throw new Error('未检测到外部宿主，无法获取模板初始化 JSON。')
       }
-      applyTemplateRecord(template, record, currentRouteContext)
-      await loadTemplateContent(editor, record.content)
-      editor.fitArtboardToView()
-      postLifecycleMessage(
-        MESSAGE_TYPES.TEMPLATE_LOADED,
-        createTemplatePayload(template, {
-          mode: 'edit'
-        })
-      )
-      postLifecycleMessage(
-        MESSAGE_TYPES.EDITOR_INITIALIZED,
-        createTemplatePayload(template, {
-          mode: 'edit'
-        })
-      )
-      return record
+
+      startLoadResponseTimer(pendingLoadRequestId)
+      return {
+        requestId: pendingLoadRequestId,
+        channels: transmission.channels
+      }
     } catch (error) {
-      postLifecycleMessage(
-        MESSAGE_TYPES.TEMPLATE_LOAD_FAILED,
-        createTemplatePayload(template, {
-          error: serializeBridgeError(error)
-        })
-      )
-      notify?.(error?.message || '模板加载失败。', 'error')
-      return null
-    } finally {
-      loading.value = false
-      if (initializationQueued) {
-        initializationQueued = false
-        void initialize()
+      if (version === initializationVersion) {
+        loading.value = false
+        pendingLoadRequestId = null
+        postLifecycleMessage(
+          MESSAGE_TYPES.TEMPLATE_LOAD_FAILED,
+          createTemplatePayload(template, {
+            error: serializeBridgeError(error)
+          })
+        )
+        notify?.(error?.message || '模板初始化请求失败。', 'error')
       }
+      return null
     }
   }
 
   /**
-   * 保存当前编辑器 JSON。
+   * 接收宿主返回的模板上下文和统一 JSON，并还原编辑器。
    *
-   * 没有 id 时调用 POST，有 id 时调用 PUT。
+   * @param {{ payload?: Object }} event 消息订阅事件。
+   * @returns {Promise<Object | null>} 已加载的统一文档。
+   */
+  async function handleTemplateLoadMessage({ payload = {} }) {
+    if (!isMatchingRequest(payload.requestId, pendingLoadRequestId)) {
+      return null
+    }
+
+    const version = initializationVersion
+    clearLoadResponseTimer()
+    loading.value = true
+    try {
+      const incomingTemplate = isPlainObject(payload.template) ? payload.template : {}
+      const document = payload.document ?? payload.content ?? incomingTemplate.content ?? null
+      applyTemplateRecord(template, incomingTemplate, currentRouteContext)
+      const coreEditor = await editor.whenReady()
+
+      if (version !== initializationVersion) {
+        return null
+      }
+
+      coreEditor.clearDocument?.()
+      const loadedDocument = await loadTemplateContent(editor, document)
+      if (loadedDocument) {
+        editor.fitArtboardToView()
+      }
+      pendingLoadRequestId = null
+      loading.value = false
+      postLifecycleMessage(
+        MESSAGE_TYPES.TEMPLATE_LOADED,
+        createTemplatePayload(template, { requestId: payload.requestId ?? null })
+      )
+      postLifecycleMessage(
+        MESSAGE_TYPES.EDITOR_INITIALIZED,
+        createTemplatePayload(template, { requestId: payload.requestId ?? null })
+      )
+      return loadedDocument
+    } catch (error) {
+      if (version === initializationVersion) {
+        pendingLoadRequestId = null
+        loading.value = false
+        notify?.(error?.message || '宿主模板 JSON 加载失败。', 'error')
+        postLifecycleMessage(
+          MESSAGE_TYPES.TEMPLATE_LOAD_FAILED,
+          createTemplatePayload(template, {
+            requestId: payload.requestId ?? null,
+            error: serializeBridgeError(error)
+          })
+        )
+      }
+      return null
+    }
+  }
+
+  /**
+   * 接收宿主返回的初始化失败消息并结束加载状态。
    *
-   * @returns {Promise<{ created: boolean, id: number | null, response: * }>} 保存结果。
+   * @param {{ payload?: Object }} event 消息订阅事件。
+   * @returns {void}
+   */
+  function handleTemplateLoadFailedMessage({ payload = {} }) {
+    if (!isMatchingRequest(payload.requestId, pendingLoadRequestId)) {
+      return
+    }
+
+    pendingLoadRequestId = null
+    clearLoadResponseTimer()
+    loading.value = false
+    notify?.(payload.error?.message || '宿主获取模板 JSON 失败。', 'error')
+  }
+
+  /**
+   * 导出当前编辑器 JSON，并向外部宿主发送保存请求。
+   *
+   * @returns {Promise<{ document: Object, messageId: string, channels: string[] } | null>} 发送结果。
    */
   async function save() {
     if (loading.value || saving.value) {
@@ -139,45 +220,27 @@ export function useCustomTemplatePersistence(options) {
       const document = editor.exportDocument()
 
       if (!document) {
-        throw new Error('编辑器尚未初始化，无法保存模板。')
+        throw new Error('编辑器尚未初始化，无法导出保存数据。')
       }
 
-      const created = !template.id
-      postLifecycleMessage(
-        MESSAGE_TYPES.TEMPLATE_SAVING,
+      const transmission = postBridgeMessage(
+        MESSAGE_TYPES.TEMPLATE_SAVE_REQUESTED,
         createTemplatePayload(template, {
-          action: created ? 'create' : 'update'
-        })
-      )
-      const dto = createSaveDto(template, document)
-      const response = created
-        ? await customTemplateApi.create(dto, createRequestOptions(template))
-        : await customTemplateApi.update(dto, createRequestOptions(template))
-      const responseRecord = resolveCustomTemplateRecord(response)
-
-      if (responseRecord) {
-        applyTemplateRecord(template, responseRecord, routeContext)
-      }
-
-      if (created && !template.id) {
-        template.id = resolveTemplateId(response) ?? (await resolveCreatedTemplateId(template))
-      }
-
-      if (template.id) {
-        routeContext = { ...routeContext, id: template.id }
-        activeRouteKey = createContextPersistenceKey(routeContext)
-        await syncRouteTemplateId(route, router, template.id)
-      }
-
-      postLifecycleMessage(
-        MESSAGE_TYPES.TEMPLATE_SAVED,
-        createTemplatePayload(template, {
-          action: created ? 'create' : 'update',
-          success: true,
+          action: template.id ? 'update' : 'create',
           document
         })
       )
-      return { created, id: template.id, response }
+
+      if (transmission.channels.length === 0) {
+        throw new Error('未检测到外部宿主，当前 JSON 未发送。')
+      }
+
+      pendingSaveRequestId = transmission.message.id
+      return {
+        document,
+        messageId: transmission.message.id,
+        channels: transmission.channels
+      }
     } catch (error) {
       postLifecycleMessage(
         MESSAGE_TYPES.TEMPLATE_SAVE_FAILED,
@@ -188,6 +251,74 @@ export function useCustomTemplatePersistence(options) {
       throw error
     } finally {
       saving.value = false
+    }
+  }
+
+  /**
+   * 接收宿主保存成功回执，并合并新增接口返回的模板 ID 等上下文。
+   *
+   * @param {{ payload?: Object }} event 消息订阅事件。
+   * @returns {void}
+   */
+  function handleTemplateSavedMessage({ payload = {} }) {
+    if (!isMatchingRequest(payload.requestId, pendingSaveRequestId)) {
+      return
+    }
+
+    if (isPlainObject(payload.template)) {
+      applyTemplateRecord(template, payload.template, currentRouteContext)
+    }
+    pendingSaveRequestId = null
+    notify?.('模板已保存。', 'success')
+  }
+
+  /**
+   * 接收宿主保存失败回执。
+   *
+   * @param {{ payload?: Object }} event 消息订阅事件。
+   * @returns {void}
+   */
+  function handleTemplateSaveFailedMessage({ payload = {} }) {
+    if (!isMatchingRequest(payload.requestId, pendingSaveRequestId)) {
+      return
+    }
+
+    pendingSaveRequestId = null
+    notify?.(payload.error?.message || '宿主保存模板失败。', 'error')
+  }
+
+  /**
+   * 启动宿主初始化响应超时计时器。
+   *
+   * @param {string} requestId 初始化请求 ID。
+   * @returns {void}
+   */
+  function startLoadResponseTimer(requestId) {
+    clearLoadResponseTimer()
+    loadResponseTimer = window.setTimeout(() => {
+      if (pendingLoadRequestId !== requestId) {
+        return
+      }
+
+      pendingLoadRequestId = null
+      loading.value = false
+      const error = new Error('宿主返回模板 JSON 超时，请重试。')
+      notify?.(error.message, 'error')
+      postLifecycleMessage(
+        MESSAGE_TYPES.TEMPLATE_LOAD_FAILED,
+        createTemplatePayload(template, {
+          requestId,
+          error: serializeBridgeError(error)
+        })
+      )
+    }, TEMPLATE_LOAD_TIMEOUT_MS)
+  }
+
+  /** @returns {void} 清理宿主初始化响应超时计时器。 */
+  function clearLoadResponseTimer() {
+    if (loadResponseTimer !== null) {
+      window.clearTimeout(loadResponseTimer)
+      loadResponseTimer = null
     }
   }
 
@@ -203,6 +334,14 @@ export function useCustomTemplatePersistence(options) {
   onMounted(() => {
     isMounted = true
     void initialize()
+  })
+
+  onBeforeUnmount(() => {
+    clearLoadResponseTimer()
+    unsubscribeTemplateLoad()
+    unsubscribeTemplateLoadFailed()
+    unsubscribeTemplateSaved()
+    unsubscribeTemplateSaveFailed()
   })
 
   return {
@@ -399,7 +538,7 @@ async function applyRouteAuthorization(context, route, router) {
 }
 
 /**
- * 将接口记录合并到当前模板状态。
+ * 将宿主返回的模板上下文合并到当前模板状态。
  *
  * 路由显式值优先于接口值。
  *
@@ -412,6 +551,8 @@ function applyTemplateRecord(target, record, context) {
   target.id = context.id ?? normalizeOptionalIdentifier(record.id, 'id') ?? target.id
   target.itemId = context.itemId ?? normalizeOptionalIdentifier(record.itemId, 'itemId') ?? target.itemId
   target.userId = context.userId ?? normalizeOptionalIdentifier(record.userId, 'userId') ?? target.userId
+  target.partnerId =
+    context.partnerId ?? normalizeOptionalIdentifier(record.partnerId, 'partnerId') ?? target.partnerId
   target.templateName = context.templateName ?? normalizeOptionalText(record.templateName) ?? target.templateName
   target.previewImgUrl = context.previewImgUrl ?? normalizeOptionalText(record.previewImgUrl) ?? target.previewImgUrl
 }
@@ -432,157 +573,20 @@ async function loadTemplateContent(editor, content) {
 }
 
 /**
- * 创建模板保存 DTO。
+ * 判断宿主响应是否属于当前初始化请求。
  *
- * @param {Object} template 当前模板状态。
- * @param {Object} document 编辑器统一文档。
- * @returns {Object} 后端保存 DTO。
- */
-function createSaveDto(template, document) {
-  const itemId = normalizeRequiredIdentifier(template.itemId, 'itemId')
-
-  return {
-    content: JSON.stringify(document),
-    id: template.id ?? 0,
-    itemId,
-    previewImgUrl: template.previewImgUrl || '',
-    templateName: template.templateName || '未命名模板'
-  }
-}
-
-/**
- * 创建带分销商上下文的请求配置。
+ * 未携带 requestId 时兼容旧宿主；携带时必须与当前请求一致。
  *
- * @param {Object} template 模板状态。
- * @returns {{ partnerId: number | null }} 请求配置。
+ * @param {*} responseRequestId 宿主响应中的请求 ID。
+ * @param {string | null} pendingRequestId 当前等待中的请求 ID。
+ * @returns {boolean} 是否应该处理该响应。
  */
-function createRequestOptions(template) {
-  return { partnerId: template.partnerId }
-}
-
-/**
- * 在创建接口未直接返回 ID 时通过列表查询补齐。
- *
- * @param {Object} template 当前模板状态。
- * @returns {Promise<number | string | null>} 新模板 ID。
- */
-async function resolveCreatedTemplateId(template) {
-  const response = await customTemplateApi.list(
-    {
-      itemId: template.itemId,
-      templateName: template.templateName || undefined,
-      userId: template.userId,
-      page: 0,
-      size: 1,
-      sort: ['id,desc']
-    },
-    createRequestOptions(template)
-  )
-  const record = resolveTemplateList(response)[0]
-  return normalizeOptionalIdentifier(record?.id, 'id')
-}
-
-/**
- * 将新建后的模板 ID 写回路由。
- *
- * @param {import('vue-router').RouteLocationNormalizedLoaded} route 当前路由。
- * @param {import('vue-router').Router} router Vue Router 实例。
- * @param {number | string} id 模板 ID。
- * @returns {Promise<void>}
- */
-async function syncRouteTemplateId(route, router, id) {
-  const currentId = readRouteValue(route, TEMPLATE_ID_ROUTE_KEYS)
-
-  if (String(currentId ?? '') === String(id)) {
-    return
+function isMatchingRequest(responseRequestId, pendingRequestId) {
+  if (responseRequestId === undefined || responseRequestId === null || responseRequestId === '') {
+    return Boolean(pendingRequestId)
   }
 
-  await router.replace({
-    name: route.name,
-    params: route.params,
-    query: {
-      ...route.query,
-      templateId: String(id)
-    }
-  })
-}
-
-/**
- * 从常见新增响应中提取模板 ID。
- *
- * @param {*} value 服务端响应。
- * @param {number} [depth=0] 当前解包深度。
- * @returns {number | string | null} 模板 ID。
- */
-function resolveTemplateId(value, depth = 0) {
-  if (depth > 4 || value === undefined || value === null || value === '') {
-    return null
-  }
-
-  if (typeof value === 'number' || typeof value === 'string') {
-    return normalizeResponseIdentifier(value)
-  }
-
-  if (!isPlainObject(value)) {
-    return null
-  }
-
-  const ownId = normalizeResponseIdentifier(value.id)
-  if (ownId) {
-    return ownId
-  }
-
-  for (const key of ['data', 'result', 'body']) {
-    const id = resolveTemplateId(value[key], depth + 1)
-
-    if (id) {
-      return id
-    }
-  }
-
-  return null
-}
-
-/**
- * 宽容解析服务端返回的模板 ID。
- *
- * @param {*} value 服务端原始值。
- * @returns {number | string | null} 正整数 ID 或 null。
- */
-function normalizeResponseIdentifier(value) {
-  return parsePositiveIntegerId(value)
-}
-
-/**
- * 从常见分页响应中提取模板列表。
- *
- * @param {*} value 服务端响应。
- * @param {number} [depth=0] 当前解包深度。
- * @returns {Object[]} 模板列表。
- */
-function resolveTemplateList(value, depth = 0) {
-  if (Array.isArray(value)) {
-    return value
-  }
-  if (!isPlainObject(value) || depth > 4) {
-    return []
-  }
-
-  for (const key of ['content', 'list', 'records', 'rows']) {
-    if (Array.isArray(value[key])) {
-      return value[key]
-    }
-  }
-
-  for (const key of ['data', 'result', 'body']) {
-    const list = resolveTemplateList(value[key], depth + 1)
-
-    if (list.length) {
-      return list
-    }
-  }
-
-  return []
+  return String(responseRequestId) === String(pendingRequestId)
 }
 
 /** @param {*} value 待检查值。 @returns {boolean} 是否为普通对象。 */

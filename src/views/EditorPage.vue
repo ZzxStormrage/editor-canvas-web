@@ -63,16 +63,16 @@ function openLayerAttributesPanel() {
   activePanel.value = 'layers'
 }
 
-/** @returns {Promise<void>} 创建或更新当前自定义模板。 */
+/** @returns {Promise<void>} 将当前编辑器 JSON 提交给外部宿主。 */
 async function saveCustomTemplate() {
   try {
     const result = await templatePersistence.save()
 
     if (result) {
-      showMessage(result.created ? '模板已创建' : '模板已保存', 'success')
+      showMessage('保存数据已发送', 'success')
     }
   } catch (error) {
-    showMessage(error.message || '模板保存失败。', 'error')
+    showMessage(error.message || '保存数据发送失败。', 'error')
   }
 }
 

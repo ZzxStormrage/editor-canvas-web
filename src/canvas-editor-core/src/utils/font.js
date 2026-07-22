@@ -1,5 +1,65 @@
 const loadedFontFaces = new Map()
 const fontFaceRequests = new Map()
+const FONT_WEIGHT_VALUES = Object.freeze({
+  thin: 100,
+  'extra-light': 200,
+  light: 300,
+  normal: 400,
+  medium: 500,
+  'semi-bold': 600,
+  bold: 700,
+  'extra-bold': 800,
+  black: 900
+})
+const MEDIUM_WEIGHT_STROKE_RATIO = 0.02
+const BOLD_WEIGHT_STROKE_RATIO = 0.045
+
+/**
+ * 计算单文件远程字体的视觉字重补偿描边。
+ *
+ * 字体接口目前只提供一个静态字体文件，无法保证浏览器生成 500/700 字重。
+ * 本方法只为远程字体提供补偿，系统字体继续使用浏览器原生字重。
+ *
+ * @param {number | string} fontSize 字号。
+ * @param {number | string} fontWeight 字重。
+ * @param {string | undefined | null} fontUrl 远程字体地址。
+ * @returns {number} 补偿描边宽度；0 表示无需补偿。
+ */
+export function resolveSyntheticFontWeightStroke(fontSize, fontWeight, fontUrl) {
+  if (!normalizeFontUrl(fontUrl)) {
+    return 0
+  }
+
+  const size = Number(fontSize)
+  const weight = normalizeFontWeight(fontWeight)
+  if (!Number.isFinite(size) || size <= 0 || weight < 500) {
+    return 0
+  }
+
+  const isBold = weight >= 700
+  const ratio = isBold ? BOLD_WEIGHT_STROKE_RATIO : MEDIUM_WEIGHT_STROKE_RATIO
+  const minimum = isBold ? 0.65 : 0.3
+  return Number(Math.min(3, Math.max(minimum, size * ratio)).toFixed(2))
+}
+
+/**
+ * 从导出数据中恢复文字原有描边，移除运行时字重补偿。
+ *
+ * @param {Object} renderData Leafer 序列化数据。
+ * @param {Object} [original={}] 应用补偿前的文字描边。
+ * @returns {Object} 已清理的序列化数据。
+ */
+export function sanitizeSyntheticFontWeightData(renderData, original = {}) {
+  for (const key of ['stroke', 'strokeWidth', 'strokeAlign']) {
+    if (original[key] === undefined) {
+      delete renderData[key]
+    } else {
+      renderData[key] = original[key]
+    }
+  }
+
+  return renderData
+}
 
 /**
  * 加载并注册浏览器字体。
@@ -124,4 +184,20 @@ function normalizeFontFamilyName(value) {
  */
 function normalizeFontUrl(value) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+/**
+ * 将 Leafer 支持的字重值归一化为数值。
+ *
+ * @private
+ * @param {number | string} value 字重。
+ * @returns {number} 数值字重。
+ */
+function normalizeFontWeight(value) {
+  if (typeof value === 'string' && FONT_WEIGHT_VALUES[value] !== undefined) {
+    return FONT_WEIGHT_VALUES[value]
+  }
+
+  const weight = Number(value)
+  return Number.isFinite(weight) ? weight : 400
 }

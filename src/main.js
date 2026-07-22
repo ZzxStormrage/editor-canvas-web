@@ -1,4 +1,4 @@
-import { createApp } from 'vue'
+import { createApp, nextTick } from 'vue'
 import './style.css'
 import App from './App.vue'
 import { configureApiClient } from './api/index.js'
@@ -21,21 +21,6 @@ configureApiClient({
 })
 installAuthTokenBridge()
 startMessageBridge({ allowedOrigins: '*' })
-postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
-  capabilities: [
-    MESSAGE_TYPES.EDITOR_INITIALIZED,
-    MESSAGE_TYPES.AUTH_TOKEN,
-    MESSAGE_TYPES.H5_AUTH_TOKEN,
-    MESSAGE_TYPES.AUTH_EXPIRED,
-    MESSAGE_TYPES.TEMPLATE_LOADING,
-    MESSAGE_TYPES.TEMPLATE_LOADED,
-    MESSAGE_TYPES.TEMPLATE_LOAD_FAILED,
-    MESSAGE_TYPES.TEMPLATE_SAVING,
-    MESSAGE_TYPES.TEMPLATE_SAVED,
-    MESSAGE_TYPES.TEMPLATE_SAVE_FAILED,
-    MESSAGE_TYPES.H5_PAGE_SAVED
-  ]
-})
 
 const app = createApp(App)
 const vuetify = createVuetifyPlugin()
@@ -67,3 +52,29 @@ app.config.errorHandler = (err, instance, info) => {
 }
 
 app.mount('#app')
+
+/** @returns {Promise<void>} 路由页面完成挂载后通知宿主通信能力已就绪。 */
+async function notifyEditorReady() {
+  await router.isReady()
+  await nextTick()
+  postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
+    capabilities: [
+      MESSAGE_TYPES.EDITOR_INITIALIZED,
+      MESSAGE_TYPES.AUTH_TOKEN,
+      MESSAGE_TYPES.H5_AUTH_TOKEN,
+      MESSAGE_TYPES.AUTH_EXPIRED,
+      MESSAGE_TYPES.TEMPLATE_LOAD_REQUESTED,
+      MESSAGE_TYPES.TEMPLATE_LOAD,
+      MESSAGE_TYPES.TEMPLATE_LOADING,
+      MESSAGE_TYPES.TEMPLATE_LOADED,
+      MESSAGE_TYPES.TEMPLATE_LOAD_FAILED,
+      MESSAGE_TYPES.TEMPLATE_SAVE_REQUESTED,
+      MESSAGE_TYPES.TEMPLATE_SAVING,
+      MESSAGE_TYPES.TEMPLATE_SAVED,
+      MESSAGE_TYPES.TEMPLATE_SAVE_FAILED,
+      MESSAGE_TYPES.H5_PAGE_SAVED
+    ]
+  })
+}
+
+void notifyEditorReady()
