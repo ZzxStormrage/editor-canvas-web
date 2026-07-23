@@ -65,7 +65,7 @@ test('template load accepts backend material group id arrays', () => {
     template: {
       id: 3,
       partnerId: 10,
-      materialGroupId: [2, '5', 2]
+      materialGroups: [2, '5', 2]
     },
     document: {}
   })
@@ -80,6 +80,21 @@ test('template load accepts backend material group id arrays', () => {
 
 test('material group ids accept comma separated backend values', () => {
   assert.deepEqual(normalizeMaterialGroupIds('1, 2,2'), [1, 2])
+})
+
+test('materialGroups accepts full group objects and derives the default id', () => {
+  const config = resolveMaterialGroupMessageConfig({
+    template: {
+      materialGroups: [
+        { id: 3, groupName: '瓶身图案' },
+        { id: 4, groupName: '杯身图案' }
+      ]
+    }
+  })
+
+  assert.deepEqual(config.materialGroupIds, [3, 4])
+  assert.equal(config.materialGroupId, 3)
+  assert.equal(config.materialGroups[0].groupName, '瓶身图案')
 })
 
 test('material pages map real image fields and determine more pages', () => {

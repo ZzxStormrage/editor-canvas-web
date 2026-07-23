@@ -1,9 +1,17 @@
+/*
+ * @Author: zzx 452436275@qq.com
+ * @Date: 2026-07-23 14:54:01
+ * @LastEditors: zzx 452436275@qq.com
+ * @LastEditTime: 2026-07-23 19:36:08
+ * @FilePath: /ele-editor-v2/src/main.js
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 import { createApp, nextTick } from 'vue'
 import './style.css'
 import App from './App.vue'
 import { configureApiClient } from './api/index.js'
 import { createVuetifyPlugin } from './plugins/vuetify.js'
-import { router } from './router/index.js'
+import { router } from './plugins/router/index.js'
 import {
   clearAccessToken,
   installAuthTokenBridge,

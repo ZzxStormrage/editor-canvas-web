@@ -10,47 +10,47 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 
 const routes = [
   { path: '/', redirect: '/editor' },
-  { path: '/editor', name: 'editor', component: () => import('../views/EditorPage.vue') },
-  { path: '/h5-preview', name: 'h5-preview', component: () => import('../views/H5PreviewPage.vue') },
+  { path: '/editor', name: 'editor', component: () => import('../../views/EditorPage.vue') },
+  { path: '/h5-preview', name: 'h5-preview', component: () => import('../../views/H5PreviewPage.vue') },
   {
     path: '/h5-page',
-    component: () => import('../views/h5-page/index.vue'),
+    component: () => import('../../views/h5-page/index.vue'),
     children: [
       {
         path: 'hundred-family-surnames',
         name: 'hundred-family-surnames',
-        component: () => import('../views/h5-page/hundred-family-surnames.vue')
+        component: () => import('../../views/h5-page/hundred-family-surnames.vue')
       },
       {
         path: 'chinese-zodiac',
         name: 'chinese-zodiac',
-        component: () => import('../views/h5-page/chinese-zodiac.vue')
+        component: () => import('../../views/h5-page/chinese-zodiac.vue')
       },
       {
         path: 'original-customization',
         alias: 'original-image',
         name: 'original-customization',
-        component: () => import('../views/h5-page/original-customization.vue')
+        component: () => import('../../views/h5-page/original-customization.vue')
       },
       {
         path: 'music-customization',
         name: 'music-customization',
-        component: () => import('../views/h5-page/music-customization.vue')
+        component: () => import('../../views/h5-page/music-customization.vue')
       },
       {
         path: 'portrait-customization',
         name: 'portrait-customization',
-        component: () => import('../views/h5-page/portrait-customization.vue')
+        component: () => import('../../views/h5-page/portrait-customization.vue')
       },
       {
         path: 'poetry-customization',
         name: 'poetry-customization',
-        component: () => import('../views/h5-page/poetry-customization.vue')
+        component: () => import('../../views/h5-page/poetry-customization.vue')
       }
     ]
   },
-  { path: '/docs', name: 'docs', component: () => import('../views/ApiDocsPage.vue') },
-  { path: '/h5-docs', name: 'h5-docs', component: () => import('../views/H5OperationsDocsPage.vue') },
+  { path: '/docs', name: 'docs', component: () => import('../../views/ApiDocsPage.vue') },
+  { path: '/h5-docs', name: 'h5-docs', component: () => import('../../views/H5OperationsDocsPage.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/editor' }
 ]
 

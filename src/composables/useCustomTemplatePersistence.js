@@ -187,7 +187,7 @@ export function useCustomTemplatePersistence(options) {
       postLifecycleMessage(MESSAGE_TYPES.EDITOR_CONFIG_APPLIED, {
         requestId: payload.requestId ?? null,
         materialGroupId: editor.activeMaterialGroupId.value,
-        materialGroupIds: [...template.materialGroupIds],
+        materialGroups: [...template.materialGroupIds],
         materialGroupCount: editor.materialGroups.value.length
       })
       return materials
@@ -347,7 +347,7 @@ function createTemplatePayload(template, extra = {}) {
       itemId: template.itemId,
       userId: template.userId,
       partnerId: template.partnerId,
-      materialGroupId: [...template.materialGroupIds],
+      materialGroups: [...template.materialGroupIds],
       templateName: template.templateName,
       previewImgUrl: template.previewImgUrl
     }
@@ -476,11 +476,12 @@ function applyTemplateRecord(target, record) {
   target.userId = normalizeOptionalText(record.userId) ?? target.userId
   target.partnerId = normalizeOptionalText(record.partnerId) ?? target.partnerId
   if (
-    Object.prototype.hasOwnProperty.call(record, 'materialGroupId')
+    Object.prototype.hasOwnProperty.call(record, 'materialGroups')
+    || Object.prototype.hasOwnProperty.call(record, 'materialGroupId')
     || Object.prototype.hasOwnProperty.call(record, 'materialGroupIds')
   ) {
     target.materialGroupIds = normalizeMaterialGroupIds(
-      record.materialGroupIds ?? record.materialGroupId
+      record.materialGroups ?? record.materialGroupIds ?? record.materialGroupId
     )
   }
   target.templateName = normalizeOptionalText(record.templateName) ?? target.templateName

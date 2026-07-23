@@ -42,6 +42,7 @@ export function resolveMaterialGroupMessageConfig(payload) {
   const materialGroupIds = normalizeMaterialGroupIds(
     resolveConfigValue(configSources, 'materialGroupIds')
       ?? resolveConfigValue(configSources, 'materialGroupId')
+      ?? rawGroups
       ?? materialGroup?.id
   )
   const materialGroupId = normalizePositiveId(
@@ -88,7 +89,7 @@ export function normalizeMaterialGroupIds(value) {
   const seen = new Set()
 
   source.forEach((item) => {
-    const id = normalizePositiveId(item)
+    const id = normalizePositiveId(isPlainObject(item) ? item.id : item)
     const key = String(id ?? '')
     if (id === null || seen.has(key)) {
       return
@@ -112,8 +113,10 @@ export function normalizeMaterialGroups(response) {
   const ids = new Set()
 
   return list.reduce((groups, item) => {
-    const id = normalizePositiveId(item?.id)
-    const groupName = normalizeText(item?.groupName ?? item?.name)
+    const sourceItem = isPlainObject(item) ? item : { id: item }
+    const id = normalizePositiveId(sourceItem.id)
+    const groupName = normalizeText(sourceItem.groupName ?? sourceItem.name)
+      ?? (id === null ? null : `素材组 #${id}`)
 
     if (!id || !groupName || ids.has(id)) {
       return groups
@@ -121,7 +124,7 @@ export function normalizeMaterialGroups(response) {
 
     ids.add(id)
     groups.push({
-      ...item,
+      ...sourceItem,
       id,
       groupName
     })

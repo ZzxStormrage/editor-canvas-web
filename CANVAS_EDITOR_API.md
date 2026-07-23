@@ -565,7 +565,7 @@ sendToEditor('editor:config', {
 `editor:config-failed`。后续其他运行时配置也统一扩展在 `editor:config.payload` 中。
 
 后台“SKU 矩阵 → 配置 → 选择 2D 模板”当前使用的 `template:load` 结构也已直接支持，
-`template.materialGroupId` 可以是单个 ID、ID 数组或逗号分隔字符串：
+标准接收字段为 `template.materialGroups`，可以传 ID 数组或完整素材组对象数组：
 
 ```js
 this.postMessageToIframe('template:load', {
@@ -576,15 +576,17 @@ this.postMessageToIframe('template:load', {
     templateName: record.templateName,
     partnerId: record.partnerId,
     userId: record.userId,
-    materialGroupId: this.context.materialGroupIds
+    materialGroups: this.context.materialGroupIds
   },
   document
 })
 ```
 
 编辑器会把数组中的每个 ID 转为素材组，默认请求第一个 ID；保存请求中的
-`template.materialGroupId` 仍按数组回传，避免后台上下文丢失。若希望显示真实素材组名称，建议
-同时传 `materialGroups`；只传 ID 时名称显示为 `素材组 #ID`。
+`template.materialGroups` 仍按 ID 数组回传，避免后台上下文丢失。若希望显示真实素材组名称，
+请传完整素材组对象数组；只传 ID 时名称显示为 `素材组 #ID`。
+
+旧字段 `materialGroupId`、`materialGroupIds` 仍可接收，但新后台代码统一使用 `materialGroups`。
 
 `template.partnerId` 仅在有效正整数时转换为 `X-Partner-Id` 请求头。后台未配置分销商、值为
 `null`、空字符串、`0` 或无效文本时，编辑器会省略该请求头，不会阻断素材接口请求。
@@ -625,7 +627,7 @@ this.postMessageToIframe('template:load', {
 | `editor:config` | 可选 `materialGroups`、`materialGroupId`、`materialGroupName`、`partnerId`；只更新运行时配置。 |
 | `editor:config-applied` | `requestId`、实际 `materialGroupId`、`materialGroupCount`。 |
 | `editor:config-failed` | `requestId`、`error`。 |
-| `template:load` | `template`、`document`、可选 `materialGroups`；支持 `template.materialGroupId` 单值或数组。 |
+| `template:load` | `template`、`document`；素材组使用 `template.materialGroups` ID 数组或对象数组。 |
 | `editor:initialized` | `mode`、`template`。`mode` 为 `'create'` 或 `'edit'`。 |
 | `template:loaded` | `mode`、`template`。不重复发送完整 JSON。 |
 | `template:save-requested` | `action`、`template`、`document`。`action` 为 `'create'` 或 `'update'`。 |
