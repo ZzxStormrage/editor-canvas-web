@@ -44,7 +44,7 @@
               ref="albumInputRef"
               class="file-input"
               type="file"
-              accept="image/*"
+              :accept="IMAGE_FILE_ACCEPT"
               aria-label="从手机相册选择图片"
               :disabled="!canPickImage"
               @change="handleImageChange"
@@ -54,7 +54,7 @@
               ref="cameraInputRef"
               class="file-input"
               type="file"
-              accept="image/*"
+              :accept="IMAGE_FILE_ACCEPT"
               capture="environment"
               aria-label="使用手机摄像头拍照"
               :disabled="!canPickImage"
@@ -152,6 +152,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { IMAGE_FILE_ACCEPT } from '../../../config/image-upload.js'
 import CanvasDocumentViewport from './CanvasDocumentViewport.vue'
 import { customerPictureApi } from '../api/customer-picture.js'
 import { useH5PageSave } from '../composables/useH5PageSave.js'

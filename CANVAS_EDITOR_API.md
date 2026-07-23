@@ -240,7 +240,8 @@ Vue 或宿主通信逻辑写入 `canvas-editor-core`。当前规则：
 | --- | --- | --- |
 | 编辑器就绪 | 编辑器页面 | 发送 `editor:ready`，表示可以接收初始化 JSON。 |
 | 有模板数据 | 外部宿主 | 发送 `template:load`，`document` 为完整统一 JSON。 |
-| 没有模板数据 | 外部宿主 | 不需要发送任何初始化消息，编辑器直接使用空白文档。 |
+| 没有模板和素材组数据 | 外部宿主 | 不需要发送初始化消息，编辑器直接使用空白文档。 |
+| 只有素材组数据 | 外部宿主 | 发送 `template:load`，`document` 传 `null`，同时传入 `materialGroups`。 |
 | 还原画布 | 编辑器页面 | 调用 `editor.loadDocument()`，成功后发送 `editor:initialized`。 |
 | 点击“立即保存” | 编辑器页面 | 只调用 `editor.exportDocument()`，发送 `template:save-requested`。 |
 | 新增或修改模板 | 外部宿主 | 接收消息后自行调用保存接口、处理鉴权、重试和成功提示。 |
@@ -451,10 +452,11 @@ window.addEventListener('message', async (event) => {
 
   if (message.type === 'editor:ready') {
     sendToEditor('auth:token', { token: accessToken })
-    if (currentEditorJson) {
+    if (currentEditorJson || currentMaterialGroups?.content?.length) {
       sendToEditor('template:load', {
         template: currentTemplateMetadata,
-        document: currentEditorJson
+        document: currentEditorJson ?? null,
+        materialGroups: currentMaterialGroups
       })
     }
     return
@@ -485,14 +487,134 @@ window.addEventListener('message', async (event) => {
 })
 ```
 
-`currentEditorJson` 是宿主已经拥有的完整编辑器 JSON，可以是 JSON 字符串或普通对象；没有数据
-时不发送 `template:load`。`currentTemplateMetadata` 是可选业务元数据。新增接口必须在
+`currentEditorJson` 是宿主已经拥有的完整编辑器 JSON，可以是 JSON 字符串或普通对象；没有画布
+JSON 但需要显示素材组时，可以把 `document` 设为 `null` 后继续发送 `template:load`。
+`currentTemplateMetadata` 是可选业务元数据。新增接口必须在
 `template:saved.payload.template.id` 返回新模板 ID，否则编辑器下一次仍会按 `create` 发送。
+
+### 图片 Tab 素材组初始化
+
+素材组属于编辑器应用层业务数据，不属于画布元素，因此不能放进 `document.elements`，也不会随
+`template:save-requested` 回传。宿主应在 `template:load.payload.materialGroups` 中传入素材组列表
+接口的分页响应：
+
+```js
+sendToEditor('template:load', {
+  template: {
+    id: 1001,
+    partnerId: 10
+  },
+  document: currentEditorJson ?? null,
+  materialGroups: {
+    content: [
+      {
+        id: 1,
+        groupName: '测试1',
+        createTime: '2026-07-23 16:36:45',
+        updateTime: '2026-07-23 16:36:45'
+      },
+      {
+        id: 2,
+        groupName: '测试2',
+        createTime: '2026-07-23 16:37:05',
+        updateTime: '2026-07-23 16:37:05'
+      }
+    ],
+    totalElements: 2
+  }
+})
+```
+
+编辑器收到消息后会显示素材组名称，并立即选择第一组，请求：
+
+```text
+GET /admin/api/customMaterialGroup/{groupId}/materials?page=0&size=20
+```
+
+### 跨端单独传入素材组配置
+
+素材组也可以通过独立的 `editor:config` 消息传入。该方式适合宿主在编辑器已经初始化后更新
+素材组，不会重新加载 JSON、清空画布或影响撤销历史。`materialGroupId` 表示默认选中的素材组：
+
+编辑器不再内置测试素材组。后台管理系统应在收到 `editor:ready` 后发送真实素材组数据；未发送前，
+图片 Tab 显示“暂无素材组”。
+
+```js
+sendToEditor('editor:config', {
+  requestId: 'config-001',
+  partnerId: 10,
+  materialGroups: [
+    { id: 1, groupName: '测试1' },
+    { id: 2, groupName: '测试2' }
+  ],
+  materialGroupId: 2
+})
+```
+
+如果宿主暂时只有一个素材组 ID，也可以直接发送：
+
+```js
+sendToEditor('editor:config', {
+  materialGroupId: 1,
+  materialGroupName: '测试1'
+})
+```
+
+编辑器会使用该 ID 请求组内素材；未传名称时界面显示 `素材组 #1`。处理完成后编辑器发送
+`editor:config-applied`，返回实际选中的 `materialGroupId` 和 `materialGroupCount`；处理失败发送
+`editor:config-failed`。后续其他运行时配置也统一扩展在 `editor:config.payload` 中。
+
+后台“SKU 矩阵 → 配置 → 选择 2D 模板”当前使用的 `template:load` 结构也已直接支持，
+`template.materialGroupId` 可以是单个 ID、ID 数组或逗号分隔字符串：
+
+```js
+this.postMessageToIframe('template:load', {
+  template: {
+    id: this.context.sourceTemplateId ? null : this.resolveTemplateId(record),
+    itemId: record.itemId,
+    skuId: record.skuId,
+    templateName: record.templateName,
+    partnerId: record.partnerId,
+    userId: record.userId,
+    materialGroupId: this.context.materialGroupIds
+  },
+  document
+})
+```
+
+编辑器会把数组中的每个 ID 转为素材组，默认请求第一个 ID；保存请求中的
+`template.materialGroupId` 仍按数组回传，避免后台上下文丢失。若希望显示真实素材组名称，建议
+同时传 `materialGroups`；只传 ID 时名称显示为 `素材组 #ID`。
+
+`template.partnerId` 仅在有效正整数时转换为 `X-Partner-Id` 请求头。后台未配置分销商、值为
+`null`、空字符串、`0` 或无效文本时，编辑器会省略该请求头，不会阻断素材接口请求。
+
+用户切换素材组时从第 `0` 页重新请求；滚动接近底部时依次请求下一页。若
+`template.partnerId` 有值，请求会携带 `X-Partner-Id`。素材响应使用 `materialUrl` 展示图片、
+`materialName` 展示名称；缩略图使用等比完整显示，点击后通过图片 API 等比添加到画布。
+
+图片业务属性中的“绑定素材组”会随编辑器 JSON 保存在对应图片元素中：
+
+```json
+{
+  "attributes": {
+    "image": {
+      "materialGroupId": 1,
+      "materialGroupName": "测试1"
+    }
+  }
+}
+```
+
+`materialGroupId` 是 H5 请求组内素材时使用的稳定标识，`materialGroupName` 是保存时的名称快照，
+仅用于界面展示和问题排查。H5 可以通过
+`editor.getElementsByAttribute('image.materialGroupId', 1)` 找到绑定该组的图片元素。素材组列表和
+组内素材本身仍由业务接口提供，不会被复制进画布 JSON。
 
 ### 模板生命周期通信示例
 
-没有 JSON 时，编辑器核心就绪后直接发送 `editor:initialized`。有 JSON 时，宿主收到
-`editor:ready` 后发送 `template:load`，编辑器还原成功后发送 `template:loaded` 和
+没有画布 JSON 且没有素材组时，编辑器核心就绪后直接发送 `editor:initialized`。有画布 JSON
+或素材组时，宿主收到 `editor:ready` 后发送 `template:load`，编辑器处理成功后发送 `template:loaded` 和
 `editor:initialized`。点击保存时编辑器发送
 `template:save-requested`；宿主必须回传 `template:saved` 或 `template:save-failed`。
 
@@ -500,7 +622,10 @@ window.addEventListener('message', async (event) => {
 
 | 消息 | 关键字段 |
 | --- | --- |
-| `template:load` | `template`、`document`；仅在有初始化 JSON 时发送。 |
+| `editor:config` | 可选 `materialGroups`、`materialGroupId`、`materialGroupName`、`partnerId`；只更新运行时配置。 |
+| `editor:config-applied` | `requestId`、实际 `materialGroupId`、`materialGroupCount`。 |
+| `editor:config-failed` | `requestId`、`error`。 |
+| `template:load` | `template`、`document`、可选 `materialGroups`；支持 `template.materialGroupId` 单值或数组。 |
 | `editor:initialized` | `mode`、`template`。`mode` 为 `'create'` 或 `'edit'`。 |
 | `template:loaded` | `mode`、`template`。不重复发送完整 JSON。 |
 | `template:save-requested` | `action`、`template`、`document`。`action` 为 `'create'` 或 `'update'`。 |
@@ -1146,7 +1271,8 @@ editor.markImageAsMask(mask, file)
 ```
 
 该方法自动写入 `attributes.image.role = 'mask'`，并保留本地 `File` 供透明像素识别。
-同一画布只保留一个遮罩图，上传新遮罩会替换旧遮罩，但不会改变画板尺寸。
+同一画布只保留一个遮罩图。遮罩始终保持原始宽高比例，等比完整放入画板并居中；
+上传新遮罩会替换旧遮罩，但不会改变画板尺寸或拉伸图片。
 
 ### 管理生产文件区域
 
@@ -1166,6 +1292,26 @@ editor.updatePrintArea({
 
 editor.removePrintArea()
 ```
+
+### 仅预览生产文件区域
+
+仅查看生产文件区域内的画面时，使用非破坏预览 API：
+
+```js
+editor.setProductionAreaPreview(true)
+editor.setProductionAreaPreview(false)
+editor.toggleProductionAreaPreview()
+
+const enabled = editor.isProductionAreaPreviewEnabled()
+```
+
+该能力只裁剪编辑器中的视觉副本，不修改元素 `visible`、图层顺序或统一 JSON，也不会写入
+撤销历史，并且不改变 `captureCanvas()` 和 `capturePrintArea()` 的截图结果。生产文件区域移动或
+缩放时，预览范围会自动同步；删除生产文件区域时会自动退出。没有生产文件区域时开启预览会
+抛出 `PRINT_AREA_REQUIRED`。
+
+状态变化通过 `production:area-preview-changed` 事件通知，事件数据包含 `enabled` 和当前
+内容坐标 `bounds`。
 
 ### 相对生产文件区域对齐图片或文字
 

@@ -41,6 +41,9 @@ const contentId = `attribute-section-${++sectionSequence}`;
 
 <style scoped>
 .attribute-section {
+  box-sizing: border-box;
+  width: 100%;
+  flex: 0 0 auto;
   overflow: hidden;
   border: 1px solid rgba(var(--v-theme-outline), 0.16);
   border-radius: 8px;
@@ -57,12 +60,13 @@ const contentId = `attribute-section-${++sectionSequence}`;
 
 .attribute-section__trigger {
   display: flex;
+  box-sizing: border-box;
   width: 100%;
-  min-height: 52px;
+  height: 48px;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 9px 8px 11px;
+  padding: 7px 9px 7px 10px;
   border: 0;
   color: var(--editor-text);
   background: transparent;

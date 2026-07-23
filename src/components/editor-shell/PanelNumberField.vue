@@ -121,14 +121,14 @@ function handleUpdate(value) {
 }
 
 .panel-number-field--compact .panel-number-field__input {
-  --v-input-control-height: 24px;
+  --v-input-control-height: var(--editor-attribute-control-height, 28px);
 }
 
 .panel-number-field--compact .panel-number-field__input :deep(.v-input__control),
 .panel-number-field--compact .panel-number-field__input :deep(.v-field),
 .panel-number-field--compact .panel-number-field__input :deep(.v-field__input) {
-  min-height: 24px;
-  height: 24px;
+  min-height: var(--editor-attribute-control-height, 28px);
+  height: var(--editor-attribute-control-height, 28px);
 }
 
 .panel-number-field--compact .panel-number-field__input :deep(.v-field) {

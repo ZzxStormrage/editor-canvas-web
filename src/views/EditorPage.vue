@@ -39,7 +39,7 @@ import '../assets/scss/editor-workbench.scss'
 
 const route = useRoute()
 const router = useRouter()
-const activePanel = ref('text')
+const activePanel = ref('artboard')
 const message = reactive({ visible: false, text: '', color: 'error' })
 const editor = useCanvasEditor({ onMessage: showMessage })
 const templatePersistence = useCustomTemplatePersistence({

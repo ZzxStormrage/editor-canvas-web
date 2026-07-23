@@ -96,6 +96,22 @@
           </v-tooltip>
         </v-btn>
         <span class="workspace-toolbar-divider" aria-hidden="true"></span>
+        <v-btn
+          class="editor-icon-button"
+          color="primary"
+          size="small"
+          :variant="editor.productionAreaPreviewEnabled.value ? 'flat' : 'tonal'"
+          aria-label="仅看生产区"
+          :aria-pressed="editor.productionAreaPreviewEnabled.value"
+          :disabled="!editor.printAreaAvailable.value"
+          @click="editor.toggleProductionAreaPreview"
+        >
+          <v-icon icon="mdi-crop-free" size="18" />
+          <v-tooltip activator="parent" location="top">
+            {{ editor.productionAreaPreviewEnabled.value ? '完整画板' : '仅看生产区' }}
+          </v-tooltip>
+        </v-btn>
+        <span class="workspace-toolbar-divider" aria-hidden="true"></span>
         <v-menu v-model="shortcutsMenuOpen" location="bottom end" offset="8">
           <template #activator="{ props: menuProps }">
             <v-btn

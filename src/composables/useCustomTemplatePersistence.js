@@ -2,6 +2,10 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 import { setAccessToken } from '../services/auth-token.js'
 import {
+  normalizeMaterialGroupIds,
+  resolveMaterialGroupMessageConfig
+} from './canvas-editor/material-group-data.js'
+import {
   MESSAGE_TYPES,
   postBridgeMessage,
   subscribeBridgeMessage
@@ -31,6 +35,10 @@ export function useCustomTemplatePersistence(options) {
   const unsubscribeTemplateLoad = subscribeBridgeMessage(
     MESSAGE_TYPES.TEMPLATE_LOAD,
     handleTemplateLoadMessage
+  )
+  const unsubscribeEditorConfig = subscribeBridgeMessage(
+    MESSAGE_TYPES.EDITOR_CONFIG,
+    handleEditorConfigMessage
   )
   const unsubscribeTemplateLoadFailed = subscribeBridgeMessage(
     MESSAGE_TYPES.TEMPLATE_LOAD_FAILED,
@@ -64,6 +72,7 @@ export function useCustomTemplatePersistence(options) {
     hasReceivedTemplateLoad = false
     try {
       resetTemplateState(template)
+      void editor.setMaterialGroups([])
       const authorization = readRouteAuthorization(route)
       await applyRouteAuthorization(authorization, route, router)
       const coreEditor = await editor.whenReady()
@@ -108,8 +117,16 @@ export function useCustomTemplatePersistence(options) {
     try {
       const incomingTemplate = isPlainObject(payload.template) ? payload.template : {}
       const document = payload.document ?? payload.content ?? incomingTemplate.content ?? null
+      const materialGroupConfig = resolveMaterialGroupMessageConfig(payload)
       resetTemplateState(template)
       applyTemplateRecord(template, incomingTemplate)
+      if (materialGroupConfig.hasMaterialGroupConfig) {
+        template.materialGroupIds = materialGroupConfig.materialGroupIds
+        void editor.setMaterialGroups(materialGroupConfig.materialGroups, {
+          partnerId: template.partnerId,
+          activeGroupId: materialGroupConfig.materialGroupId
+        })
+      }
       const coreEditor = await editor.whenReady()
 
       if (version !== initializationVersion) {
@@ -148,6 +165,43 @@ export function useCustomTemplatePersistence(options) {
   }
 
   /**
+   * 接收运行时编辑器配置；当前先支持素材组列表和默认素材组 ID。
+   *
+   * 该消息只更新应用层配置，不会清空画布、重新导入 JSON 或写入撤销历史。
+   *
+   * @param {{ payload?: Object }} event 消息订阅事件。
+   * @returns {Promise<Object[] | null>} 默认素材组第一页素材。
+   */
+  async function handleEditorConfigMessage({ payload = {} }) {
+    const materialGroupConfig = resolveMaterialGroupMessageConfig(payload)
+    if (!materialGroupConfig.hasMaterialGroupConfig) {
+      return null
+    }
+
+    try {
+      template.materialGroupIds = materialGroupConfig.materialGroupIds
+      const materials = await editor.setMaterialGroups(materialGroupConfig.materialGroups, {
+        partnerId: resolveConfigPartnerId(payload, template.partnerId),
+        activeGroupId: materialGroupConfig.materialGroupId
+      })
+      postLifecycleMessage(MESSAGE_TYPES.EDITOR_CONFIG_APPLIED, {
+        requestId: payload.requestId ?? null,
+        materialGroupId: editor.activeMaterialGroupId.value,
+        materialGroupIds: [...template.materialGroupIds],
+        materialGroupCount: editor.materialGroups.value.length
+      })
+      return materials
+    } catch (error) {
+      postLifecycleMessage(MESSAGE_TYPES.EDITOR_CONFIG_FAILED, {
+        requestId: payload.requestId ?? null,
+        error: serializeBridgeError(error)
+      })
+      notify?.(error?.message || '素材组配置接收失败。', 'error')
+      return null
+    }
+  }
+
+  /**
    * 接收宿主返回的初始化失败消息并结束加载状态。
    *
    * @param {{ payload?: Object }} event 消息订阅事件。
@@ -155,6 +209,7 @@ export function useCustomTemplatePersistence(options) {
    */
   function handleTemplateLoadFailedMessage({ payload = {} }) {
     loading.value = false
+    void editor.setMaterialGroups([])
     notify?.(payload.error?.message || '宿主获取模板 JSON 失败。', 'error')
   }
 
@@ -248,6 +303,7 @@ export function useCustomTemplatePersistence(options) {
 
   onBeforeUnmount(() => {
     unsubscribeTemplateLoad()
+    unsubscribeEditorConfig()
     unsubscribeTemplateLoadFailed()
     unsubscribeTemplateSaved()
     unsubscribeTemplateSaveFailed()
@@ -261,6 +317,18 @@ export function useCustomTemplatePersistence(options) {
     initialize,
     save
   }
+}
+
+/**
+ * 读取素材请求需要的分销商 ID。
+ *
+ * @param {Object} payload 编辑器配置消息 payload。
+ * @param {string | number | null} fallback 模板中的分销商 ID。
+ * @returns {string | number | null} 分销商 ID。
+ */
+function resolveConfigPartnerId(payload, fallback) {
+  const nestedConfig = isPlainObject(payload?.config) ? payload.config : {}
+  return nestedConfig.partnerId ?? payload?.partnerId ?? fallback ?? null
 }
 
 /**
@@ -279,6 +347,7 @@ function createTemplatePayload(template, extra = {}) {
       itemId: template.itemId,
       userId: template.userId,
       partnerId: template.partnerId,
+      materialGroupId: [...template.materialGroupIds],
       templateName: template.templateName,
       previewImgUrl: template.previewImgUrl
     }
@@ -326,6 +395,7 @@ function createTemplateState() {
     itemId: null,
     userId: null,
     partnerId: null,
+    materialGroupIds: [],
     templateName: '',
     previewImgUrl: ''
   }
@@ -405,6 +475,14 @@ function applyTemplateRecord(target, record) {
   target.itemId = normalizeOptionalText(record.itemId) ?? target.itemId
   target.userId = normalizeOptionalText(record.userId) ?? target.userId
   target.partnerId = normalizeOptionalText(record.partnerId) ?? target.partnerId
+  if (
+    Object.prototype.hasOwnProperty.call(record, 'materialGroupId')
+    || Object.prototype.hasOwnProperty.call(record, 'materialGroupIds')
+  ) {
+    target.materialGroupIds = normalizeMaterialGroupIds(
+      record.materialGroupIds ?? record.materialGroupId
+    )
+  }
   target.templateName = normalizeOptionalText(record.templateName) ?? target.templateName
   target.previewImgUrl = normalizeOptionalText(record.previewImgUrl) ?? target.previewImgUrl
 }

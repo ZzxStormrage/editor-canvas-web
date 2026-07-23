@@ -2,6 +2,10 @@ import { Frame, Group, Rect } from 'leafer-ui'
 import { EditorEvent, EditorMoveEvent, EditorRotateEvent, EditorScaleEvent, InnerEditorEvent } from '@leafer-in/editor'
 
 import { EditorError } from './errors/editor-error.js'
+import {
+  areContentPreviewBoundsEqual,
+  resolveContentLayerOpacity
+} from './utils/content-preview.js'
 
 const ARTBOARD_NODE_KEY = '__canvasEditorArtboard'
 const ARTBOARD_OVERFLOW_KEY = '__canvasEditorArtboardOverflow'
@@ -52,6 +56,7 @@ export class ArtboardManager {
   #innerEditor = null
   #state = null
   #eventBus = null
+  #contentPreviewBounds = null
   #eventIds = []
   #unsubscribers = []
 
@@ -85,6 +90,35 @@ export class ArtboardManager {
       width: this.#node.width ?? this.#options.width,
       height: this.#node.height ?? this.#options.height
     }
+  }
+
+  /**
+   * 获取当前内容裁剪预览范围。
+   *
+   * @returns {{ x: number, y: number, width: number, height: number } | null} 内容坐标范围。
+   */
+  getContentPreviewBounds() {
+    return this.#contentPreviewBounds ? { ...this.#contentPreviewBounds } : null
+  }
+
+  /**
+   * 设置非破坏性的内容裁剪预览范围。
+   *
+   * 传入 null 时恢复完整画板显示；该状态只影响视觉副本，不修改元素显隐和文档数据。
+   *
+   * @param {{ x: number, y: number, width: number, height: number } | null} [bounds=null]
+   * 内容坐标范围。
+   * @returns {void}
+   */
+  setContentPreviewBounds(bounds = null) {
+    const nextBounds = bounds ? normalizeContentPreviewBounds(bounds) : null
+
+    if (areContentPreviewBoundsEqual(this.#contentPreviewBounds, nextBounds)) {
+      return
+    }
+
+    this.#contentPreviewBounds = nextBounds
+    this.#syncOverflowViews()
   }
 
   /** @returns {{ x: number, y: number, width: number, height: number } | null} 世界坐标画板边界。 */
@@ -221,6 +255,7 @@ export class ArtboardManager {
     this.#innerEditor = null
     this.#state = null
     this.#eventBus = null
+    this.#contentPreviewBounds = null
   }
 
   /**
@@ -367,7 +402,10 @@ export class ArtboardManager {
       return
     }
 
-    this.#contentLayer.opacity = this.#options.overflowOpacity
+    this.#contentLayer.opacity = resolveContentLayerOpacity(
+      this.#contentPreviewBounds,
+      this.#options.overflowOpacity
+    )
   }
 
   /**
@@ -376,7 +414,7 @@ export class ArtboardManager {
    * @returns {void}
    */
   #syncClipFrame() {
-    const artboardBounds = this.getContentBounds()
+    const artboardBounds = this.#contentPreviewBounds ?? this.getContentBounds()
 
     this.#setBox(this.#clipFrame, artboardBounds)
     this.#contentOverlayGroup.x = -artboardBounds.x
@@ -540,6 +578,21 @@ export class ArtboardManager {
       ...this.#options,
       ...this.getContentBounds()
     }
+  }
+}
+
+/**
+ * 归一化内容裁剪预览范围。
+ *
+ * @param {{ x: number, y: number, width: number, height: number }} bounds 原始范围。
+ * @returns {{ x: number, y: number, width: number, height: number }} 有效范围。
+ */
+function normalizeContentPreviewBounds(bounds) {
+  return {
+    x: normalizeOptionalNumber(bounds?.x, 'contentPreviewBounds.x') ?? 0,
+    y: normalizeOptionalNumber(bounds?.y, 'contentPreviewBounds.y') ?? 0,
+    width: normalizePositiveNumber(bounds?.width, 'contentPreviewBounds.width'),
+    height: normalizePositiveNumber(bounds?.height, 'contentPreviewBounds.height')
   }
 }
 

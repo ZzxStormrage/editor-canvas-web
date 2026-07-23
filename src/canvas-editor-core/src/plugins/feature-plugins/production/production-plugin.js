@@ -30,6 +30,10 @@ export class ProductionPlugin {
   constructor() {
     /** @private @type {Object | null} */
     this._context = null;
+    /** @private @type {boolean} */
+    this._productionAreaPreviewEnabled = false;
+    /** @private @type {Function[]} */
+    this._unsubscribers = [];
   }
 
   /** @returns {string} 插件 ID。 */
@@ -58,6 +62,52 @@ export class ProductionPlugin {
     context.innerEditor?.on_(EditorEvent.SELECT, this._emitPrintAreaChanged, this);
     context.innerEditor?.on_(EditorMoveEvent.MOVE, this._emitPrintAreaChanged, this);
     context.innerEditor?.on_(EditorScaleEvent.SCALE, this._emitPrintAreaChanged, this);
+    this._unsubscribers = [
+      context.eventBus.on('document:loaded', this._emitPrintAreaChanged.bind(this)),
+      context.eventBus.on('document:cleared', () => {
+        this._productionAreaPreviewEnabled = false;
+        this._emitPrintAreaChanged();
+      })
+    ];
+  }
+
+  /**
+   * 设置是否仅预览生产文件区域内的内容。
+   *
+   * 该状态只控制画板视觉裁剪，不修改节点 visible、统一 JSON 或撤销历史。
+   *
+   * @param {boolean} enabled 是否开启。
+   * @returns {boolean} 最终开启状态。
+   */
+  setProductionAreaPreview(enabled) {
+    this._assertReady();
+    const nextEnabled = enabled === true;
+
+    if (nextEnabled && !this._getPrintArea()) {
+      throw new EditorError('请先创建生产文件区域。', 'PRINT_AREA_REQUIRED');
+    }
+
+    this._productionAreaPreviewEnabled = nextEnabled;
+    this._syncProductionAreaPreview();
+    return this._productionAreaPreviewEnabled;
+  }
+
+  /**
+   * 切换生产文件区域预览。
+   *
+   * @returns {boolean} 切换后的开启状态。
+   */
+  toggleProductionAreaPreview() {
+    return this.setProductionAreaPreview(!this._productionAreaPreviewEnabled);
+  }
+
+  /**
+   * 查询是否仅预览生产文件区域。
+   *
+   * @returns {boolean} 是否开启。
+   */
+  isProductionAreaPreviewEnabled() {
+    return this._productionAreaPreviewEnabled;
   }
 
   /**
@@ -428,6 +478,10 @@ export class ProductionPlugin {
     this._context?.innerEditor?.off_(EditorEvent.SELECT, this._emitPrintAreaChanged, this);
     this._context?.innerEditor?.off_(EditorMoveEvent.MOVE, this._emitPrintAreaChanged, this);
     this._context?.innerEditor?.off_(EditorScaleEvent.SCALE, this._emitPrintAreaChanged, this);
+    this._unsubscribers.forEach((unsubscribe) => unsubscribe());
+    this._context?.artboard?.setContentPreviewBounds?.(null);
+    this._unsubscribers = [];
+    this._productionAreaPreviewEnabled = false;
     this._context = null;
   }
 
@@ -626,9 +680,36 @@ export class ProductionPlugin {
 
   /** @private @returns {void} */
   _emitPrintAreaChanged() {
+    this._syncProductionAreaPreview();
     this._context?.eventBus.emit('production:print-area-changed', {
       printArea: this._getPrintArea(),
       properties: this.getPrintAreaProperties()
+    });
+  }
+
+  /**
+   * 根据当前生产文件区域同步画板裁剪预览。
+   *
+   * @private
+   * @returns {void}
+   */
+  _syncProductionAreaPreview() {
+    if (!this._context) {
+      return;
+    }
+
+    const printArea = this._getPrintArea();
+    if (this._productionAreaPreviewEnabled && !printArea) {
+      this._productionAreaPreviewEnabled = false;
+    }
+
+    const bounds = this._productionAreaPreviewEnabled
+      ? this._getNodeBoundsInContent(printArea)
+      : null;
+    this._context.artboard?.setContentPreviewBounds?.(bounds);
+    this._context.eventBus.emit('production:area-preview-changed', {
+      enabled: this._productionAreaPreviewEnabled,
+      bounds
     });
   }
 

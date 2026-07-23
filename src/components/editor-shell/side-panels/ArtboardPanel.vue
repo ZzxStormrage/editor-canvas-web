@@ -4,7 +4,7 @@
       :ref="setBackgroundInputRef"
       class="side-file-input"
       type="file"
-      accept="image/*"
+      :accept="IMAGE_FILE_ACCEPT"
       :disabled="editor.backgroundUploading.value"
       @change="editor.handleBackgroundImageChange"
     />
@@ -12,7 +12,7 @@
       :ref="setMaskInputRef"
       class="side-file-input"
       type="file"
-      accept="image/*"
+      :accept="IMAGE_FILE_ACCEPT"
       :disabled="editor.maskUploading.value"
       @change="editor.handleMaskImageChange"
     />
@@ -171,6 +171,7 @@
 <script setup>
 import { computed } from 'vue'
 
+import { IMAGE_FILE_ACCEPT } from '../../../config/image-upload.js'
 import PanelGroup from '../PanelGroup.vue'
 import PanelNumberField from '../PanelNumberField.vue'
 import LayerPreview from '../layers/LayerPreview.vue'

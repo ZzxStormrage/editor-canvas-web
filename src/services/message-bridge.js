@@ -3,6 +3,9 @@ export const MESSAGE_BRIDGE_VERSION = 1
 export const MESSAGE_TYPES = Object.freeze({
   EDITOR_READY: 'editor:ready',
   EDITOR_INITIALIZED: 'editor:initialized',
+  EDITOR_CONFIG: 'editor:config',
+  EDITOR_CONFIG_APPLIED: 'editor:config-applied',
+  EDITOR_CONFIG_FAILED: 'editor:config-failed',
   AUTH_TOKEN: 'auth:token',
   H5_AUTH_TOKEN: 'h5:auth-token',
   AUTH_EXPIRED: 'auth:expired',

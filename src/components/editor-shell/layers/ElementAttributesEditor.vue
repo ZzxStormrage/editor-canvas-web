@@ -13,43 +13,59 @@
     <template v-if="layerType === 'image'">
       <div v-if="showImageSectionTitle" class="layer-attribute-section-title">业务属性</div>
       <p class="layer-attribute-help">配置图片用途和描述，仅写入业务属性，不会改变图层顺序。</p>
-      <v-select
-        v-model="imageDraft.role"
-        :items="IMAGE_ROLE_OPTIONS"
-        item-title="label"
-        item-value="value"
-        density="compact"
-        hide-details="auto"
-        label="图片用途"
-        variant="outlined"
-      />
-      <v-textarea
-        v-model="imageDraft.description"
-        auto-grow
-        counter="200"
-        density="compact"
-        hide-details="auto"
-        label="图片描述"
-        maxlength="200"
-        placeholder="例如：红色礼盒正面展示图"
-        rows="2"
-        variant="outlined"
+      <label class="layer-attribute-field">
+        <span>图片用途</span>
+        <v-select
+          v-model="imageDraft.role"
+          aria-label="图片用途"
+          class="editor-attribute-control"
+          :items="IMAGE_ROLE_OPTIONS"
+          item-title="label"
+          item-value="value"
+          density="compact"
+          hide-details="auto"
+          variant="outlined"
+        />
+      </label>
+      <label class="layer-attribute-field">
+        <span>图片描述</span>
+        <v-textarea
+          v-model="imageDraft.description"
+          aria-label="图片描述"
+          class="editor-attribute-control editor-attribute-control--textarea"
+          counter="200"
+          density="compact"
+          hide-details="auto"
+          maxlength="200"
+          placeholder="例如：红色礼盒正面展示图"
+          rows="2"
+          variant="outlined"
+        />
+      </label>
+      <ImageMaterialGroupBinding
+        v-model="imageDraft.materialGroupId"
+        :editor="editor"
+        :saved-group-name="savedMaterialGroupBinding?.name"
       />
     </template>
 
     <template v-else-if="layerType === 'text'">
       <p class="layer-attribute-help">配置文字描述和 H5 用户输入规则，不会修改当前画布文字。</p>
 
-      <v-text-field
-        v-model="textDescription"
-        clearable
-        density="compact"
-        hide-details="auto"
-        label="文字描述"
-        maxlength="200"
-        placeholder="例如：用户姓名"
-        variant="outlined"
-      />
+      <label class="layer-attribute-field">
+        <span>文字描述</span>
+        <v-text-field
+          v-model="textDescription"
+          aria-label="文字描述"
+          class="editor-attribute-control"
+          clearable
+          density="compact"
+          hide-details="auto"
+          maxlength="200"
+          placeholder="例如：用户姓名"
+          variant="outlined"
+        />
+      </label>
 
       <div class="text-rule-master">
         <div>
@@ -168,6 +184,11 @@
 import { computed, reactive, ref } from 'vue'
 import { DEFAULT_TEXT_INPUT_RULES } from '../../../canvas-editor-core/src/utils/text-input-rules.js'
 import { normalizeTextLayout } from '../../../canvas-editor-core/src/utils/text-layout.js'
+import {
+  applyImageMaterialGroupBinding,
+  readImageMaterialGroupBinding
+} from '../../../composables/canvas-editor/image-material-group-binding.js'
+import ImageMaterialGroupBinding from '../images/ImageMaterialGroupBinding.vue'
 import CompactNumberField from './CompactNumberField.vue'
 const IMAGE_ROLE_OPTIONS = Object.freeze([
   { label: '普通图片', value: '' },
@@ -188,10 +209,12 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'saved'])
 const attributes = props.editor.getElementAttributesById(props.elementId) ?? {}
+const savedMaterialGroupBinding = readImageMaterialGroupBinding(attributes)
 const attributeError = ref('')
 const imageDraft = reactive({
   description: typeof attributes.image?.description === 'string' ? attributes.image.description : '',
-  role: IMAGE_ROLE_VALUES.has(attributes.image?.role) ? attributes.image.role : ''
+  role: IMAGE_ROLE_VALUES.has(attributes.image?.role) ? attributes.image.role : '',
+  materialGroupId: savedMaterialGroupBinding?.id ?? null
 })
 const textDescription = ref(typeof attributes.text?.description === 'string' ? attributes.text.description : '')
 const textDraft = reactive(createTextDraft(attributes.textInput, attributes.textLayout))
@@ -270,13 +293,20 @@ function saveAttributes() {
 
   if (props.layerType === 'image') {
     const description = imageDraft.description.trim()
-    const imageAttributes = isPlainObject(currentAttributes.image) ? { ...currentAttributes.image } : {}
+    let imageAttributes = isPlainObject(currentAttributes.image) ? { ...currentAttributes.image } : {}
 
     if (description) imageAttributes.description = description
     else delete imageAttributes.description
 
     if (IMAGE_ROLE_VALUES.has(imageDraft.role)) imageAttributes.role = imageDraft.role
     else delete imageAttributes.role
+
+    imageAttributes = applyImageMaterialGroupBinding(
+      imageAttributes,
+      imageDraft.materialGroupId,
+      props.editor.materialGroups.value,
+      savedMaterialGroupBinding
+    )
 
     if (Object.keys(imageAttributes).length) nextAttributes.image = imageAttributes
     else delete nextAttributes.image

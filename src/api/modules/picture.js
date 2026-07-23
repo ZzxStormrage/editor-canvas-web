@@ -3,6 +3,7 @@ import {
   xiaoxiangClient
 } from '../clients/xiaoxiang-client.js';
 import { ApiError } from '../core/api-error.js';
+import { isSupportedImageFile } from '../../config/image-upload.js';
 
 const PICTURE_UPLOAD_PATH = '/admin/api/localStorage/pictures';
 
@@ -72,7 +73,7 @@ function assertImageFile(file) {
   if (!isFile && !isBlob) {
     throw new TypeError('pictureApi.upload(file) requires a File or Blob.');
   }
-  if (file.type && !file.type.startsWith('image/')) {
+  if (!isSupportedImageFile(file)) {
     throw new TypeError('Only image files can be uploaded.');
   }
 

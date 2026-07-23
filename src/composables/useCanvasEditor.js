@@ -8,6 +8,7 @@ import { useElementDataControls } from './canvas-editor/useElementDataControls.j
 import { useImageControls } from './canvas-editor/useImageControls.js'
 import { useLayerMenu } from './canvas-editor/useLayerMenu.js'
 import { useLayerControls } from './canvas-editor/useLayerControls.js'
+import { useMaterialGroupControls } from './canvas-editor/useMaterialGroupControls.js'
 import { useSelectionToolbar } from './canvas-editor/useSelectionToolbar.js'
 import { useTextControls } from './canvas-editor/useTextControls.js'
 
@@ -60,6 +61,7 @@ export function useCanvasEditor(options = {}) {
   const textControls = useTextControls(getEditor)
   const artboardControls = useArtboardControls(getEditor, notify)
   const assetControls = useAssetControls(getEditor, artboardControls.getArtboardBounds, textControls.fontFamily, notify)
+  const materialGroupControls = useMaterialGroupControls(getEditor, notify)
   const layerMenuControls = useLayerMenu(getEditor, canvasRef)
   const selectionToolbarControls = useSelectionToolbar(getEditor, canvasRef)
   const layerControls = useLayerControls(getEditor)
@@ -151,6 +153,9 @@ export function useCanvasEditor(options = {}) {
         editor.eventBus.on('production:print-area-changed', ({ properties }) => {
           artboardControls.syncPrintAreaControls(properties)
         }),
+        editor.eventBus.on('production:area-preview-changed', ({ enabled }) => {
+          artboardControls.syncProductionAreaPreview(enabled)
+        }),
         editor.eventBus.on('production:selection-aligned', () => {
           imageControls.syncImageProperties()
           selectionToolbarControls.syncSelectionToolbar()
@@ -186,6 +191,7 @@ export function useCanvasEditor(options = {}) {
       syncZoom()
       artboardControls.syncArtboardControls()
       artboardControls.syncPrintAreaControls()
+      artboardControls.syncProductionAreaPreview()
       layerControls.refreshLayers()
       imageControls.syncImageProperties()
       ready.value = true
@@ -257,6 +263,7 @@ export function useCanvasEditor(options = {}) {
     syncZoom()
     artboardControls.syncArtboardControls()
     artboardControls.syncPrintAreaControls()
+    artboardControls.syncProductionAreaPreview()
     layerControls.refreshLayers()
     imageControls.syncImageProperties()
     selectionToolbarControls.syncSelectionToolbar()
@@ -440,6 +447,7 @@ export function useCanvasEditor(options = {}) {
     maskUploading: artboardControls.maskUploading,
     printAreaDetecting: artboardControls.printAreaDetecting,
     printAreaAvailable: artboardControls.printAreaAvailable,
+    productionAreaPreviewEnabled: artboardControls.productionAreaPreviewEnabled,
     artboardWidth: artboardControls.artboardWidth,
     artboardHeight: artboardControls.artboardHeight,
     printAreaX: artboardControls.printAreaX,
@@ -456,18 +464,34 @@ export function useCanvasEditor(options = {}) {
     openRoleImageReplacementPicker: artboardControls.openRoleImageReplacementPicker,
     addPrintArea: artboardControls.addPrintArea,
     deletePrintArea: artboardControls.deletePrintArea,
+    toggleProductionAreaPreview: artboardControls.toggleProductionAreaPreview,
     alignSelectedToPrintArea: artboardControls.alignSelectedToPrintArea,
     detectPrintAreaFromMask: artboardControls.detectPrintAreaFromMask,
     capturePrintArea: artboardControls.capturePrintArea,
     captureCanvas: artboardControls.captureCanvas,
     imageInputRef: assetControls.imageInputRef,
     imageUploading: assetControls.imageUploading,
+    materialGroups: materialGroupControls.materialGroups,
+    activeMaterialGroupId: materialGroupControls.activeMaterialGroupId,
+    activeMaterialGroup: materialGroupControls.activeMaterialGroup,
+    materials: materialGroupControls.materials,
+    materialTotal: materialGroupControls.materialTotal,
+    materialLoading: materialGroupControls.materialLoading,
+    materialLoadingMore: materialGroupControls.materialLoadingMore,
+    materialHasMore: materialGroupControls.materialHasMore,
+    materialError: materialGroupControls.materialError,
+    addingMaterialId: materialGroupControls.addingMaterialId,
     imageReplacementInputRef: assetControls.imageReplacementInputRef,
     imageReplacing: assetControls.imageReplacing,
     imageProperties: imageControls.imageProperties,
     watermarkValue: assetControls.watermarkValue,
     openImagePicker: assetControls.openImagePicker,
     handleImageChange: assetControls.handleImageChange,
+    setMaterialGroups: materialGroupControls.setMaterialGroups,
+    selectMaterialGroup: materialGroupControls.selectMaterialGroup,
+    loadMoreMaterials: materialGroupControls.loadMoreMaterials,
+    retryMaterials: materialGroupControls.retryMaterials,
+    addMaterialToCanvas: materialGroupControls.addMaterialToCanvas,
     openSelectedImageReplacementPicker: assetControls.openSelectedImageReplacementPicker,
     handleSelectedImageReplacementChange: assetControls.handleSelectedImageReplacementChange,
     updateSelectedImageProperties: imageControls.updateSelectedImageProperties,

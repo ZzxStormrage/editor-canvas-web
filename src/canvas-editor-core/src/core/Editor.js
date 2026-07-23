@@ -522,6 +522,36 @@ export class Editor {
   }
 
   /**
+   * 设置是否仅预览生产文件区域内的内容。
+   *
+   * @param {boolean} enabled 是否开启。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  setProductionAreaPreview(enabled) {
+    this.production?.setProductionAreaPreview?.(enabled)
+    return this
+  }
+
+  /**
+   * 切换生产文件区域预览。
+   *
+   * @returns {Editor} 当前编辑器实例。
+   */
+  toggleProductionAreaPreview() {
+    this.production?.toggleProductionAreaPreview?.()
+    return this
+  }
+
+  /**
+   * 查询是否仅预览生产文件区域。
+   *
+   * @returns {boolean} 是否开启。
+   */
+  isProductionAreaPreviewEnabled() {
+    return this.production?.isProductionAreaPreviewEnabled?.() === true
+  }
+
+  /**
    * 根据遮罩透明区域自动生成打印区域。
    *
    * @param {{ alphaThreshold?: number, maxAnalysisSize?: number }} [options={}] 识别选项。

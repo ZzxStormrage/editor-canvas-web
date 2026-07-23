@@ -46,7 +46,7 @@
         <input
           ref="imagePicker"
           type="file"
-          accept="image/*"
+          :accept="IMAGE_FILE_ACCEPT"
           tabindex="-1"
           hidden
           @change="replaceImage"
@@ -91,6 +91,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 
+import { IMAGE_FILE_ACCEPT } from '../../config/image-upload.js';
 import {
   replaceH5Image,
   replaceH5Text,

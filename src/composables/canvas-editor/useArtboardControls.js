@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue'
 
 import { pictureApi } from '../../api/index.js'
 import { formatMillimeter, pixelToMillimeter } from '../../canvas-editor-core/src/utils/unit.js'
+import { resolveContainedImagePlacement } from './artboard-image-placement.js'
 import { normalizePixelForUI } from './editor-ui-utils.js'
 
 const BACKGROUND_NODE_KEY = '__eleEditorBackground'
@@ -27,6 +28,7 @@ export function useArtboardControls(getEditor, notify = null) {
   const maskUploading = ref(false)
   const printAreaDetecting = ref(false)
   const printAreaAvailable = ref(false)
+  const productionAreaPreviewEnabled = ref(false)
   const artboardWidth = ref(375)
   const artboardHeight = ref(667)
   const printAreaX = ref(38)
@@ -207,7 +209,7 @@ export function useArtboardControls(getEditor, notify = null) {
   }
 
   /**
-   * 遮罩图铺满当前画板，不改变画板尺寸。
+   * 遮罩图等比完整放入当前画板并居中，不改变画板尺寸或图片比例。
    *
    * @param {File} file 遮罩图片文件。
    * @returns {Promise<void>}
@@ -219,14 +221,13 @@ export function useArtboardControls(getEditor, notify = null) {
       return
     }
 
+    const imageSize = await editor.image.getSize(file)
     const imageUrl = await pictureApi.upload(file)
     const bounds = getArtboardBounds()
+    const placement = resolveContainedImagePlacement(imageSize, bounds)
     const maskImage = await editor.image.add(imageUrl, {
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height,
-      lockRatio: false,
+      ...placement,
+      lockRatio: true,
       visible: false,
       select: false
     })
@@ -263,7 +264,7 @@ export function useArtboardControls(getEditor, notify = null) {
   }
 
   /**
-   * 上传并替换指定生产图片，保持节点外框和画布尺寸不变。
+   * 上传并替换指定生产图片。背景图保持原外框；遮罩图按新图比例等比适配原外框。
    *
    * @param {File} file 新图片文件。
    * @param {{ role: 'background' | 'mask', target: Object }} replacement 替换目标。
@@ -277,13 +278,14 @@ export function useArtboardControls(getEditor, notify = null) {
     }
 
     const imageUrl = await pictureApi.upload(file)
+    const isMask = replacement.role === 'mask'
     await editor.replaceImage(replacement.target, imageUrl, {
       allowLocked: true,
-      fit: 'stretch',
-      preserveFrame: true
+      fit: isMask ? 'contain' : 'stretch',
+      preserveFrame: !isMask
     })
 
-    if (replacement.role === 'mask') {
+    if (isMask) {
       editor.markImageAsMask(replacement.target, file)
     }
   }
@@ -326,6 +328,42 @@ export function useArtboardControls(getEditor, notify = null) {
     }
 
     editor.removePrintArea()
+  }
+
+  /**
+   * 切换仅查看生产文件区域的非破坏预览。
+   *
+   * @returns {boolean} 切换后的开启状态。
+   */
+  function toggleProductionAreaPreview() {
+    const editor = getEditor()
+
+    if (!editor || !printAreaAvailable.value) {
+      notify?.('请先创建生产文件区域。', 'error')
+      return false
+    }
+
+    try {
+      editor.toggleProductionAreaPreview()
+      syncProductionAreaPreview()
+      return productionAreaPreviewEnabled.value
+    } catch (error) {
+      console.error('Production area preview toggle failed.', error)
+      notify?.(error.message || '生产文件区域预览切换失败。', 'error')
+      return false
+    }
+  }
+
+  /**
+   * 同步生产文件区域预览开关。
+   *
+   * @param {boolean} [enabled] 事件提供的最新状态。
+   * @returns {void}
+   */
+  function syncProductionAreaPreview(enabled) {
+    productionAreaPreviewEnabled.value = arguments.length > 0
+      ? enabled === true
+      : getEditor()?.isProductionAreaPreviewEnabled?.() === true
   }
 
   /**
@@ -456,6 +494,7 @@ export function useArtboardControls(getEditor, notify = null) {
     printAreaAvailable.value = Boolean(currentProperties)
 
     if (!currentProperties) {
+      productionAreaPreviewEnabled.value = false
       return
     }
 
@@ -480,6 +519,7 @@ export function useArtboardControls(getEditor, notify = null) {
     maskUploading,
     printAreaDetecting,
     printAreaAvailable,
+    productionAreaPreviewEnabled,
     artboardWidth,
     artboardHeight,
     printAreaX,
@@ -498,6 +538,8 @@ export function useArtboardControls(getEditor, notify = null) {
     openRoleImageReplacementPicker,
     addPrintArea,
     deletePrintArea,
+    toggleProductionAreaPreview,
+    syncProductionAreaPreview,
     alignSelectedToPrintArea,
     detectPrintAreaFromMask,
     capturePrintArea,

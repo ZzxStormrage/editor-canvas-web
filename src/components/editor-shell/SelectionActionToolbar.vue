@@ -3,7 +3,7 @@
     :ref="setImageReplacementInputRef"
     class="side-file-input"
     type="file"
-    accept="image/*"
+    :accept="IMAGE_FILE_ACCEPT"
     :disabled="editor.imageReplacing.value"
     @change="editor.handleSelectedImageReplacementChange"
   />
@@ -46,6 +46,8 @@
 
 <script setup>
 import { computed } from 'vue';
+
+import { IMAGE_FILE_ACCEPT } from '../../config/image-upload.js';
 
 const props = defineProps({
   toolbar: {

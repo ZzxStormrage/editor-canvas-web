@@ -1,10 +1,10 @@
 <template>
-  <section class="panel-section">
+  <section class="panel-section image-panel">
     <input
       :ref="setImageInputRef"
       class="side-file-input"
       type="file"
-      accept="image/*"
+      :accept="IMAGE_FILE_ACCEPT"
       :disabled="editor.imageUploading.value"
       @change="editor.handleImageChange"
     />
@@ -29,10 +29,14 @@
         </v-btn>
       </div>
     </PanelGroup>
+
+    <MaterialGroupBrowser :editor="editor" />
   </section>
 </template>
 
 <script setup>
+import { IMAGE_FILE_ACCEPT } from '../../../config/image-upload.js';
+import MaterialGroupBrowser from '../assets/MaterialGroupBrowser.vue';
 import PanelGroup from '../PanelGroup.vue';
 
 const props = defineProps({
