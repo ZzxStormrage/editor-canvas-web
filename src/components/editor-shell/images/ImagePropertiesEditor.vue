@@ -1,6 +1,6 @@
 <template>
   <Transition name="image-property-panel" mode="out-in">
-    <PanelGroup v-if="properties" key="properties" title="图片属性">
+    <div v-if="properties" key="properties" class="image-properties-editor">
       <div class="image-property-section">
         <div class="image-property-section__heading">位置</div>
         <div class="image-property-grid">
@@ -8,6 +8,7 @@
             :model-value="properties.x"
             label="X 坐标"
             suffix="px"
+            compact
             :disabled="properties.locked"
             @update:model-value="updateProperty('x', $event)"
           />
@@ -15,6 +16,7 @@
             :model-value="properties.y"
             label="Y 坐标"
             suffix="px"
+            compact
             :disabled="properties.locked"
             @update:model-value="updateProperty('y', $event)"
           />
@@ -26,20 +28,19 @@
       <div class="image-property-section">
         <div class="image-property-section__heading">
           <span>尺寸</span>
-          <v-btn
-            class="image-property-icon-button"
-            :color="properties.lockRatio ? 'primary' : undefined"
-            density="compact"
+          <button
+            type="button"
+            class="image-ratio-lock"
+            :class="{ 'image-ratio-lock--active': properties.lockRatio }"
             :disabled="properties.locked"
-            icon
-            size="x-small"
-            :variant="properties.lockRatio ? 'tonal' : 'text'"
-            :aria-label="properties.lockRatio ? '解除比例锁定' : '锁定比例'"
+            :aria-pressed="properties.lockRatio"
+            :aria-label="ratioLockAriaLabel"
             @click="toggleRatioLock"
           >
-            <v-icon :icon="properties.lockRatio ? 'mdi-link-variant' : 'mdi-link-variant-off'" size="15" />
-            <v-tooltip activator="parent" location="top">比例</v-tooltip>
-          </v-btn>
+            <v-icon :icon="properties.lockRatio ? 'mdi-link-variant' : 'mdi-link-variant-off'" size="12" />
+            <span>{{ ratioLockLabel }}</span>
+            <v-tooltip activator="parent" location="top">{{ ratioLockHint }}</v-tooltip>
+          </button>
         </div>
 
         <div class="image-property-grid">
@@ -47,6 +48,7 @@
             :model-value="properties.width"
             label="宽度"
             suffix="px"
+            compact
             :min="1"
             :disabled="properties.locked"
             @update:model-value="updateProperty('width', $event)"
@@ -55,6 +57,7 @@
             :model-value="properties.height"
             label="高度"
             suffix="px"
+            compact
             :min="1"
             :disabled="properties.locked"
             @update:model-value="updateProperty('height', $event)"
@@ -85,13 +88,14 @@
 
       <div class="image-property-divider"></div>
 
-      <div class="image-property-section">
-        <div class="image-property-section__heading">缩放比例</div>
+      <div class="image-property-section image-property-section--combined">
+        <div class="image-property-section__heading">缩放与外观</div>
         <div class="image-property-grid">
           <PanelNumberField
             :model-value="properties.scalePercentX"
             label="X 轴"
             suffix="%"
+            compact
             :min="0.1"
             :step="1"
             :disabled="properties.locked"
@@ -101,23 +105,17 @@
             :model-value="properties.scalePercentY"
             label="Y 轴"
             suffix="%"
+            compact
             :min="0.1"
             :step="1"
             :disabled="properties.locked"
             @update:model-value="updateProperty('scalePercentY', $event)"
           />
-        </div>
-      </div>
-
-      <div class="image-property-divider"></div>
-
-      <div class="image-property-section">
-        <div class="image-property-section__heading">外观</div>
-        <div class="image-property-grid">
           <PanelNumberField
             :model-value="properties.rotation"
             label="旋转"
             suffix="°"
+            compact
             :step="1"
             :disabled="properties.locked"
             @update:model-value="updateProperty('rotation', $event)"
@@ -126,6 +124,7 @@
             :model-value="properties.opacity"
             label="不透明度"
             suffix="%"
+            compact
             :min="0"
             :max="100"
             :step="1"
@@ -134,15 +133,13 @@
           />
         </div>
       </div>
-    </PanelGroup>
-
+    </div>
   </Transition>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 
-import PanelGroup from '../PanelGroup.vue'
 import PanelNumberField from '../PanelNumberField.vue'
 
 const props = defineProps({
@@ -153,6 +150,17 @@ const props = defineProps({
 })
 
 const properties = computed(() => props.editor.imageProperties?.value ?? null)
+const ratioLockLabel = computed(() => (
+  properties.value?.lockRatio ? '已锁定宽高比' : '宽高可独立调整'
+))
+const ratioLockHint = computed(() => (
+  properties.value?.lockRatio
+    ? '修改宽度或高度时，另一项会按当前比例同步调整。点击可解除锁定。'
+    : '宽度和高度可以分别修改。点击可锁定当前宽高比例。'
+))
+const ratioLockAriaLabel = computed(() => (
+  properties.value?.lockRatio ? '解除宽高比例锁定' : '锁定当前宽高比例'
+))
 const originalSizeLabel = computed(() => {
   if (!properties.value) {
     return '-'
@@ -193,27 +201,33 @@ function formatDimension(value) {
 </script>
 
 <style scoped>
+.image-properties-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .image-property-section {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 4px;
 }
 
 .image-property-section__heading {
   display: flex;
-  min-height: 24px;
+  min-height: 15px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   color: var(--editor-muted);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
 }
 
 .image-property-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
 .image-property-divider {
@@ -223,10 +237,10 @@ function formatDimension(value) {
 
 .image-original-size {
   display: flex;
-  min-height: 42px;
+  min-height: 30px;
   align-items: center;
-  gap: 8px;
-  padding: 6px 7px;
+  gap: 6px;
+  padding: 3px 5px;
   border-radius: 6px;
   background: rgba(var(--v-theme-control), 0.46);
   color: var(--editor-muted);
@@ -241,23 +255,60 @@ function formatDimension(value) {
 }
 
 .image-original-size span {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
 }
 
 .image-original-size strong {
   overflow: hidden;
   color: var(--editor-text);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .image-property-icon-button {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+}
+
+.image-ratio-lock {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--editor-muted);
+  background: rgba(var(--v-theme-control), 0.5);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.image-ratio-lock--active {
+  color: var(--editor-primary);
+  background: rgba(var(--v-theme-primary), 0.1);
+}
+
+.image-ratio-lock:hover:not(:disabled),
+.image-ratio-lock:focus-visible:not(:disabled) {
+  color: var(--editor-primary);
+  outline: none;
+}
+
+.image-ratio-lock:focus-visible:not(:disabled) {
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.14);
+}
+
+.image-ratio-lock:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .image-property-panel-enter-active,

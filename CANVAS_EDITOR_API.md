@@ -1,22 +1,51 @@
 # canvas-editor-core 使用说明
 
-本文档说明编辑器的初始化、画板、视口、图片、文本、选区、图层、业务属性、事件和
-生命周期，供编辑器页面与业务面板开发使用。
+本文档说明编辑器的初始化、数据还原、画布编辑、业务属性、截图和跨端通信，供编辑器页面与
+业务面板开发使用。
 
 > 在线阅读：启动项目后访问 `#/docs`。完整编辑器示例位于 `#/editor`。
 
-## 阅读路线
+## 开发顺序
+
+不要从头到尾通读所有 API。按照下面的顺序接入，完成前一步后再进入下一步：
+
+| 阶段 | 你要完成的事情 | 首先阅读 |
+| --- | --- | --- |
+| 1. 选接入方式 | 判断是直接使用 Core、Vue 页面，还是 iframe / 小程序 | [调用边界](#/docs#调用边界)、[Vue 应用层](#/docs#vue-应用层) |
+| 2. 创建编辑器 | 准备容器、创建实例、销毁实例 | [快速开始](#/docs#快速开始)、[创建编辑器](#/docs#创建编辑器)、[生命周期](#/docs#生命周期) |
+| 3. 处理 JSON | 初始化已有模板、导出当前设计数据 | [统一编辑器文档](#/docs#统一编辑器文档) |
+| 4. 接入宿主 | 通过后台、iframe 或小程序传入 JSON、Token 并接收保存数据 | [postMessage 跨端通信](#/docs#postmessage-跨端通信)、[自定义模板路由](#/docs#自定义模板路由) |
+| 5. 编辑内容 | 设置画板、缩放视口，添加或替换图片和文字 | [画布与画板](#/docs#画布与画板)、[图片](#/docs#图片)、[文本](#/docs#文本) |
+| 6. 开发面板 | 处理选中、图层排序、锁定、显隐和业务属性 | [选择](#/docs#选择)、[图层](#/docs#图层)、[元素业务属性](#/docs#元素业务属性) |
+| 7. 生产输出 | 标记背景图、遮罩图，管理打印区域并截图 | [生产遮罩与打印区域](#/docs#生产遮罩与打印区域) |
+| 8. 完善体验 | 监听变化、支持撤销重做、统一处理错误 | [事件](#/docs#事件)、[命令与历史](#/docs#命令与历史)、[错误处理](#/docs#错误处理) |
+
+### 最小完整流程
+
+如果只想先跑通“创建 → 加载 → 编辑 → 导出”，只需要以下 4 个 API：
+
+| 步骤 | API |
+| --- | --- |
+| 创建实例 | [`createEditor(options)`](#/docs#api-createeditor) |
+| 还原 JSON | [`editor.loadDocument(document)`](#/docs#api-editor-load-document) |
+| 修改内容 | [`editor.text.update()`](#/docs#更新文本) 或 [`editor.replaceSelectedImage()`](#/docs#api-editor-replace-selected-image) |
+| 获取 JSON | [`editor.exportDocument()`](#/docs#api-editor-export-document) |
+
+完整编辑器的初始化数据和保存数据建议由宿主通过 `postMessage` 传递；编辑器只负责还原和导出，
+不直接请求模板详情或保存接口。没有初始化 JSON 时不需要等待接口，编辑器会直接创建空白文档。
+
+## 按场景查找
 
 | 使用目标 | 建议章节 |
 | --- | --- |
-| 第一次接入 | “快速开始” → “创建编辑器” → “生命周期” |
-| 开发 Vue 面板 | “Vue 应用层” → 对应功能模块 → “事件” |
-| 嵌入后台或小程序 | “postMessage 跨端通信” → “Vue 应用层” |
+| 第一次接入 | “快速开始” → “创建编辑器” → “统一编辑器文档” |
+| 开发 Vue 面板 | “调用边界” → “Vue 应用层” → 对应功能模块 |
+| 嵌入后台或小程序 | “postMessage 跨端通信” → “自定义模板路由” |
 | 添加图片或文字 | “图片” → “文本” → “选择” |
-| 替换图片或文字 | “图片” → “文本” → “H5 文档运行时” |
-| 开发图层面板 | “图层” → “选择” → “元素业务属性” |
+| 替换图片或文字 | “图片” → “文本” → “H5 文档测试运行时” |
+| 开发图层面板 | “选择” → “图层” → “元素业务属性” |
 | 查询元素或截图 | “元素业务属性” → “生产遮罩与打印区域” |
-| 通过后台打开模板 | “自定义模板路由” → “统一编辑器文档” |
+| 处理撤销和状态 | “事件” → “命令与历史” → “生命周期” |
 | 排查问题 | “错误处理” → 对应模块 |
 
 ### 快速定位 API
@@ -181,29 +210,23 @@ if (coreEditor) {
 
 ## 自定义模板路由
 
-完整编辑器页面通过 `#/editor` 接收模板上下文，但不会自行请求模板详情。页面挂载后发送
-`template:load-requested`，宿主请求自己的接口，再通过 `template:load` 回传统一 JSON；没有
-`id` 时宿主回传空文档即可创建新模板。
+完整编辑器只使用固定路由 `#/editor`，不接收模板 ID，也不会请求模板详情接口。空白编辑器会
+立即完成初始化；宿主有 JSON 时，在收到 `editor:ready` 后通过 `template:load` 推送即可。
 
 ```text
-# 新建模板
-#/editor?itemId=2001&templateName=生肖模板&partnerId=10
-
-# 编辑已有模板，两种 id 写法均支持
-#/editor/1001?itemId=2001&partnerId=10
-#/editor?id=1001&itemId=2001&partnerId=10
+# 编辑器固定入口
+#/editor
 ```
 
-路由参数：
+不要再使用 `#/editor/1001` 或 `#/editor?templateId=1001` 初始化模板；即使宿主有模板 ID，也应先
+在宿主侧得到 JSON，再通过 `template:load` 发送给编辑器。
+
+编辑器初始化不读取 `id`、`templateId`、`itemId`、`partnerId`、`templateName` 或
+`previewImgUrl`。这些模板元数据如有需要，应与 JSON 一起放在 `template:load.payload.template`
+中。路由只暂时兼容 Token：
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `id` | `number` | 编辑时是 | 自定义模板 ID，可放在路径或查询参数。 |
-| `itemId` | `number` | 否 | 商品 ID，随保存消息一并交给宿主。 |
-| `templateName` | `string` | 否 | 模板名，随保存消息一并交给宿主。 |
-| `previewImgUrl` | `string` | 否 | 预览图地址，随初始化和保存消息传递。 |
-| `userId` | `number` | 否 | 用户 ID，随模板上下文传给宿主。 |
-| `partnerId` | `number` | 否 | 分销商上下文；宿主请求接口时自行写入 `X-Partner-Id`。 |
 | `token` | `string` | 否 | 兼容路由鉴权，也支持 `authorization`。读取后会立即从地址栏删除。 |
 
 Token 优先通过 `postMessage` 的 `auth:token` 发送，避免出现在浏览器历史、截图或宿主日志中。
@@ -215,9 +238,9 @@ Vue 或宿主通信逻辑写入 `canvas-editor-core`。当前规则：
 
 | 场景 | 执行方 | 行为 |
 | --- | --- | --- |
-| 请求初始化 | 编辑器页面 | 发送 `template:load-requested`，携带路由模板上下文。 |
-| 获取模板详情 | 外部宿主 | 根据 `template.id` 请求自己的详情接口。 |
-| 返回初始化 JSON | 外部宿主 | 发送 `template:load`，携带 `requestId`、`template`、`document`。 |
+| 编辑器就绪 | 编辑器页面 | 发送 `editor:ready`，表示可以接收初始化 JSON。 |
+| 有模板数据 | 外部宿主 | 发送 `template:load`，`document` 为完整统一 JSON。 |
+| 没有模板数据 | 外部宿主 | 不需要发送任何初始化消息，编辑器直接使用空白文档。 |
 | 还原画布 | 编辑器页面 | 调用 `editor.loadDocument()`，成功后发送 `editor:initialized`。 |
 | 点击“立即保存” | 编辑器页面 | 只调用 `editor.exportDocument()`，发送 `template:save-requested`。 |
 | 新增或修改模板 | 外部宿主 | 接收消息后自行调用保存接口、处理鉴权、重试和成功提示。 |
@@ -268,7 +291,6 @@ startMessageBridge()
 postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
   capabilities: [
     MESSAGE_TYPES.EDITOR_INITIALIZED,
-    MESSAGE_TYPES.TEMPLATE_LOAD_REQUESTED,
     MESSAGE_TYPES.TEMPLATE_LOAD,
     MESSAGE_TYPES.TEMPLATE_SAVE_REQUESTED,
     MESSAGE_TYPES.TEMPLATE_SAVE_FAILED
@@ -288,8 +310,7 @@ postBridgeMessage(MESSAGE_TYPES.EDITOR_READY, {
 | `MESSAGE_TYPES.AUTH_TOKEN` | `'auth:token'` | 双向 | 传递登录 Token；编辑器接收后会用于后续 API 请求。 |
 | `MESSAGE_TYPES.H5_AUTH_TOKEN` | `'h5:auth-token'` | 宿主 → H5 | 单独传递 H5 customer 接口 Token，不会覆盖编辑器 admin Token。 |
 | `MESSAGE_TYPES.AUTH_EXPIRED` | `'auth:expired'` | 编辑器 → 宿主 | 接口返回 401，宿主应清理登录态并引导重新登录。 |
-| `MESSAGE_TYPES.TEMPLATE_LOAD_REQUESTED` | `'template:load-requested'` | 编辑器 → 宿主 | 请求宿主提供当前模板的统一 JSON。 |
-| `MESSAGE_TYPES.TEMPLATE_LOAD` | `'template:load'` | 宿主 → 编辑器 | 返回模板上下文和统一 JSON。 |
+| `MESSAGE_TYPES.TEMPLATE_LOAD` | `'template:load'` | 宿主 → 编辑器 | 主动推送模板上下文和统一 JSON。 |
 | `MESSAGE_TYPES.TEMPLATE_LOADING` | `'template:loading'` | 宿主 → 编辑器 | 可选状态消息；宿主正在获取模板。 |
 | `MESSAGE_TYPES.TEMPLATE_LOADED` | `'template:loaded'` | 编辑器 → 宿主 | 模板 JSON 已成功还原到编辑器。 |
 | `MESSAGE_TYPES.TEMPLATE_LOAD_FAILED` | `'template:load-failed'` | 双向 | 宿主获取失败，或编辑器还原 JSON 失败。 |
@@ -386,12 +407,28 @@ console.log(result.channels)
 
 ### 后台管理系统完整接入
 
-后台管理系统负责模板详情、新增和修改接口。编辑器只收发 JSON，不需要知道接口地址。
-后台必须同时校验消息来源和 iframe 窗口：
+后台管理系统准备好初始化 JSON 后，在收到 `editor:ready` 时直接推送给编辑器。编辑器不接收
+模板 ID，也不会请求详情接口。后台必须同时校验消息来源和 iframe 窗口：
 
 ```js
 const editorFrame = document.querySelector('#editor-frame')
 const editorOrigin = 'https://editor.example.com'
+const currentTemplateMetadata = {
+  id: 'template-record-id',
+  itemId: 'item-id',
+  templateName: '生肖模板'
+}
+
+// 有模板数据时传完整统一 JSON；新建空模板时改为 null。
+const currentEditorJson = {
+  version: 1,
+  canvas: {
+    width: 1024,
+    height: 1024,
+    background: '#ffffff'
+  },
+  elements: []
+}
 
 function sendToEditor(type, payload) {
   editorFrame.contentWindow.postMessage({
@@ -414,25 +451,10 @@ window.addEventListener('message', async (event) => {
 
   if (message.type === 'editor:ready') {
     sendToEditor('auth:token', { token: accessToken })
-    return
-  }
-
-  if (message.type === 'template:load-requested') {
-    const routeTemplate = message.payload.template
-    try {
-      const record = routeTemplate.id
-        ? await templateApi.detail(routeTemplate.id)
-        : routeTemplate
-
+    if (currentEditorJson) {
       sendToEditor('template:load', {
-        requestId: message.id,
-        template: { ...routeTemplate, ...record },
-        document: record.content ?? null
-      })
-    } catch (error) {
-      sendToEditor('template:load-failed', {
-        requestId: message.id,
-        error: { message: error.message }
+        template: currentTemplateMetadata,
+        document: currentEditorJson
       })
     }
     return
@@ -463,23 +485,22 @@ window.addEventListener('message', async (event) => {
 })
 ```
 
-`templateApi` 是宿主项目自己的接口模块。详情接口的 `content` 可以是 JSON 字符串或普通对象；
-编辑器统一通过 `loadDocument()` 解析。新增接口必须在 `template:saved.payload.template.id` 返回
-新模板 ID，否则编辑器下一次仍会按 `create` 发送。宿主收到 `template:load-requested` 后应在
-15 秒内返回 `template:load` 或 `template:load-failed`，否则编辑器会结束 Loading 并提示超时。
+`currentEditorJson` 是宿主已经拥有的完整编辑器 JSON，可以是 JSON 字符串或普通对象；没有数据
+时不发送 `template:load`。`currentTemplateMetadata` 是可选业务元数据。新增接口必须在
+`template:saved.payload.template.id` 返回新模板 ID，否则编辑器下一次仍会按 `create` 发送。
 
 ### 模板生命周期通信示例
 
-初始化时先收到 `editor:ready`，随后收到 `template:load-requested`。宿主返回 `template:load`，
-编辑器还原成功后发送 `template:loaded` 和 `editor:initialized`。点击保存时编辑器发送
+没有 JSON 时，编辑器核心就绪后直接发送 `editor:initialized`。有 JSON 时，宿主收到
+`editor:ready` 后发送 `template:load`，编辑器还原成功后发送 `template:loaded` 和
+`editor:initialized`。点击保存时编辑器发送
 `template:save-requested`；宿主必须回传 `template:saved` 或 `template:save-failed`。
 
 消息 payload 约定：
 
 | 消息 | 关键字段 |
 | --- | --- |
-| `template:load-requested` | `mode`、`template`；消息自身 `id` 是本次请求 ID。 |
-| `template:load` | `requestId`、`template`、`document`；`requestId` 必须等于请求消息的 `id`。 |
+| `template:load` | `template`、`document`；仅在有初始化 JSON 时发送。 |
 | `editor:initialized` | `mode`、`template`。`mode` 为 `'create'` 或 `'edit'`。 |
 | `template:loaded` | `mode`、`template`。不重复发送完整 JSON。 |
 | `template:save-requested` | `action`、`template`、`document`。`action` 为 `'create'` 或 `'update'`。 |
@@ -872,7 +893,11 @@ editor.zoomIn()
 editor.zoomOut()
 editor.resetZoom()
 editor.centerArtboard()
+editor.panBy(40, -20)
 ```
+
+`panBy(deltaX, deltaY)` 按视口像素增量平移画布，不改变缩放比例和元素文档坐标。完整编辑器已
+默认启用“按住空格 + 鼠标左键拖拽”；输入框、文本域和画布文字编辑状态下，空格仍用于正常输入。
 
 将画板缩放到工作区的 80% 并居中：
 
@@ -1138,6 +1163,27 @@ editor.updatePrintArea({
 
 editor.removePrintArea()
 ```
+
+### 相对打印区域对齐图片或文字
+
+先严格单选一个未锁定的图片或文字，再按元素当前视觉外框与打印区域对齐：
+
+```js
+editor.alignSelectionToPrintArea('horizontal-center')
+editor.alignSelectionToPrintArea('vertical-center')
+```
+
+| `alignment` | 类型 | 说明 |
+| --- | --- | --- |
+| `'left'` | `string` | 元素左边界与打印区域左边界对齐。 |
+| `'horizontal-center'` | `string` | 元素与打印区域水平居中。 |
+| `'right'` | `string` | 元素右边界与打印区域右边界对齐。 |
+| `'top'` | `string` | 元素顶部与打印区域顶部对齐。 |
+| `'vertical-center'` | `string` | 元素与打印区域垂直居中。 |
+| `'bottom'` | `string` | 元素底部与打印区域底部对齐。 |
+
+对齐只修改元素位置，不改变图片宽高、文字样式、缩放比例、旋转角度或图层顺序，并会进入
+撤销历史。没有打印区域、没有严格单选图片或文字、或元素已锁定时会抛出对应编辑器错误。
 
 ### 自动识别遮罩透明区域
 
@@ -1986,12 +2032,14 @@ unsubscribe()
 | `production:mask-changed` | `{ image }` | 遮罩图片完成标记。 |
 | `production:mask-detected` | `{ mask, transparentBounds, printArea, properties }` | 透明区域识别完成。 |
 | `production:print-area-changed` | `{ printArea, properties }` | 同步打印区域位置和尺寸。 |
+| `production:selection-aligned` | `{ target, alignment, printArea, bounds }` | 图片或文字完成打印区域对齐。 |
 | `layers:changed` | `{ layers }` | 刷新图层列表。 |
 | `selection:toolbar-changed` | `{ visible, bounds, locked, disabled }` | 刷新 Vue 选区工具条。 |
 | `selection:group-changed` | `{ action, group, children }` | 同步组合或解组后的场景状态。 |
 | `element-data:changed` | `{ elementId, attributes }` | 同步业务属性面板。 |
 | `artboard:resized` | `{ artboard }` | 同步画板尺寸。 |
 | `viewport:zoom-changed` | `{ zoom, previous }` | 同步缩放显示。 |
+| `viewport:pan-changed` | `{ x, y, deltaX, deltaY }` | 同步视口平移后的悬浮工具条。 |
 | `history:changed` | `{ canUndo, canRedo, restoring }` | 同步设计内容的撤销、重做和恢复状态。 |
 
 订阅者异常由 EventBus 隔离，不会中断其他监听器。组件卸载时必须取消订阅。
@@ -2184,6 +2232,7 @@ try {
 | 创建编辑器 | `createEditor(options)` |
 | 调整画板 | `editor.setArtboardSize(width, height)` |
 | 适配画板到视口 | `editor.fitArtboardToView(options)` |
+| 平移画布 | `editor.panBy(deltaX, deltaY)` |
 | 添加图片 | `await editor.image.add(source, options)` |
 | 替换选中图片 | `await editor.replaceSelectedImage(source, options)` |
 | 替换指定图片 | `await editor.replaceImage(target, source, options)` |
@@ -2194,6 +2243,7 @@ try {
 | 标记遮罩图 | `editor.markImageAsMask(image, source)` |
 | 创建打印区域 | `editor.createPrintArea(options)` |
 | 更新打印区域 | `editor.updatePrintArea(properties)` |
+| 对齐到打印区域 | `editor.alignSelectionToPrintArea(alignment)` |
 | 识别遮罩透明区域 | `await editor.detectPrintAreaFromMask(options)` |
 | 截图并上传打印区域 | `await editor.capturePrintArea(options)` |
 | 截图并上传完整画板 | `await editor.captureCanvas(options)` |

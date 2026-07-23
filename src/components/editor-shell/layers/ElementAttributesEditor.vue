@@ -1,6 +1,6 @@
 <template>
   <div class="layer-attribute-editor">
-    <div class="layer-attribute-header">
+    <div v-if="showHeader" class="layer-attribute-header">
       <div>
         <strong>{{ editorTitle }}</strong>
         <span>{{ layerName }}</span>
@@ -11,6 +11,7 @@
     </div>
 
     <template v-if="layerType === 'image'">
+      <div v-if="showImageSectionTitle" class="layer-attribute-section-title">业务属性</div>
       <p class="layer-attribute-help">配置图片用途和描述，仅写入业务属性，不会改变图层顺序。</p>
       <v-select
         v-model="imageDraft.role"
@@ -31,7 +32,7 @@
         label="图片描述"
         maxlength="200"
         placeholder="例如：红色礼盒正面展示图"
-        rows="3"
+        rows="2"
         variant="outlined"
       />
     </template>
@@ -180,7 +181,9 @@ const props = defineProps({
   editor: { type: Object, required: true },
   elementId: { type: String, required: true },
   layerName: { type: String, required: true },
-  layerType: { type: String, required: true }
+  layerType: { type: String, required: true },
+  showHeader: { type: Boolean, default: true },
+  showImageSectionTitle: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['close', 'saved'])

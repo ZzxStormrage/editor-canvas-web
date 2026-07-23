@@ -11,6 +11,7 @@
       <EditorRail v-model="activePanel" />
       <EditorSidePanel :active-panel="activePanel" :editor="editor" />
       <CanvasWorkspace :editor="editor" />
+      <EditorAttributeDrawer :editor="editor" />
       <v-overlay class="align-center justify-center" contained persistent :model-value="templateLoading">
         <v-progress-circular color="primary" indeterminate size="32" width="3" />
       </v-overlay>
@@ -27,6 +28,7 @@ import { onBeforeUnmount, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import CanvasWorkspace from '../components/editor-shell/CanvasWorkspace.vue'
+import EditorAttributeDrawer from '../components/editor-shell/EditorAttributeDrawer.vue'
 import EditorRail from '../components/editor-shell/EditorRail.vue'
 import EditorSidePanel from '../components/editor-shell/EditorSidePanel.vue'
 import EditorTopBar from '../components/editor-shell/EditorTopBar.vue'
@@ -39,10 +41,7 @@ const route = useRoute()
 const router = useRouter()
 const activePanel = ref('text')
 const message = reactive({ visible: false, text: '', color: 'error' })
-const editor = useCanvasEditor({
-  onMessage: showMessage,
-  onOpenLayerAttributes: openLayerAttributesPanel
-})
+const editor = useCanvasEditor({ onMessage: showMessage })
 const templatePersistence = useCustomTemplatePersistence({
   editor,
   route,
@@ -57,11 +56,6 @@ const removeAuthExpiredSubscription = subscribeAuthExpired((error) => {
 })
 
 onBeforeUnmount(removeAuthExpiredSubscription)
-
-/** @returns {void} 切换到图层面板以响应选区属性请求。 */
-function openLayerAttributesPanel() {
-  activePanel.value = 'layers'
-}
 
 /** @returns {Promise<void>} 将当前编辑器 JSON 提交给外部宿主。 */
 async function saveCustomTemplate() {

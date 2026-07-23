@@ -1,22 +1,25 @@
 <template>
-  <label class="panel-number-field">
-    <span>{{ label }}</span>
-    <v-number-input
-      :model-value="modelValue"
-      :aria-label="label"
-      class="panel-number-field__input"
-      control-variant="hidden"
-      density="compact"
-      hide-details="auto"
-      :disabled="disabled"
-      :max="max"
-      :min="min"
-      :step="step"
-      :suffix="suffix"
-      variant="outlined"
-      @update:model-value="handleUpdate"
-    />
-  </label>
+  <div class="panel-number-field" :class="{ 'panel-number-field--compact': compact }">
+    <span class="panel-number-field__label">{{ label }}</span>
+    <span class="panel-number-field__control">
+      <v-number-input
+        :model-value="modelValue"
+        :aria-label="suffix ? `${label}（${suffix}）` : label"
+        class="panel-number-field__input"
+        control-variant="hidden"
+        density="compact"
+        hide-details="auto"
+        :disabled="disabled"
+        :max="max"
+        :min="min"
+        :step="step"
+        suffix=""
+        variant="outlined"
+        @update:model-value="handleUpdate"
+      />
+      <span v-if="suffix" class="panel-number-field__unit" aria-hidden="true">{{ suffix }}</span>
+    </span>
+  </div>
 </template>
 
 <script setup>
@@ -27,7 +30,8 @@ defineProps({
   min: { type: Number, default: undefined },
   max: { type: Number, default: undefined },
   step: { type: Number, default: 1 },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  compact: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -55,11 +59,17 @@ function handleUpdate(value) {
   gap: 5px;
 }
 
-.panel-number-field > span {
+.panel-number-field__label {
   color: var(--editor-text);
   font-size: 10px;
   font-weight: 700;
   line-height: 1.2;
+}
+
+.panel-number-field__control {
+  position: relative;
+  display: block;
+  min-width: 0;
 }
 
 .panel-number-field__input {
@@ -82,9 +92,60 @@ function handleUpdate(value) {
 }
 
 .panel-number-field__input :deep(.v-field__suffix) {
-  padding-inline-end: 9px;
+  display: none;
+}
+
+.panel-number-field__input--with-unit :deep(.v-field__input) {
+  padding-inline-end: 28px;
+}
+
+.panel-number-field__unit {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  z-index: 1;
   color: var(--editor-muted);
   font-size: 10px;
   font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.panel-number-field--compact {
+  gap: 1px;
+}
+
+.panel-number-field--compact .panel-number-field__label {
+  font-size: 8px;
+}
+
+.panel-number-field--compact .panel-number-field__input {
+  --v-input-control-height: 24px;
+}
+
+.panel-number-field--compact .panel-number-field__input :deep(.v-input__control),
+.panel-number-field--compact .panel-number-field__input :deep(.v-field),
+.panel-number-field--compact .panel-number-field__input :deep(.v-field__input) {
+  min-height: 24px;
+  height: 24px;
+}
+
+.panel-number-field--compact .panel-number-field__input :deep(.v-field) {
+  border-radius: 5px;
+}
+
+.panel-number-field--compact .panel-number-field__input :deep(.v-field__input) {
+  padding-inline-start: 7px;
+  font-size: 10px;
+}
+
+.panel-number-field--compact .panel-number-field__unit {
+  right: 7px;
+  font-size: 9px;
+}
+
+.panel-number-field--compact .panel-number-field__input--with-unit :deep(.v-field__input) {
+  padding-inline-end: 22px;
 }
 </style>

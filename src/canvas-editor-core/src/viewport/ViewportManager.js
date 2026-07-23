@@ -164,6 +164,31 @@ export class ViewportManager {
   }
 
   /**
+   * 按视口像素增量平移画布，不改变缩放和文档元素坐标。
+   *
+   * @param {number} deltaX 水平移动距离。
+   * @param {number} deltaY 垂直移动距离。
+   * @returns {void}
+   */
+  panBy(deltaX, deltaY) {
+    const x = Number(deltaX);
+    const y = Number(deltaY);
+
+    if (!Number.isFinite(x) || !Number.isFinite(y) || (x === 0 && y === 0)) {
+      return;
+    }
+
+    this.#stage.x += x;
+    this.#stage.y += y;
+    this.#bus.emit('viewport:pan-changed', {
+      x: this.#stage.x,
+      y: this.#stage.y,
+      deltaX: x,
+      deltaY: y
+    });
+  }
+
+  /**
    * 缩放并让白色画板中心对齐可视区域中心。
    *
    * @param {number} nextZoom 目标缩放倍数。

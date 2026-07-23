@@ -500,6 +500,18 @@ export class Editor {
   }
 
   /**
+   * 将当前单选图片或文字的外框对齐到打印区域。
+   *
+   * @param {'left' | 'horizontal-center' | 'right' | 'top' | 'vertical-center' | 'bottom'} alignment
+   * 对齐方式。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  alignSelectionToPrintArea(alignment) {
+    this.production?.alignSelectionToPrintArea?.(alignment)
+    return this
+  }
+
+  /**
    * 删除打印区域。
    *
    * @returns {Editor} 当前编辑器实例。
@@ -602,6 +614,18 @@ export class Editor {
    */
   centerArtboard() {
     this.#viewport.centerArtboard()
+    return this
+  }
+
+  /**
+   * 按视口像素增量平移画布。
+   *
+   * @param {number} deltaX 水平移动距离。
+   * @param {number} deltaY 垂直移动距离。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  panBy(deltaX, deltaY) {
+    this.#viewport.panBy(deltaX, deltaY)
     return this
   }
 

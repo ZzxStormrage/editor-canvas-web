@@ -52,6 +52,42 @@
     <button
       type="button"
       class="layer-action-button"
+      aria-label="置顶图层"
+      :disabled="!canMoveToFront"
+      @pointerdown.stop
+      @click.stop="emit('move-to-front')"
+    >
+      <v-icon icon="mdi-chevron-double-up" size="17" />
+      <v-tooltip activator="parent" location="top" open-delay="350">置顶</v-tooltip>
+    </button>
+
+    <button
+      type="button"
+      class="layer-action-button"
+      aria-label="移动到上一层"
+      :disabled="!canMoveUp"
+      @pointerdown.stop
+      @click.stop="emit('move-up')"
+    >
+      <v-icon icon="mdi-arrow-up" size="17" />
+      <v-tooltip activator="parent" location="top" open-delay="350">上移</v-tooltip>
+    </button>
+
+    <button
+      type="button"
+      class="layer-action-button"
+      aria-label="移动到下一层"
+      :disabled="!canMoveDown"
+      @pointerdown.stop
+      @click.stop="emit('move-down')"
+    >
+      <v-icon icon="mdi-arrow-down" size="17" />
+      <v-tooltip activator="parent" location="top" open-delay="350">下移</v-tooltip>
+    </button>
+
+    <button
+      type="button"
+      class="layer-action-button"
       :class="{ 'layer-action-button--active': layer.locked }"
       :aria-label="layer.locked ? '解锁图层' : '锁定图层'"
       @pointerdown.stop
@@ -91,10 +127,31 @@ const props = defineProps({
   alwaysVisible: {
     type: Boolean,
     default: false
+  },
+  canMoveUp: {
+    type: Boolean,
+    default: false
+  },
+  canMoveDown: {
+    type: Boolean,
+    default: false
+  },
+  canMoveToFront: {
+    type: Boolean,
+    default: false
   }
 });
 
-const emit = defineEmits(['toggle-visibility', 'edit-attributes', 'toggle-pointer-through', 'toggle-lock', 'delete']);
+const emit = defineEmits([
+  'toggle-visibility',
+  'edit-attributes',
+  'toggle-pointer-through',
+  'move-to-front',
+  'move-up',
+  'move-down',
+  'toggle-lock',
+  'delete'
+]);
 
 const supportsElementProperties = computed(() => props.layer.type === 'text' || props.layer.type === 'image');
 const formattedAttributeCount = computed(() => {

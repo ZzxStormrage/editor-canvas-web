@@ -177,7 +177,8 @@ const MODULE_DEFINITIONS = [
     namespace: 'Application',
     icon: 'mdi-map-outline',
     headings: [
-      '阅读路线',
+      '开发顺序',
+      '按场景查找',
       '快速开始',
       '调用边界',
       'Vue 应用层',
@@ -187,18 +188,25 @@ const MODULE_DEFINITIONS = [
     ]
   },
   {
-    key: 'bridge',
-    label: '跨端通信',
-    namespace: 'postBridgeMessage',
-    icon: 'mdi-swap-horizontal',
-    headings: ['postMessage 跨端通信']
-  },
-  {
     key: 'core',
     label: 'Core 核心',
     namespace: 'createEditor / Editor',
     icon: 'mdi-cube-outline',
     headings: ['创建编辑器', 'Editor 实例', '生命周期']
+  },
+  {
+    key: 'document',
+    label: 'JSON 文档',
+    namespace: 'editor.document',
+    icon: 'mdi-code-json',
+    headings: ['统一编辑器文档']
+  },
+  {
+    key: 'bridge',
+    label: '跨端通信',
+    namespace: 'postBridgeMessage',
+    icon: 'mdi-swap-horizontal',
+    headings: ['postMessage 跨端通信', '自定义模板路由']
   },
   {
     key: 'canvas',
@@ -215,6 +223,20 @@ const MODULE_DEFINITIONS = [
     headings: ['视口缩放']
   },
   {
+    key: 'image',
+    label: '图片',
+    namespace: 'editor.image',
+    icon: 'mdi-image-outline',
+    headings: ['图片']
+  },
+  {
+    key: 'text',
+    label: '文字',
+    namespace: 'editor.text',
+    icon: 'mdi-format-text',
+    headings: ['文本']
+  },
+  {
     key: 'selection',
     label: '选区',
     namespace: 'editor.select',
@@ -229,11 +251,11 @@ const MODULE_DEFINITIONS = [
     headings: ['图层']
   },
   {
-    key: 'image',
-    label: '图片',
-    namespace: 'editor.image',
-    icon: 'mdi-image-outline',
-    headings: ['图片']
+    key: 'data',
+    label: '业务属性',
+    namespace: 'editor.elementData',
+    icon: 'mdi-database-outline',
+    headings: ['元素业务属性']
   },
   {
     key: 'production',
@@ -243,11 +265,11 @@ const MODULE_DEFINITIONS = [
     headings: ['生产遮罩与打印区域']
   },
   {
-    key: 'text',
-    label: '文字',
-    namespace: 'editor.text',
-    icon: 'mdi-format-text',
-    headings: ['文本']
+    key: 'h5',
+    label: 'H5 运行时',
+    namespace: 'replaceH5Image / replaceH5Text',
+    icon: 'mdi-code-json',
+    headings: ['H5 文档测试运行时']
   },
   {
     key: 'event',
@@ -262,20 +284,6 @@ const MODULE_DEFINITIONS = [
     namespace: 'editor.commands',
     icon: 'mdi-history',
     headings: ['命令与历史']
-  },
-  {
-    key: 'data',
-    label: '业务属性',
-    namespace: 'editor.elementData',
-    icon: 'mdi-database-outline',
-    headings: ['元素业务属性']
-  },
-  {
-    key: 'document',
-    label: 'JSON 文档',
-    namespace: 'editor.document',
-    icon: 'mdi-code-json',
-    headings: ['统一编辑器文档', 'H5 文档测试运行时']
   }
 ];
 
@@ -314,7 +322,7 @@ const filteredTocModules = computed(() => {
   });
 });
 
-const apiModules = tocModules.filter((module) => module.key !== 'guide');
+const apiModules = tocModules;
 
 const documentStats = {
   modules: apiModules.length,

@@ -61,6 +61,63 @@ export function useLayerControls(getEditor) {
     getEditor()?.layer?.togglePointerThrough(id)
   }
 
+  /**
+   * 将图层移动到面板顺序中的指定位置，并一次性提交给 LayerPlugin。
+   *
+   * 面板顺序从上到下对应视觉层级从高到低，因此索引 0 就是置顶位置。
+   *
+   * @param {string} id 图层 ID。
+   * @param {number} targetIndex 目标索引。
+   * @returns {boolean} 是否完成移动。
+   */
+  function moveLayerToIndex(id, targetIndex) {
+    const currentIndex = layers.value.findIndex((layer) => layer.id === id)
+    const normalizedTargetIndex = Math.max(0, Math.min(targetIndex, layers.value.length - 1))
+    const layerApi = getEditor()?.layer
+
+    if (
+      currentIndex < 0
+      || currentIndex === normalizedTargetIndex
+      || typeof layerApi?.reorder !== 'function'
+    ) {
+      return false
+    }
+
+    const nextLayers = [...layers.value]
+    const [targetLayer] = nextLayers.splice(currentIndex, 1)
+    nextLayers.splice(normalizedTargetIndex, 0, targetLayer)
+    layerApi.reorder(nextLayers.map((layer) => layer.id))
+    refreshLayers()
+    return true
+  }
+
+  /**
+   * 将图层在面板顺序中移动指定偏移量。
+   *
+   * @param {string} id 图层 ID。
+   * @param {-1 | 1} offset -1 上移一层，1 下移一层。
+   * @returns {boolean} 是否完成移动。
+   */
+  function moveLayer(id, offset) {
+    const currentIndex = layers.value.findIndex((layer) => layer.id === id)
+    return moveLayerToIndex(id, currentIndex + offset)
+  }
+
+  /** @param {string} id 图层 ID。 @returns {boolean} 是否完成置顶。 */
+  function moveLayerToFront(id) {
+    return moveLayerToIndex(id, 0)
+  }
+
+  /** @param {string} id 图层 ID。 @returns {boolean} 是否完成上移。 */
+  function moveLayerUp(id) {
+    return moveLayer(id, -1)
+  }
+
+  /** @param {string} id 图层 ID。 @returns {boolean} 是否完成下移。 */
+  function moveLayerDown(id) {
+    return moveLayer(id, 1)
+  }
+
   /** @param {string | null} id 图层 ID。 */
   function hoverLayer(id) {
     getEditor()?.layer?.hover(id)
@@ -89,6 +146,9 @@ export function useLayerControls(getEditor) {
     toggleLayerLock,
     toggleLayerVisibility,
     toggleLayerPointerThrough,
+    moveLayerUp,
+    moveLayerDown,
+    moveLayerToFront,
     hoverLayer,
     getLayerThumbnail
   }

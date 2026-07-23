@@ -4,6 +4,11 @@ import { EditorEvent, EditorMoveEvent, EditorScaleEvent } from '@leafer-in/edito
 import { EditorError } from '../../../errors/editor-error.js';
 import { getElementDataContainer } from '../../../utils/element-data.js';
 import { detectTransparentBounds } from '../../../utils/image-alpha.js';
+import {
+  convertOffsetToParentSpace,
+  resolvePrintAreaAlignmentOffset
+} from '../../../utils/production-alignment.js';
+import { isTextElement } from '../../../utils/text.js';
 
 const MASK_SOURCE_KEY = '__canvasEditorMaskSource';
 const PRINT_AREA_KEY = '__canvasEditorPrintArea';
@@ -218,6 +223,43 @@ export class ProductionPlugin {
     return printArea;
   }
 
+  /**
+   * 将当前单选图片或文字的视觉外框对齐到打印区域。
+   *
+   * @param {'left' | 'horizontal-center' | 'right' | 'top' | 'vertical-center' | 'bottom'} alignment
+   * 对齐方式。
+   * @returns {Object} 已移动的图片或文字节点。
+   */
+  alignSelectionToPrintArea(alignment) {
+    this._assertReady();
+    const printArea = this._getPrintArea();
+    const target = this._getAlignableSelection();
+
+    if (!printArea) {
+      throw new EditorError('请先创建打印区域。', 'PRINT_AREA_REQUIRED');
+    }
+    if (target.locked) {
+      throw new EditorError('请先解锁当前元素。', 'PRINT_AREA_ALIGNMENT_TARGET_LOCKED');
+    }
+
+    const targetBounds = this._getNodeBoundsInContent(target);
+    const printAreaBounds = this._getNodeBoundsInContent(printArea);
+    const contentOffset = resolvePrintAreaAlignmentOffset(
+      targetBounds,
+      printAreaBounds,
+      alignment
+    );
+
+    this._moveNodeByContentOffset(target, contentOffset);
+    this._context.eventBus.emit('production:selection-aligned', {
+      target,
+      alignment,
+      printArea: printAreaBounds,
+      bounds: this._getNodeBoundsInContent(target)
+    });
+    return target;
+  }
+
   /** 删除打印区域。 @returns {void} */
   removePrintArea() {
     const printArea = this._getPrintArea();
@@ -398,6 +440,43 @@ export class ProductionPlugin {
     return (this._context?.contentLayer?.children ?? []).find((element) => {
       return element?.[PRINT_AREA_KEY] === true || element?.customType === PRINT_AREA_LABEL;
     }) ?? null;
+  }
+
+  /** @private @returns {Object} 当前严格单选的图片或文字节点。 */
+  _getAlignableSelection() {
+    const selected = this._context?.innerEditor?.list ?? [];
+    const target = selected.length === 1 ? selected[0] : null;
+
+    if (!target || (!this._isImage(target) && !isTextElement(target))) {
+      throw new EditorError(
+        '请选择一个图片或文字元素。',
+        'PRINT_AREA_ALIGNMENT_TARGET_REQUIRED'
+      );
+    }
+    return target;
+  }
+
+  /**
+   * 按内容坐标系偏移移动节点，并刷新选框和画板约束。
+   *
+   * @private
+   * @param {Object} target 目标节点。
+   * @param {{ x: number, y: number }} contentOffset 内容坐标系平移量。
+   * @returns {void}
+   */
+  _moveNodeByContentOffset(target, contentOffset) {
+    const parentTransform = target.parent?.getTransform?.(this._context.contentLayer) ?? null;
+    const offset = convertOffsetToParentSpace(contentOffset, parentTransform);
+
+    target.set?.({
+      x: this._finite(target.x, 0) + offset.x,
+      y: this._finite(target.y, 0) + offset.y
+    });
+    target.forceUpdate?.();
+    target.updateLayout?.();
+    this._context.innerEditor?.update?.();
+    this._context.innerEditor?.updateEditBox?.();
+    this._context.artboard?.syncAllElements?.();
   }
 
   /** @private @returns {Group} */

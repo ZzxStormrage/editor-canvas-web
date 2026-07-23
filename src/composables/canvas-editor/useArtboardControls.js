@@ -26,6 +26,7 @@ export function useArtboardControls(getEditor, notify = null) {
   const maskInputRef = ref(null)
   const maskUploading = ref(false)
   const printAreaDetecting = ref(false)
+  const printAreaAvailable = ref(false)
   const artboardWidth = ref(375)
   const artboardHeight = ref(667)
   const printAreaX = ref(38)
@@ -254,6 +255,31 @@ export function useArtboardControls(getEditor, notify = null) {
   }
 
   /**
+   * 将当前单选图片或文字对齐到打印区域。
+   *
+   * @param {'left' | 'horizontal-center' | 'right' | 'top' | 'vertical-center' | 'bottom'} alignment
+   * 对齐方式。
+   * @returns {boolean} 是否执行了对齐。
+   */
+  function alignSelectedToPrintArea(alignment) {
+    const editor = getEditor()
+
+    if (!editor || !printAreaAvailable.value) {
+      notify?.('请先在画布面板创建打印区域。', 'error')
+      return false
+    }
+
+    try {
+      editor.alignSelectionToPrintArea(alignment)
+      return true
+    } catch (error) {
+      console.error('Print area alignment failed.', error)
+      notify?.(error.message || '元素对齐失败。', 'error')
+      return false
+    }
+  }
+
+  /**
    * 根据遮罩透明区域自动创建或更新打印区域。
    *
    * @returns {Promise<void>}
@@ -349,11 +375,11 @@ export function useArtboardControls(getEditor, notify = null) {
    */
   function syncPrintAreaControls(properties) {
     const editor = getEditor()
-    const currentProperties = properties ?? (
-      editor && typeof editor.getPrintAreaProperties === 'function'
-        ? editor.getPrintAreaProperties()
-        : null
-    )
+    const currentProperties = arguments.length > 0
+      ? properties
+      : editor?.getPrintAreaProperties?.() ?? null
+
+    printAreaAvailable.value = Boolean(currentProperties)
 
     if (!currentProperties) {
       return
@@ -379,6 +405,7 @@ export function useArtboardControls(getEditor, notify = null) {
     maskInputRef,
     maskUploading,
     printAreaDetecting,
+    printAreaAvailable,
     artboardWidth,
     artboardHeight,
     printAreaX,
@@ -396,6 +423,7 @@ export function useArtboardControls(getEditor, notify = null) {
     handleMaskImageChange,
     addPrintArea,
     deletePrintArea,
+    alignSelectedToPrintArea,
     detectPrintAreaFromMask,
     capturePrintArea,
     captureCanvas,

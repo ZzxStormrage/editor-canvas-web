@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createEditor } from '../canvas-editor-core/src/index.js'
 import { useArtboardControls } from './canvas-editor/useArtboardControls.js'
 import { useAssetControls } from './canvas-editor/useAssetControls.js'
+import { useCanvasPan } from './canvas-editor/useCanvasPan.js'
 import { useElementDataControls } from './canvas-editor/useElementDataControls.js'
 import { useImageControls } from './canvas-editor/useImageControls.js'
 import { useLayerMenu } from './canvas-editor/useLayerMenu.js'
@@ -19,8 +20,6 @@ import { useTextControls } from './canvas-editor/useTextControls.js'
  * @param {Object} [options={}] 应用层配置。
  * @param {((message: string, type: 'success' | 'error') => void) | null} [options.onMessage]
  * 消息通知方法。
- * @param {((request: Object) => void) | null} [options.onOpenLayerAttributes]
- * 请求切换到图层属性面板的方法。
  * @returns {Object} 编辑器状态、DOM 引用和操作方法。
  */
 export function useCanvasEditor(options = {}) {
@@ -32,9 +31,9 @@ export function useCanvasEditor(options = {}) {
   const canUndo = ref(false)
   const canRedo = ref(false)
   const historyBusy = ref(false)
-  const attributeEditorRequest = ref(null)
+  const activeAttributeElementId = ref(null)
   let editor = null
-  let attributeEditorRequestId = 0
+  let selectedImageTarget = null
   let unsubscribeEvents = []
   const readyWaiters = new Set()
 
@@ -58,9 +57,6 @@ export function useCanvasEditor(options = {}) {
   }
 
   const notify = typeof options.onMessage === 'function' ? options.onMessage : null
-  const openLayerAttributes = typeof options.onOpenLayerAttributes === 'function'
-    ? options.onOpenLayerAttributes
-    : null
   const textControls = useTextControls(getEditor)
   const artboardControls = useArtboardControls(getEditor, notify)
   const assetControls = useAssetControls(getEditor, artboardControls.getArtboardBounds, textControls.fontFamily, notify)
@@ -69,11 +65,12 @@ export function useCanvasEditor(options = {}) {
   const layerControls = useLayerControls(getEditor)
   const elementDataControls = useElementDataControls(getEditor)
   const imageControls = useImageControls(getEditor)
+  const canvasPanControls = useCanvasPan(getEditor)
 
   /**
    * 请求打开当前单选文字或图片的图层属性。
    *
-   * @returns {boolean} 是否创建了属性面板请求。
+   * @returns {boolean} 是否成功打开属性抽屉。
    */
   function openSelectedElementAttributes() {
     layerControls.refreshLayers()
@@ -84,28 +81,30 @@ export function useCanvasEditor(options = {}) {
       return false
     }
 
-    attributeEditorRequestId += 1
-    const request = {
-      requestId: attributeEditorRequestId,
-      elementId: layer.elementId,
-      layerId: layer.id
+    if (activeAttributeElementId.value === layer.elementId) {
+      closeElementAttributes()
+      return true
     }
-    attributeEditorRequest.value = request
+
+    activeAttributeElementId.value = layer.elementId
     layerMenuControls.hideLayerMenu()
-    openLayerAttributes?.(request)
     return true
   }
 
   /**
-   * 消费已完成的属性面板请求，避免切换 Tab 后重复展开。
+   * 从图层列表选中目标并打开属性抽屉。
    *
-   * @param {number} requestId 请求编号。
-   * @returns {void}
+   * @param {string} layerId 图层 ID。
+   * @returns {boolean} 是否成功打开属性抽屉。
    */
-  function clearElementAttributesRequest(requestId) {
-    if (attributeEditorRequest.value?.requestId === requestId) {
-      attributeEditorRequest.value = null
-    }
+  function openLayerElementAttributes(layerId) {
+    layerControls.selectLayer(layerId)
+    return openSelectedElementAttributes()
+  }
+
+  /** @returns {void} 关闭右侧属性抽屉。 */
+  function closeElementAttributes() {
+    activeAttributeElementId.value = null
   }
 
   /**
@@ -140,18 +139,31 @@ export function useCanvasEditor(options = {}) {
           }
         }),
         editor.eventBus.on('selection:layer-menu-close', layerMenuControls.hideLayerMenu),
-        editor.eventBus.on('image:selection-changed', ({ properties }) => {
+        editor.eventBus.on('image:selection-changed', ({ image, properties }) => {
           imageControls.syncImageProperties(properties)
           selectionToolbarControls.syncSelectionToolbar()
+          const isNewImageSelection = Boolean(image && image !== selectedImageTarget)
+          selectedImageTarget = image ?? null
+          if (isNewImageSelection) {
+            openSelectedElementAttributes()
+          }
         }),
         editor.eventBus.on('production:print-area-changed', ({ properties }) => {
           artboardControls.syncPrintAreaControls(properties)
+        }),
+        editor.eventBus.on('production:selection-aligned', () => {
+          imageControls.syncImageProperties()
+          selectionToolbarControls.syncSelectionToolbar()
+          layerControls.refreshLayers()
         }),
         editor.eventBus.on('viewport:zoom-changed', ({ zoom: nextZoom }) => {
           zoom.value = nextZoom
           selectionToolbarControls.syncSelectionToolbar()
         }),
         editor.eventBus.on('viewport:transform-end', () => {
+          selectionToolbarControls.syncSelectionToolbar()
+        }),
+        editor.eventBus.on('viewport:pan-changed', () => {
           selectionToolbarControls.syncSelectionToolbar()
         }),
         editor.eventBus.on('history:changed', syncHistoryState),
@@ -374,6 +386,7 @@ export function useCanvasEditor(options = {}) {
   watch(
     canvasRef,
     (view) => {
+      canvasPanControls.setView(view)
       if (view && !editor) {
         initCanvas()
       }
@@ -382,11 +395,13 @@ export function useCanvasEditor(options = {}) {
   )
 
   onMounted(() => {
+    canvasPanControls.start()
     initCanvas()
     window.addEventListener('keydown', handleWorkspaceShortcut)
   })
   onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleWorkspaceShortcut)
+    canvasPanControls.stop()
     destroyCanvas()
   })
 
@@ -401,6 +416,8 @@ export function useCanvasEditor(options = {}) {
     canUndo,
     canRedo,
     historyBusy,
+    canvasPanReady: canvasPanControls.panReady,
+    canvasPanning: canvasPanControls.panning,
     textValue: textControls.textValue,
     fontFamily: textControls.fontFamily,
     fontSize: textControls.fontSize,
@@ -422,6 +439,7 @@ export function useCanvasEditor(options = {}) {
     maskInputRef: artboardControls.maskInputRef,
     maskUploading: artboardControls.maskUploading,
     printAreaDetecting: artboardControls.printAreaDetecting,
+    printAreaAvailable: artboardControls.printAreaAvailable,
     artboardWidth: artboardControls.artboardWidth,
     artboardHeight: artboardControls.artboardHeight,
     printAreaX: artboardControls.printAreaX,
@@ -437,6 +455,7 @@ export function useCanvasEditor(options = {}) {
     handleMaskImageChange: artboardControls.handleMaskImageChange,
     addPrintArea: artboardControls.addPrintArea,
     deletePrintArea: artboardControls.deletePrintArea,
+    alignSelectedToPrintArea: artboardControls.alignSelectedToPrintArea,
     detectPrintAreaFromMask: artboardControls.detectPrintAreaFromMask,
     capturePrintArea: artboardControls.capturePrintArea,
     captureCanvas: artboardControls.captureCanvas,
@@ -456,9 +475,10 @@ export function useCanvasEditor(options = {}) {
     deleteWatermark: assetControls.deleteWatermark,
     layerMenu: layerMenuControls.layerMenu,
     selectionToolbar: selectionToolbarControls.selectionToolbar,
-    attributeEditorRequest,
+    activeAttributeElementId,
     openSelectedElementAttributes,
-    clearElementAttributesRequest,
+    openLayerElementAttributes,
+    closeElementAttributes,
     toggleSelectionLock: selectionToolbarControls.toggleSelectionLock,
     duplicateSelection: selectionToolbarControls.duplicateSelection,
     deleteSelection: selectionToolbarControls.deleteSelection,
@@ -476,6 +496,9 @@ export function useCanvasEditor(options = {}) {
     toggleLayerLock: layerControls.toggleLayerLock,
     toggleLayerVisibility: layerControls.toggleLayerVisibility,
     toggleLayerPointerThrough: layerControls.toggleLayerPointerThrough,
+    moveLayerUp: layerControls.moveLayerUp,
+    moveLayerDown: layerControls.moveLayerDown,
+    moveLayerToFront: layerControls.moveLayerToFront,
     hoverLayer: layerControls.hoverLayer,
     getLayerThumbnail: layerControls.getLayerThumbnail,
     getSelectedElementAttributes: elementDataControls.getSelectedElementAttributes,

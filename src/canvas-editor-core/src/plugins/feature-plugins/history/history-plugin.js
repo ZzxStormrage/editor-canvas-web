@@ -22,6 +22,7 @@ const MUTATION_EVENTS = Object.freeze([
   'layers:changed',
   'production:mask-changed',
   'production:print-area-changed',
+  'production:selection-aligned',
   'selection:deleted',
   'selection:group-changed',
   'selection:layer-changed',

@@ -141,6 +141,10 @@
         <div
           :ref="setCanvasRef"
           class="canvas-view"
+          :class="{
+            'canvas-view--pan-ready': editor.canvasPanReady.value,
+            'canvas-view--panning': editor.canvasPanning.value
+          }"
           @pointerdown.self="editor.closeLayerMenu"
         ></div>
         <SelectionActionToolbar
@@ -167,7 +171,8 @@ const workspaceShortcuts = Object.freeze([
   { label: '下一步', keys: ['⌘ / Ctrl', 'Shift', 'Z'] },
   { label: '放大', keys: ['⌘ / Ctrl', '+'] },
   { label: '缩小', keys: ['⌘ / Ctrl', '-'] },
-  { label: '重置缩放', keys: ['⌘ / Ctrl', '0'] }
+  { label: '重置缩放', keys: ['⌘ / Ctrl', '0'] },
+  { label: '移动画布', keys: ['空格', '拖拽'] }
 ]);
 const shortcutsMenuOpen = ref(false);
 
