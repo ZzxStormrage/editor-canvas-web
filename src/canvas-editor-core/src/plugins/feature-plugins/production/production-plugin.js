@@ -5,6 +5,10 @@ import { EditorError } from '../../../errors/editor-error.js';
 import { getElementDataContainer } from '../../../utils/element-data.js';
 import { detectTransparentBounds } from '../../../utils/image-alpha.js';
 import {
+  isProductionFileAreaLabel,
+  PRODUCTION_FILE_AREA_LABEL
+} from '../../../utils/production-area.js';
+import {
   convertOffsetToParentSpace,
   resolvePrintAreaAlignmentOffset
 } from '../../../utils/production-alignment.js';
@@ -12,7 +16,6 @@ import { isTextElement } from '../../../utils/text.js';
 
 const MASK_SOURCE_KEY = '__canvasEditorMaskSource';
 const PRINT_AREA_KEY = '__canvasEditorPrintArea';
-const PRINT_AREA_LABEL = '打印区域';
 const MASK_LABEL = '遮罩图';
 const BACKGROUND_LABEL = '背景图';
 const DEFAULT_PRINT_AREA = { width: 300, height: 200 };
@@ -108,10 +111,10 @@ export class ProductionPlugin {
       target[MASK_SOURCE_KEY] = source.url ?? null;
     }
 
-    if (label === PRINT_AREA_LABEL) {
+    if (isProductionFileAreaLabel(label)) {
       target[PRINT_AREA_KEY] = true;
-      target.customType = PRINT_AREA_LABEL;
-      target.name = source.name ?? PRINT_AREA_LABEL;
+      target.customType = PRODUCTION_FILE_AREA_LABEL;
+      target.name = PRODUCTION_FILE_AREA_LABEL;
     }
 
     return target;
@@ -158,8 +161,8 @@ export class ProductionPlugin {
     });
 
     printArea[PRINT_AREA_KEY] = true;
-    printArea.customType = PRINT_AREA_LABEL;
-    printArea.name = PRINT_AREA_LABEL;
+    printArea.customType = PRODUCTION_FILE_AREA_LABEL;
+    printArea.name = PRODUCTION_FILE_AREA_LABEL;
     getElementDataContainer(printArea, true);
     this._context.contentLayer.add(printArea);
     this._context.innerEditor?.select(printArea);
@@ -236,7 +239,7 @@ export class ProductionPlugin {
     const target = this._getAlignableSelection();
 
     if (!printArea) {
-      throw new EditorError('请先创建打印区域。', 'PRINT_AREA_REQUIRED');
+      throw new EditorError('请先创建生产文件区域。', 'PRINT_AREA_REQUIRED');
     }
     if (target.locked) {
       throw new EditorError('请先解锁当前元素。', 'PRINT_AREA_ALIGNMENT_TARGET_LOCKED');
@@ -331,7 +334,7 @@ export class ProductionPlugin {
     const printArea = this._getPrintArea();
 
     if (!printArea) {
-      throw new EditorError('请先添加或识别打印区域。', 'PRINT_AREA_REQUIRED');
+      throw new EditorError('请先添加或识别生产文件区域。', 'PRINT_AREA_REQUIRED');
     }
 
     const bounds = this._getNodeBoundsInContent(printArea);
@@ -340,7 +343,7 @@ export class ProductionPlugin {
       includeMask: false,
       fileNamePrefix: 'print-area',
       errorCode: 'PRINT_AREA_CAPTURE_FAILED',
-      errorMessage: '打印区域截图失败。'
+      errorMessage: '生产文件区域截图失败。'
     });
   }
 
@@ -438,7 +441,8 @@ export class ProductionPlugin {
   /** @private @returns {Rect | null} */
   _getPrintArea() {
     return (this._context?.contentLayer?.children ?? []).find((element) => {
-      return element?.[PRINT_AREA_KEY] === true || element?.customType === PRINT_AREA_LABEL;
+      const label = element?.customType ?? element?.name;
+      return element?.[PRINT_AREA_KEY] === true || isProductionFileAreaLabel(label);
     }) ?? null;
   }
 
@@ -510,12 +514,17 @@ export class ProductionPlugin {
 
   /** @private @returns {boolean} */
   _shouldExcludeFromCapture(element, options) {
-    if (!element || element.__snapGuide || element[PRINT_AREA_KEY] || element.customType === PRINT_AREA_LABEL) {
+    const label = element?.customType ?? element?.name;
+    if (
+      !element
+      || element.__snapGuide
+      || element[PRINT_AREA_KEY]
+      || isProductionFileAreaLabel(label)
+    ) {
       return true;
     }
 
     const role = getElementDataContainer(element)?.attributes?.image?.role;
-    const label = element.customType ?? element.name;
     if ((role === 'background' || label === BACKGROUND_LABEL) && options.includeBackground !== true) {
       return true;
     }

@@ -1,4 +1,5 @@
 import { EditorError } from '../errors/editor-error.js';
+import { isProductionFileAreaLabel } from './production-area.js';
 
 export const EDITOR_DOCUMENT_VERSION = 1;
 export const DOCUMENT_NODE_SOURCE_KEY = '__canvasEditorDocumentSource';
@@ -201,7 +202,7 @@ function validateDocumentNode(element) {
 /** @private @param {Object} element 文档节点。 @returns {boolean} */
 function isProductionNode(element) {
   const label = element.customType ?? element.name;
-  return label === '打印区域';
+  return isProductionFileAreaLabel(label);
 }
 
 /** @private @param {*} value 待校验值。 @returns {boolean} */

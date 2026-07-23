@@ -34,6 +34,7 @@ export function useArtboardControls(getEditor, notify = null) {
   const printAreaWidth = ref(300)
   const printAreaHeight = ref(200)
   let isSyncingPrintArea = false
+  let roleImageReplacement = null
 
   const artboardMillimeterSize = computed(() => formatMillimeterSize(artboardWidth.value, artboardHeight.value))
   const printAreaMillimeterSize = computed(() => formatMillimeterSize(printAreaWidth.value, printAreaHeight.value))
@@ -76,6 +77,7 @@ export function useArtboardControls(getEditor, notify = null) {
   /** @returns {void} */
   function openBackgroundImagePicker() {
     if (!backgroundUploading.value) {
+      roleImageReplacement = null
       backgroundInputRef.value?.click()
     }
   }
@@ -87,6 +89,7 @@ export function useArtboardControls(getEditor, notify = null) {
   async function handleBackgroundImageChange(event) {
     const [file] = event.target.files ?? []
     const editor = getEditor()
+    const replacement = takeRoleImageReplacement('background')
 
     event.target.value = ''
 
@@ -97,11 +100,15 @@ export function useArtboardControls(getEditor, notify = null) {
     backgroundUploading.value = true
 
     try {
-      await addBackgroundImage(file)
-      notify?.('背景图上传成功', 'success')
+      if (replacement) {
+        await replaceRoleImage(file, replacement)
+      } else {
+        await addBackgroundImage(file)
+      }
+      notify?.(`背景图${replacement ? '替换' : '上传'}成功`, 'success')
     } catch (error) {
       console.error('Background image upload failed.', error)
-      notify?.(error.message || '背景图上传失败。', 'error')
+      notify?.(error.message || `背景图${replacement ? '替换' : '上传'}失败。`, 'error')
     } finally {
       backgroundUploading.value = false
     }
@@ -163,6 +170,7 @@ export function useArtboardControls(getEditor, notify = null) {
   /** @returns {void} */
   function openMaskImagePicker() {
     if (!maskUploading.value) {
+      roleImageReplacement = null
       maskInputRef.value?.click()
     }
   }
@@ -175,6 +183,7 @@ export function useArtboardControls(getEditor, notify = null) {
    */
   async function handleMaskImageChange(event) {
     const [file] = event.target.files ?? []
+    const replacement = takeRoleImageReplacement('mask')
 
     event.target.value = ''
     if (!file || maskUploading.value || !getEditor()) {
@@ -183,11 +192,15 @@ export function useArtboardControls(getEditor, notify = null) {
 
     maskUploading.value = true
     try {
-      await addMaskImage(file)
-      notify?.('遮罩图上传成功', 'success')
+      if (replacement) {
+        await replaceRoleImage(file, replacement)
+      } else {
+        await addMaskImage(file)
+      }
+      notify?.(`遮罩图${replacement ? '替换' : '上传'}成功`, 'success')
     } catch (error) {
       console.error('Mask image upload failed.', error)
-      notify?.(error.message || '遮罩图上传失败。', 'error')
+      notify?.(error.message || `遮罩图${replacement ? '替换' : '上传'}失败。`, 'error')
     } finally {
       maskUploading.value = false
     }
@@ -224,6 +237,67 @@ export function useArtboardControls(getEditor, notify = null) {
     maskImage.updateLayout?.()
     editor.select(maskImage)
     editor.artboard?.syncAllElements?.()
+  }
+
+  /**
+   * 打开已配置背景图或遮罩图的替换选择器。
+   *
+   * 替换入口保持原节点、层级、尺寸和业务属性，不复用“重新上传并新建节点”的流程。
+   *
+   * @param {'background' | 'mask'} role 图片用途。
+   * @returns {boolean} 是否成功打开文件选择器。
+   */
+  function openRoleImageReplacementPicker(role) {
+    const editor = getEditor()
+    const target = editor?.getElementsByRole?.(role)?.at(-1) ?? null
+    const input = role === 'background' ? backgroundInputRef.value : maskInputRef.value
+    const uploading = role === 'background' ? backgroundUploading.value : maskUploading.value
+
+    if (!target || !input || uploading || !['background', 'mask'].includes(role)) {
+      return false
+    }
+
+    roleImageReplacement = { role, target }
+    input.click()
+    return true
+  }
+
+  /**
+   * 上传并替换指定生产图片，保持节点外框和画布尺寸不变。
+   *
+   * @param {File} file 新图片文件。
+   * @param {{ role: 'background' | 'mask', target: Object }} replacement 替换目标。
+   * @returns {Promise<void>}
+   */
+  async function replaceRoleImage(file, replacement) {
+    const editor = getEditor()
+
+    if (!editor) {
+      return
+    }
+
+    const imageUrl = await pictureApi.upload(file)
+    await editor.replaceImage(replacement.target, imageUrl, {
+      allowLocked: true,
+      fit: 'stretch',
+      preserveFrame: true
+    })
+
+    if (replacement.role === 'mask') {
+      editor.markImageAsMask(replacement.target, file)
+    }
+  }
+
+  /**
+   * 取出当前角色的替换任务，文件选择完成后立即清空，避免后续上传误替换。
+   *
+   * @param {'background' | 'mask'} role 图片用途。
+   * @returns {{ role: 'background' | 'mask', target: Object } | null} 替换任务。
+   */
+  function takeRoleImageReplacement(role) {
+    const replacement = roleImageReplacement?.role === role ? roleImageReplacement : null
+    roleImageReplacement = null
+    return replacement
   }
 
   /** @returns {void} */
@@ -265,7 +339,7 @@ export function useArtboardControls(getEditor, notify = null) {
     const editor = getEditor()
 
     if (!editor || !printAreaAvailable.value) {
-      notify?.('请先在画布面板创建打印区域。', 'error')
+      notify?.('请先在画布面板创建生产文件区域。', 'error')
       return false
     }
 
@@ -295,10 +369,10 @@ export function useArtboardControls(getEditor, notify = null) {
     try {
       const properties = await editor.detectPrintAreaFromMask({ alphaThreshold: 10 })
       syncPrintAreaControls(properties)
-      notify?.('打印区域识别完成', 'success')
+      notify?.('生产文件区域识别完成', 'success')
     } catch (error) {
       console.error('Mask detection failed.', error)
-      notify?.(error.message || '打印区域识别失败。', 'error')
+      notify?.(error.message || '生产文件区域识别失败。', 'error')
     } finally {
       printAreaDetecting.value = false
     }
@@ -421,6 +495,7 @@ export function useArtboardControls(getEditor, notify = null) {
     handleBackgroundImageChange,
     openMaskImagePicker,
     handleMaskImageChange,
+    openRoleImageReplacementPicker,
     addPrintArea,
     deletePrintArea,
     alignSelectedToPrintArea,
@@ -482,7 +557,7 @@ function moveElementToBottom(element) {
 
 /** @returns {string} */
 function formatMillimeterSize(width, height) {
-  return `${formatMillimeter(pixelToMillimeter(width))} x ${formatMillimeter(pixelToMillimeter(height))} mm`
+  return `${formatMillimeter(pixelToMillimeter(width))} × ${formatMillimeter(pixelToMillimeter(height))} mm`
 }
 
 /** @returns {number} */

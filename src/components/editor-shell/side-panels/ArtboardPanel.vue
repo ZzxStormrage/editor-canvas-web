@@ -67,7 +67,7 @@
             variant="tonal"
             @click="editor.openBackgroundImagePicker"
           >
-            画布底图
+            上传背景图
           </v-btn>
           <v-btn
             class="editor-action-button canvas-action-button"
@@ -79,16 +79,48 @@
             variant="tonal"
             @click="editor.openMaskImagePicker"
           >
-            遮罩图
+            上传遮罩图
           </v-btn>
+        </div>
+
+        <div v-if="roleAssets.length" class="canvas-role-assets" aria-label="已配置生产图片">
+          <div
+            v-for="asset in roleAssets"
+            :key="asset.role"
+            class="canvas-role-asset"
+          >
+            <div class="canvas-role-asset__preview">
+              <LayerPreview
+                :layer="asset.layer"
+                :load-thumbnail="editor.getLayerThumbnail"
+              />
+            </div>
+            <div class="canvas-role-asset__info">
+              <strong>{{ asset.label }}</strong>
+              <span :title="asset.layer.name">{{ asset.layer.name }}</span>
+            </div>
+            <v-btn
+              class="canvas-role-asset__replace"
+              color="primary"
+              density="compact"
+              :disabled="isRoleUploading(asset.role)"
+              :loading="isRoleUploading(asset.role)"
+              prepend-icon="mdi-image-sync-outline"
+              size="small"
+              variant="tonal"
+              @click="editor.openRoleImageReplacementPicker(asset.role)"
+            >
+              替换
+            </v-btn>
+          </div>
         </div>
       </div>
     </PanelGroup>
 
     <PanelGroup>
-      <div class="panel-tool-heading">
-        <span>打印区域</span>
-        <span>{{ editor.printAreaMillimeterSize.value }}</span>
+      <div class="panel-tool-heading production-area-heading">
+        <span>生产文件区域</span>
+        <strong class="production-area-size">{{ editor.printAreaMillimeterSize.value }}</strong>
       </div>
 
       <div class="print-area-actions">
@@ -137,8 +169,11 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+
 import PanelGroup from '../PanelGroup.vue'
 import PanelNumberField from '../PanelNumberField.vue'
+import LayerPreview from '../layers/LayerPreview.vue'
 
 const props = defineProps({
   editor: {
@@ -146,6 +181,32 @@ const props = defineProps({
     required: true
   }
 })
+
+const ROLE_CONFIG = Object.freeze([
+  { role: 'background', label: '背景图' },
+  { role: 'mask', label: '遮罩图' }
+])
+
+const roleAssets = computed(() => {
+  const layers = props.editor.layers?.value ?? []
+
+  return ROLE_CONFIG.flatMap((config) => {
+    const layer = layers.find((item) => item.type === 'image' && item.imageRole === config.role)
+    return layer ? [{ ...config, layer }] : []
+  })
+})
+
+/**
+ * 判断指定生产图片是否正在上传或替换。
+ *
+ * @param {'background' | 'mask'} role 图片用途。
+ * @returns {boolean} 是否正在处理文件。
+ */
+function isRoleUploading(role) {
+  return role === 'background'
+    ? props.editor.backgroundUploading.value
+    : props.editor.maskUploading.value
+}
 
 /**
  * 把背景图上传 input 的 DOM 引用交回组合式逻辑。
@@ -181,5 +242,79 @@ function setMaskInputRef(element) {
 
 .print-area-actions :deep(.v-btn__content) {
   font-size: 11px;
+}
+
+.canvas-role-assets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.canvas-role-asset {
+  display: flex;
+  min-width: 0;
+  min-height: 50px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 7px;
+  background: rgba(var(--v-theme-control), 0.44);
+}
+
+.canvas-role-asset__preview {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-outline), 0.16);
+  border-radius: 6px;
+  background: rgba(var(--v-theme-surface), 0.76);
+}
+
+.canvas-role-asset__info {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.canvas-role-asset__info strong {
+  color: var(--editor-text);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.canvas-role-asset__info span {
+  overflow: hidden;
+  color: var(--editor-muted);
+  font-size: 9px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-role-asset__replace {
+  flex: 0 0 auto;
+  min-width: 58px;
+}
+
+.canvas-role-asset__replace :deep(.v-btn__content) {
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.production-area-heading {
+  align-items: flex-end;
+}
+
+.production-area-size {
+  color: var(--editor-primary);
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
 }
 </style>

@@ -4,11 +4,11 @@
     :class="{ 'print-area-alignment--divided': divided }"
   >
     <div class="print-area-alignment__heading">
-      <strong>相对打印区域对齐</strong>
+      <strong>相对生产文件区域对齐</strong>
       <small>{{ helperText }}</small>
     </div>
 
-    <div class="print-area-alignment__grid" role="group" aria-label="相对打印区域对齐">
+    <div class="print-area-alignment__grid" role="group" aria-label="相对生产文件区域对齐">
       <button
         v-for="option in alignmentOptions"
         :key="option.value"
@@ -50,8 +50,8 @@ const helperText = computed(() => {
     return '请先解锁当前元素';
   }
   return printAreaAvailable.value
-    ? '按元素外框与打印区域边界对齐'
-    : '请先在画布面板创建打印区域';
+    ? '按元素外框与生产文件区域边界对齐'
+    : '请先在画布面板创建生产文件区域';
 });
 </script>
 
@@ -97,17 +97,17 @@ const helperText = computed(() => {
 .print-area-alignment__button {
   display: inline-flex;
   min-width: 0;
-  min-height: 28px;
+  min-height: 31px;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  padding: 3px 4px;
+  padding: 4px 5px;
   border: 1px solid rgba(var(--v-theme-outline), 0.22);
   border-radius: 6px;
   color: var(--editor-text);
   background: rgba(var(--v-theme-control), 0.42);
   font: inherit;
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 650;
   line-height: 1;
   cursor: pointer;

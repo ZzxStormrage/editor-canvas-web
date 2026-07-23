@@ -453,6 +453,7 @@ export function useCanvasEditor(options = {}) {
     handleBackgroundImageChange: artboardControls.handleBackgroundImageChange,
     openMaskImagePicker: artboardControls.openMaskImagePicker,
     handleMaskImageChange: artboardControls.handleMaskImageChange,
+    openRoleImageReplacementPicker: artboardControls.openRoleImageReplacementPicker,
     addPrintArea: artboardControls.addPrintArea,
     deletePrintArea: artboardControls.deletePrintArea,
     alignSelectedToPrintArea: artboardControls.alignSelectedToPrintArea,

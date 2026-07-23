@@ -262,7 +262,7 @@ const MODULE_DEFINITIONS = [
     label: '生产输出',
     namespace: 'editor.production',
     icon: 'mdi-crop',
-    headings: ['生产遮罩与打印区域']
+    headings: ['生产遮罩与生产文件区域']
   },
   {
     key: 'h5',

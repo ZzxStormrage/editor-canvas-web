@@ -25,7 +25,7 @@
           <AttributeSection
             :key="`${activeLayer.elementId}:base`"
             title="基础属性"
-            subtitle="位置、尺寸、缩放与透明度"
+            subtitle="位置、尺寸、外观与生产文件区域对齐"
           >
             <ImagePropertiesEditor :editor="editor" />
             <PrintAreaAlignment
@@ -54,7 +54,7 @@
           <AttributeSection
             :key="`${activeLayer.elementId}:base`"
             title="基础属性"
-            subtitle="相对打印区域定位"
+            subtitle="相对生产文件区域定位"
           >
             <PrintAreaAlignment :editor="editor" :disabled="activeLayer.locked" />
           </AttributeSection>
