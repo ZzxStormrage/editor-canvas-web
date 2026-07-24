@@ -531,7 +531,6 @@ function resolveTextFieldRules(fieldId) {
 
 .theme-item {
   display: grid;
-  width: 48px;
   min-width: 0;
   padding: 0;
   border: 0;
