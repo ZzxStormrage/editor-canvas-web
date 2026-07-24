@@ -72,7 +72,7 @@
                 <span class="theme-preview">
                   <img :src="option.url" alt="" />
                 </span>
-                <span class="theme-label">{{ option.label }}</span>
+                <!-- <span class="theme-label">{{ option.label }}</span> -->
               </button>
 
               <button type="button" class="theme-item add-theme" @click="tryMoreThemes">
@@ -103,7 +103,7 @@
             </div>
           </section>
 
-          <button
+          <!-- <button
             type="button"
             class="advanced-toggle"
             :aria-expanded="showAdvancedSettings"
@@ -111,7 +111,7 @@
           >
             <span>高级编辑</span>
             <v-icon :icon="showAdvancedSettings ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
-          </button>
+          </button> -->
 
           <Transition name="advanced-settings">
             <div v-if="showAdvancedSettings" class="advanced-settings">
