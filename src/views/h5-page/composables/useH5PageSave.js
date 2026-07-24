@@ -49,7 +49,7 @@ export function useH5PageSave(options) {
       if (import.meta.env.DEV) {
         console.log(`${options.pageId} save result:`, JSON.stringify(payload, null, 2))
       }
-      if (await leavePageAfterSave(options, bridgeResult)) {
+      if (await leavePageAfterSave(options, bridgeResult, payload)) {
         return payload
       }
 
@@ -107,8 +107,9 @@ function postSaveMessage(options, payload) {
  * @param {{ channels: string[] }} bridgeResult 通信结果。
  * @returns {Promise<boolean>} 是否已离开当前页面。
  */
-async function leavePageAfterSave(options, bridgeResult) {
-  if (await navigateToH5RedirectPath(readH5RedirectPath(options.route), options.router)) {
+async function leavePageAfterSave(options, bridgeResult, payload) {
+  const redirectPath = appendSavedDesignQuery(readH5RedirectPath(options.route), payload)
+  if (await navigateToH5RedirectPath(redirectPath, options.router)) {
     return true
   }
   if (!bridgeResult.channels.includes('mini-program') || !wxAPI.isSupported()) {
@@ -117,4 +118,24 @@ async function leavePageAfterSave(options, bridgeResult) {
 
   options.onBeforeNavigateBack?.()
   return wxAPI.navigateBack({ delta: 1 })
+}
+
+/** @param {string | null} path 小程序回调路径。 @param {Object} payload 保存结果。 @returns {string | null} */
+function appendSavedDesignQuery(path, payload) {
+  if (!path) return null
+  const response = payload?.response
+  const designId = response?.designId ?? response?.id ??
+    response?.data?.designId ?? response?.data?.id ??
+    response?.data?.data?.designId ?? response?.data?.data?.id
+  if (designId === undefined || designId === null || designId === '') {
+    throw new Error('设计保存成功但未返回 designId。')
+  }
+
+  const [basePath, rawQuery = ''] = path.split('?')
+  const query = new URLSearchParams(rawQuery)
+  query.set('designId', String(designId))
+  query.set('source', query.get('source') || 'SERIES')
+  const previewImgUrl = payload?.previewImgUrl || payload?.productImgUrl
+  if (previewImgUrl) query.set('previewImgUrl', previewImgUrl)
+  return `${basePath}?${query.toString()}`
 }
