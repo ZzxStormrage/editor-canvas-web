@@ -32,6 +32,8 @@ export {
 } from './utils/text-input-rules.js';
 export { TextPlugin } from './plugins/feature-plugins/text/text-plugin.js';
 export { ImagePlugin } from './plugins/feature-plugins/image/image-plugin.js';
+export { SvgRasterCachePlugin } from './plugins/feature-plugins/svg-raster-cache/svg-raster-cache-plugin.js';
+export { SvgRasterCache, resolveRasterSize } from './plugins/feature-plugins/svg-raster-cache/svg-raster-cache.js';
 export { LayerPlugin } from './plugins/feature-plugins/layer/layer-plugin.js';
 export { HistoryPlugin } from './plugins/feature-plugins/history/history-plugin.js';
 export { DEFAULT_PIXEL_DPI, formatMillimeter, pixelToMillimeter } from './utils/unit.js';

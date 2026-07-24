@@ -571,6 +571,11 @@ export class LayerPlugin {
    * @returns {string | null} 可直接复用的图片地址。
    */
   _getImageThumbnailSource(node) {
+    const originalSource = this._context?.pluginManager?.get('image')?.getSource?.(node)
+    if (originalSource) {
+      return originalSource
+    }
+
     const inputFill = node.__?.__input?.fill
     const imagePaint = Array.isArray(inputFill) ? inputFill[0] : inputFill
     const source = node.url ?? imagePaint?.url

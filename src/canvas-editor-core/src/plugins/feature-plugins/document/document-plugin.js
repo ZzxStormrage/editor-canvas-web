@@ -13,6 +13,7 @@ import {
 } from '../../../utils/editor-document.js';
 import { loadDocumentFonts } from '../../../utils/font.js';
 import { toCssObjectFit } from '../../../utils/image-fit.js';
+import { isSvgImageSource } from '../../../utils/image-runtime.js';
 
 /**
  * 统一编辑器文档插件。
@@ -237,11 +238,31 @@ export class DocumentPlugin {
     const urls = collectDocumentImageUrls(elements);
 
     try {
-      const entries = await Promise.all(urls.map(async (url) => [url, await Platform.origin.loadImage(url)]));
-      return new Map(entries);
+      const svgUrls = urls.filter((url) => isSvgImageSource(url));
+      const imageUrls = urls.filter((url) => !isSvgImageSource(url));
+      const svgPlugin = this._context.pluginManager?.get('svgRasterCache');
+      const [svgEntries, imageEntries] = await Promise.all([
+        svgPlugin?.preloadSources?.(svgUrls) ?? this._loadImagesDirectly(svgUrls),
+        this._loadImagesDirectly(imageUrls)
+      ]);
+      return new Map([...svgEntries, ...imageEntries]);
     } catch (error) {
       throw new EditorError(error.message || 'Document image preload failed.', 'DOCUMENT_IMAGE_LOAD_FAILED');
     }
+  }
+
+  /**
+   * 使用原有 Leafer 加载链路预加载非 SVG 图片。
+   *
+   * @private
+   * @param {string[]} urls 图片 URL 列表。
+   * @returns {Promise<Map<string, Object>>} URL 到图片资源的映射。
+   */
+  async _loadImagesDirectly(urls) {
+    const entries = await Promise.all(urls.map(async (url) => {
+      return [url, await Platform.origin.loadImage(url)];
+    }));
+    return new Map(entries);
   }
 
   /**

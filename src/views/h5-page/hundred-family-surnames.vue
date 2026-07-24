@@ -43,18 +43,6 @@
               @input="handleNameInput('姓', $event)"
             />
           </label>
-          <label>
-            <span>名字（选填）</span>
-            <input
-              type="text"
-              :value="givenName"
-              autocomplete="given-name"
-              placeholder="请输入名字，如：小明"
-              @compositionstart="handleNameCompositionStart"
-              @compositionend="handleNameCompositionEnd('名', $event)"
-              @input="handleNameInput('名', $event)"
-            />
-          </label>
         </div>
       </div>
 
@@ -92,7 +80,6 @@
             <span>{{ style.displayName }}</span>
           </button>
         </div>
-
       </div>
     </section>
 
@@ -200,12 +187,7 @@ const {
   handleCanvasError: handleTemplateCanvasError,
   loadTemplateFromRoute
 } = useH5TemplateDocument({ errorLabel: 'Hundred family surnames' })
-const {
-  saving,
-  saveStatus,
-  resetSaveStatus,
-  savePage
-} = useH5PageSave({
+const { saving, saveStatus, resetSaveStatus, savePage } = useH5PageSave({
   route,
   router,
   pageId: 'hundred-family-surnames',
@@ -293,9 +275,7 @@ function syncNameRulesFromDocument(document) {
     const element = flattenElements(document?.elements).find((item) => {
       return item.attributes?.text?.description === description
     })
-    const fallback = description === '姓'
-      ? DEFAULT_SURNAME_INPUT_RULES
-      : DEFAULT_GIVEN_NAME_INPUT_RULES
+    const fallback = description === '姓' ? DEFAULT_SURNAME_INPUT_RULES : DEFAULT_GIVEN_NAME_INPUT_RULES
     rules.value = normalizeTextInputRules(element?.attributes?.textInput ?? fallback)
   })
 }
@@ -415,8 +395,9 @@ function syncSelectedFontFromEditor(editor) {
     return
   }
 
-  const element = activeEditor.getElementsByAttribute('text.description', '姓')[0]
-    ?? activeEditor.getElementsByAttribute('text.description', '名')[0]
+  const element =
+    activeEditor.getElementsByAttribute('text.description', '姓')[0] ??
+    activeEditor.getElementsByAttribute('text.description', '名')[0]
   const style = fontStyles.value.find((item) => {
     return item.fontName === element?.fontFamily || item.fontUrl === element?.fontUrl
   })

@@ -1520,6 +1520,7 @@ export class EditorActionButtons {
    */
   #copySelected(selected) {
     const toAdd = []
+    const pairs = []
     for (const item of selected) {
       const clone = item.clone()
       clone.set({
@@ -1531,12 +1532,14 @@ export class EditorActionButtons {
       })
       cloneElementData(item, clone)
       toAdd.push(clone)
+      pairs.push({ source: item, clone })
     }
 
     // 挂到原元素所在父容器
     const parent = selected[0]?.parent
     if (parent?.addMany) {
       parent.addMany(...toAdd)
+      this.#eventBus?.emit('selection:duplicated', { pairs })
       const nextSelection = toAdd.length === 1 ? toAdd[0] : toAdd
       this.#innerEditor.select(nextSelection)
     }

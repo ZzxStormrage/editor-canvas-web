@@ -555,7 +555,10 @@ export class ProductionPlugin {
     }
 
     if (!element?.isBranch) {
-      return element.clone?.() ?? null;
+      const clone = element.clone?.() ?? null;
+      return this._context?.pluginManager
+        ?.get('svgRasterCache')
+        ?.restoreCloneSource?.(element, clone) ?? clone;
     }
 
     const clone = element.clone?.({ children: [] });

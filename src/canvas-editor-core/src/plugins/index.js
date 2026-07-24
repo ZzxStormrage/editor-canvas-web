@@ -4,6 +4,7 @@ import { ImagePlugin } from './feature-plugins/image/image-plugin.js'
 import { HistoryPlugin } from './feature-plugins/history/history-plugin.js'
 import { LayerPlugin } from './feature-plugins/layer/layer-plugin.js'
 import { ProductionPlugin } from './feature-plugins/production/production-plugin.js'
+import { SvgRasterCachePlugin } from './feature-plugins/svg-raster-cache/svg-raster-cache-plugin.js'
 import { TextPlugin } from './feature-plugins/text/text-plugin.js'
 
 /**
@@ -17,6 +18,7 @@ import { TextPlugin } from './feature-plugins/text/text-plugin.js'
 export function registerDefaultPlugins(pluginManager) {
   pluginManager.register(new ElementDataPlugin())
   pluginManager.register(new ImagePlugin())
+  pluginManager.register(new SvgRasterCachePlugin())
   pluginManager.register(new TextPlugin())
   pluginManager.register(new ProductionPlugin())
   pluginManager.register(new DocumentPlugin())

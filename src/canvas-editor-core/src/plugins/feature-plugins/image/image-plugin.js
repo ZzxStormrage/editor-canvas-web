@@ -14,11 +14,15 @@ import {
   normalizeImageReplacementFit,
   toLeaferImageMode
 } from '../../../utils/image-fit.js';
+import {
+  IMAGE_SOURCE_FORMAT_KEY,
+  IMAGE_SOURCE_URL_KEY,
+  isSvgImageSource
+} from '../../../utils/image-runtime.js';
 
 const ORIGINAL_WIDTH_KEY = '__canvasEditorOriginalWidth';
 const ORIGINAL_HEIGHT_KEY = '__canvasEditorOriginalHeight';
 const IMAGE_FIT_KEY = '__canvasEditorImageFit';
-const IMAGE_SOURCE_URL_KEY = '__canvasEditorImageSourceUrl';
 
 /**
  * 图片插件 —— 全部基于 leafer-ui 原生 API。
@@ -32,6 +36,8 @@ export class ImagePlugin {
     this._context = null;
     /** @private @type {Set<string>} */
     this._ownedObjectUrls = new Set();
+    /** @private @type {Function | null} */
+    this._unsubscribeDuplicated = null;
   }
 
   /**
@@ -73,6 +79,10 @@ export class ImagePlugin {
     context.innerEditor?.on_(EditorMoveEvent.MOVE, this._emitSelectionChanged, this);
     context.innerEditor?.on_(EditorScaleEvent.SCALE, this._emitSelectionChanged, this);
     context.innerEditor?.on_(EditorRotateEvent.ROTATE, this._emitSelectionChanged, this);
+    this._unsubscribeDuplicated = context.eventBus.on(
+      'selection:duplicated',
+      this._copyDuplicatedRuntimeState.bind(this)
+    );
   }
 
   /**
@@ -109,6 +119,7 @@ export class ImagePlugin {
       image[ORIGINAL_HEIGHT_KEY] = imageSize.height;
       image[IMAGE_FIT_KEY] = 'stretch';
       image[IMAGE_SOURCE_URL_KEY] = imageSource.url;
+      image[IMAGE_SOURCE_FORMAT_KEY] = imageSource.format;
       getElementDataContainer(image, true);
       contentLayer.add(image);
       if (imageSource.ownedObjectUrl) {
@@ -213,7 +224,8 @@ export class ImagePlugin {
         imageSource.url,
         imageSize,
         replacementOptions.fit,
-        replacementOptions.preserveFrame
+        replacementOptions.preserveFrame,
+        imageSource.format
       );
       this._commitObjectUrlReplacement(previousUrl, imageSource);
       this._notifyImageReplaced(image, replacementOptions.fit);
@@ -265,7 +277,7 @@ export class ImagePlugin {
 
     const inputFill = target.__?.__input?.fill;
     const imagePaint = Array.isArray(inputFill) ? inputFill[0] : inputFill;
-    const source = target.url ?? imagePaint?.url ?? target[IMAGE_SOURCE_URL_KEY];
+    const source = target[IMAGE_SOURCE_URL_KEY] ?? target.url ?? imagePaint?.url;
     return typeof source === 'string' && source ? source : null;
   }
 
@@ -295,6 +307,7 @@ export class ImagePlugin {
     target[ORIGINAL_HEIGHT_KEY] = Number(source.sourceHeight ?? resource?.height ?? target.height ?? 0);
     target[IMAGE_FIT_KEY] = fit;
     target[IMAGE_SOURCE_URL_KEY] = url;
+    target[IMAGE_SOURCE_FORMAT_KEY] = isSvgImageSource(url) ? 'svg' : 'image';
     return target;
   }
 
@@ -397,6 +410,8 @@ export class ImagePlugin {
     this._context?.innerEditor?.off_(EditorMoveEvent.MOVE, this._emitSelectionChanged, this);
     this._context?.innerEditor?.off_(EditorScaleEvent.SCALE, this._emitSelectionChanged, this);
     this._context?.innerEditor?.off_(EditorRotateEvent.ROTATE, this._emitSelectionChanged, this);
+    this._unsubscribeDuplicated?.();
+    this._unsubscribeDuplicated = null;
     this._ownedObjectUrls.forEach((url) => URL.revokeObjectURL(url));
     this._ownedObjectUrls.clear();
     this._context = null;
@@ -529,9 +544,10 @@ export class ImagePlugin {
    * @param {{ width: number, height: number }} imageSize 新图片原始尺寸。
    * @param {'contain' | 'cover' | 'stretch'} fit 适配方式。
    * @param {boolean} preserveFrame 是否保持原节点外框。
+   * @param {'svg' | 'image'} format 原始资源格式。
    * @returns {void}
    */
-  _applyReplacement(image, url, imageSize, fit, preserveFrame) {
+  _applyReplacement(image, url, imageSize, fit, preserveFrame, format) {
     if (!preserveFrame) {
       this._resizeReplacementToFrame(image, imageSize);
     }
@@ -540,6 +556,7 @@ export class ImagePlugin {
     image[ORIGINAL_WIDTH_KEY] = imageSize.width;
     image[ORIGINAL_HEIGHT_KEY] = imageSize.height;
     image[IMAGE_FIT_KEY] = fit;
+    image[IMAGE_SOURCE_FORMAT_KEY] = format;
     image.forceUpdate?.();
     image.updateLayout?.();
     this._context.innerEditor?.update?.();
@@ -930,6 +947,29 @@ export class ImagePlugin {
     this._context?.eventBus.emit('image:selection-changed', {
       image,
       properties: image ? this._createPropertiesSnapshot(image) : null
+    });
+  }
+
+  /**
+   * 复制图片节点时同步不可序列化的原图尺寸、适配方式和源地址。
+   *
+   * @private
+   * @param {{ pairs?: Array<{ source: Object, clone: Object }> }} payload 复制节点映射。
+   * @returns {void}
+   */
+  _copyDuplicatedRuntimeState(payload) {
+    (payload?.pairs ?? []).forEach(({ source, clone }) => {
+      if (!(source instanceof LeaferImage) || !(clone instanceof LeaferImage)) {
+        return;
+      }
+
+      const sourceUrl = this.getSource(source);
+      clone[ORIGINAL_WIDTH_KEY] = source[ORIGINAL_WIDTH_KEY];
+      clone[ORIGINAL_HEIGHT_KEY] = source[ORIGINAL_HEIGHT_KEY];
+      clone[IMAGE_FIT_KEY] = source[IMAGE_FIT_KEY];
+      clone[IMAGE_SOURCE_URL_KEY] = sourceUrl;
+      clone[IMAGE_SOURCE_FORMAT_KEY] = source[IMAGE_SOURCE_FORMAT_KEY]
+        ?? (isSvgImageSource(sourceUrl) ? 'svg' : 'image');
     });
   }
 
