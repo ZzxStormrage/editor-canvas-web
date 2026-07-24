@@ -324,7 +324,7 @@ export default {
         if (this.high && !this.full) {
           dpr = window.devicePixelRatio
         }
-        if ((this.enlarge !== 1) & !this.full) {
+        if (this.enlarge !== 1 && !this.full) {
           dpr = Math.abs(Number(this.enlarge))
         }
         obj.width = obj.width * dpr
@@ -340,7 +340,6 @@ export default {
     },
 
     isIE() {
-      const { userAgent } = navigator // 取得浏览器的userAgent字符串
       const isIE = !!window.ActiveXObject || 'ActiveXObject' in window // 判断是否IE浏览器
       return isIE
     },
@@ -371,7 +370,7 @@ export default {
           'rotateZ(' +
           this.rotate * 90 +
           'deg)',
-        'transform-origin': 'center center;'
+        'transform-origin': 'center center'
       }
     },
     editorCropBoxStyle() {
@@ -379,7 +378,7 @@ export default {
         width: this.cropW + 'px',
         height: this.cropH + 'px',
         transform: 'translate3d(' + this.cropOffsertX + 'px,' + this.cropOffsertY + 'px,' + '0)',
-        'transform-origin': 'center center;'
+        'transform-origin': 'center center'
       }
     },
     editorViewImgStyle() {
@@ -401,7 +400,7 @@ export default {
           'rotateZ(' +
           this.rotate * 90 +
           'deg)',
-        'transform-origin': 'center center;'
+        'transform-origin': 'center center'
       }
     },
     // 图片编辑的数据
@@ -452,7 +451,7 @@ export default {
     cropOffsertY() {
       this.showPreview()
     },
-    scale(val, oldVal) {
+    scale() {
       this.showPreview()
     },
     x() {
@@ -637,7 +636,7 @@ export default {
         exifmin.getData(img).then((data) => {
           this.orientation = data.orientation || 1
           const max = Number(this.maxImgSize)
-          if (!this.orientation && (width < max) & (height < max)) {
+          if (!this.orientation && width < max && height < max) {
             this.imgs = this.img
             return
           }
@@ -692,7 +691,7 @@ export default {
         if (e.touches) {
           this.$refs.editorDragBox.addEventListener('touchmove', this.moveImg)
           this.$refs.editorDragBox.addEventListener('touchend', this.leaveImg)
-          if (e.touches.length == 2) {
+          if (e.touches.length === 2) {
             // 记录手指刚刚放上去
             this.touches = e.touches
             this.$refs.editorDragBox.addEventListener('touchmove', this.touchScale)
@@ -789,7 +788,7 @@ export default {
       }
     },
 
-    cancelTouchScale(e) {
+    cancelTouchScale() {
       window.removeEventListener('touchmove', this.touchScale)
     },
 
@@ -884,7 +883,7 @@ export default {
       })
     },
     // 移动图片结束
-    leaveImg(e) {
+    leaveImg() {
       this.$refs.editorDragBox.removeEventListener('mousemove', this.moveImg)
       this.$refs.editorDragBox.removeEventListener('touchmove', this.moveImg)
       this.$refs.editorDragBox.removeEventListener('mouseup', this.leaveImg)
@@ -899,7 +898,7 @@ export default {
         axis: this.getImgAxis()
       })
     },
-    leaveImgInCrop(e) {
+    leaveImgInCrop() {
       this.$refs.editorMoveBox.removeEventListener('mousemove', this.moveImgInCrop)
       this.$refs.editorMoveBox.removeEventListener('touchmove', this.moveImgInCrop)
       this.$refs.editorMoveBox.removeEventListener('mouseup', this.leaveImgInCrop)
@@ -1173,7 +1172,7 @@ export default {
       let { cropW, cropH, limitMinSize } = this
 
       let limitMinNum = []
-      if (!Array.isArray[limitMinSize]) {
+      if (!Array.isArray(limitMinSize)) {
         limitMinNum = [limitMinSize, limitMinSize]
       } else {
         limitMinNum = limitMinSize
@@ -1185,7 +1184,7 @@ export default {
       return [cropW, cropH]
     },
     // 结束改变
-    changeCropEnd(e) {
+    changeCropEnd() {
       this.$refs.editor.removeEventListener('mousemove', this.changeCropNow)
       this.$refs.editor.removeEventListener('mouseup', this.changeCropEnd)
       this.$refs.editor.removeEventListener('touchmove', this.changeCropNow)
@@ -1224,7 +1223,7 @@ export default {
       if (e.touches) {
         this.$refs.editorMoveBox.addEventListener('touchmove', this.moveImgInCrop)
         this.$refs.editorMoveBox.addEventListener('touchend', this.leaveImgInCrop)
-        if (e.touches.length == 2) {
+        if (e.touches.length === 2) {
           // 记录手指刚刚放上去
           this.touches = e.touches
           this.$refs.editorMoveBox.addEventListener('touchmove', this.touchScale)
@@ -1414,7 +1413,7 @@ export default {
       return obj
     },
 
-    leaveCrop(e) {
+    leaveCrop() {
       this.$refs.editorMoveBox.removeEventListener('mousemove', this.moveCrop)
       this.$refs.editorMoveBox.removeEventListener('mouseup', this.leaveCrop)
       this.$refs.editorMoveBox.removeEventListener('touchmove', this.moveCrop)
@@ -1442,10 +1441,10 @@ export default {
         if (this.cropW !== 0) {
           const ctx = canvas.getContext('2d')
           let dpr = 1
-          if (this.high & !this.full) {
+          if (this.high && !this.full) {
             dpr = window.devicePixelRatio
           }
-          if ((this.enlarge !== 1) & !this.full) {
+          if (this.enlarge !== 1 && !this.full) {
             dpr = Math.abs(Number(this.enlarge))
           }
           const width = this.cropW * dpr
@@ -1761,10 +1760,7 @@ export default {
       this.clearCrop()
       this.cropping = true
       let maxWidth = this.w
-      console.log('🚀 ~ this.w:', this.w)
-
       let maxHeight = this.h
-      console.log('🚀 ~ this.h:', this.h)
 
       const { h: containerHeight } = this
       if (this.centerBox) {
@@ -1777,10 +1773,7 @@ export default {
       // 截图框默认大小
       // 如果为0 那么计算容器大小 默认为80%
       let w = cw || parseFloat(this.autoCropWidth)
-      console.log('🚀 ~ w:', w)
-
       let h = ch || parseFloat(this.autoCropHeight)
-      console.log('🚀 ~ h:', h)
 
       if (w === 0 || h === 0) {
         w = maxWidth * 1
@@ -1788,8 +1781,6 @@ export default {
       }
       w = w > maxWidth ? maxWidth : w
       h = h > maxHeight ? maxHeight : h
-
-      console.log('🚀 ~ w, h:', w, h)
 
       if (this.fixed) {
         h = (w / this.fixedNumber[0]) * this.fixedNumber[1]
@@ -1800,8 +1791,6 @@ export default {
         w = (h / this.fixedNumber[1]) * this.fixedNumber[0]
       }
 
-      console.log('🚀 ~ w, h:', w, h)
-
       this.changeCrop(w, h)
     },
     // 手动改变截图框大小函数
@@ -1809,8 +1798,6 @@ export default {
       if (this.centerBox) {
         // 修复初始化时候在centerBox=true情况下
         const axis = this.getImgAxis()
-        console.log('🚀 ~ axis:', axis)
-
         if (w > axis.x2 - axis.x1) {
           // 宽度超标
           w = axis.x2 - axis.x1
@@ -1841,7 +1828,6 @@ export default {
     },
     // 重置函数， 恢复组件置初始状态
     refresh() {
-      const { img } = this
       this.imgs = ''
       this.scale = 1
       this.crop = false
@@ -1867,8 +1853,6 @@ export default {
     // 向右边旋转
     rotateRight() {
       this.rotate = this.rotate >= 3 ? 0 : this.rotate + 1
-      console.log('🚀 ~ this.rotate:', this.rotate)
-
       // 继续操作的时候 缩放改成1
       this.scale = this.checkedMode()
     },

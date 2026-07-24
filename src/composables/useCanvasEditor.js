@@ -34,7 +34,6 @@ export function useCanvasEditor(options = {}) {
   const historyBusy = ref(false)
   const activeAttributeElementId = ref(null)
   let editor = null
-  let selectedImageTarget = null
   let unsubscribeEvents = []
   const readyWaiters = new Set()
 
@@ -141,14 +140,9 @@ export function useCanvasEditor(options = {}) {
           }
         }),
         editor.eventBus.on('selection:layer-menu-close', layerMenuControls.hideLayerMenu),
-        editor.eventBus.on('image:selection-changed', ({ image, properties }) => {
+        editor.eventBus.on('image:selection-changed', ({ properties }) => {
           imageControls.syncImageProperties(properties)
           selectionToolbarControls.syncSelectionToolbar()
-          const isNewImageSelection = Boolean(image && image !== selectedImageTarget)
-          selectedImageTarget = image ?? null
-          if (isNewImageSelection) {
-            openSelectedElementAttributes()
-          }
         }),
         editor.eventBus.on('production:print-area-changed', ({ properties }) => {
           artboardControls.syncPrintAreaControls(properties)

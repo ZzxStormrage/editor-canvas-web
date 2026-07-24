@@ -48,7 +48,16 @@ export function useLayerControls(getEditor) {
 
   /** @param {string} id 图层 ID。 */
   function toggleLayerLock(id) {
-    getEditor()?.layer?.toggleLock(id)
+    const editor = getEditor()
+    const targetLayer = layers.value.find((layer) => layer.id === id)
+    const isOnlySelectedLayer = targetLayer?.selected === true && editor?.selectedElements?.length === 1
+
+    if (isOnlySelectedLayer && typeof editor.toggleSelectionLock === 'function') {
+      editor.toggleSelectionLock()
+      return
+    }
+
+    editor?.layer?.toggleLock(id)
   }
 
   /** @param {string} id 图层 ID。 */

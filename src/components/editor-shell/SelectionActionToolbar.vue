@@ -29,6 +29,7 @@
             :aria-label="action.label"
             :aria-busy="action.loading"
             :class="['selection-action-toolbar__button', `is-${action.key}`]"
+            :data-editor-attribute-trigger="action.key === 'attributes' ? '' : undefined"
             :disabled="action.disabled"
             :loading="action.loading"
             icon
@@ -65,7 +66,7 @@ const actions = computed(() => {
     {
       key: 'lock',
       label: props.toolbar.locked ? '解锁' : '锁定',
-      icon: props.toolbar.locked ? 'mdi-lock-open-variant-outline' : 'mdi-lock-outline',
+      icon: props.toolbar.locked ? 'mdi-lock-outline' : 'mdi-lock-open-variant-outline',
       iconSize: 20,
       disabled: false
     },

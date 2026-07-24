@@ -19,6 +19,7 @@
       v-if="supportsElementProperties"
       type="button"
       class="layer-action-button layer-attribute-button"
+      data-editor-attribute-trigger
       :class="{
         'layer-action-button--active': attributesActive,
         'layer-attribute-button--configured': layer.customAttributeCount > 0

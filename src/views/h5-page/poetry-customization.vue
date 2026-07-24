@@ -67,6 +67,8 @@
                 :class="{ 'is-selected': selectedAiThemeId === option.id }"
                 :disabled="!canSelectTheme || imageReplacing"
                 :aria-busy="imageReplacing && selectedAiThemeId === option.id"
+                :aria-label="`选择${option.label}`"
+                :title="option.label"
                 @click="selectAiTheme(option)"
               >
                 <span class="theme-preview">

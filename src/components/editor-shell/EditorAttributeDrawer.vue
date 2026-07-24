@@ -2,6 +2,7 @@
   <Transition name="editor-attribute-drawer">
     <aside
       v-if="activeLayer"
+      ref="drawerRef"
       class="editor-attribute-drawer"
       :aria-label="`${activeLayer.name}属性`"
     >
@@ -24,6 +25,7 @@
         <template v-if="activeLayer.type === 'image'">
           <AttributeSection
             :key="`${activeLayer.elementId}:base`"
+            default-open
             title="基础属性"
             subtitle="位置、尺寸、外观与生产文件区域对齐"
           >
@@ -36,6 +38,7 @@
           </AttributeSection>
           <AttributeSection
             :key="`${activeLayer.elementId}:business`"
+            default-open
             title="业务属性"
             subtitle="图片用途与业务描述"
           >
@@ -53,6 +56,7 @@
         <template v-else>
           <AttributeSection
             :key="`${activeLayer.elementId}:base`"
+            default-open
             title="基础属性"
             subtitle="相对生产文件区域定位"
           >
@@ -60,6 +64,7 @@
           </AttributeSection>
           <AttributeSection
             :key="`${activeLayer.elementId}:business`"
+            default-open
             title="业务属性"
             subtitle="文字描述与用户输入规则"
           >
@@ -79,7 +84,7 @@
 </template>
 
 <script setup>
-import { computed, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import AttributeSection from './attributes/AttributeSection.vue';
 import PrintAreaAlignment from './attributes/PrintAreaAlignment.vue';
@@ -92,6 +97,7 @@ const props = defineProps({
     required: true
   }
 });
+const drawerRef = ref(null);
 const drawerTitle = computed(() => (activeLayer.value?.type === 'image' ? '图片属性' : '文字属性'));
 
 const activeLayer = computed(() => {
@@ -117,4 +123,46 @@ function syncDrawerWithSelection(layers) {
 }
 
 watch(() => props.editor.layers.value, syncDrawerWithSelection);
+
+/**
+ * 点击属性抽屉、属性触发按钮或抽屉产生的 Vuetify 浮层时保持打开。
+ *
+ * @param {EventTarget | null} target 事件目标。
+ * @returns {boolean} 是否属于属性编辑交互区域。
+ */
+function isAttributeInteractionTarget(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return Boolean(
+    drawerRef.value?.contains(target)
+    || target.closest('[data-editor-attribute-trigger]')
+    || target.closest('.v-overlay-container')
+  );
+}
+
+/** @param {PointerEvent} event 页面指针事件。 @returns {void} */
+function handleDocumentPointerDown(event) {
+  if (activeLayer.value && !isAttributeInteractionTarget(event.target)) {
+    props.editor.closeElementAttributes();
+  }
+}
+
+/** @param {KeyboardEvent} event 页面键盘事件。 @returns {void} */
+function handleDocumentKeyDown(event) {
+  if (event.key === 'Escape' && activeLayer.value) {
+    props.editor.closeElementAttributes();
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', handleDocumentPointerDown, true);
+  document.addEventListener('keydown', handleDocumentKeyDown, true);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleDocumentPointerDown, true);
+  document.removeEventListener('keydown', handleDocumentKeyDown, true);
+});
 </script>

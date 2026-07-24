@@ -67,3 +67,49 @@ test('layer drag commits the displayed top-to-bottom order', () => {
   assert.deepEqual(reorderCalls, [['bottom', 'top', 'middle']])
   assert.deepEqual(controls.layers.value.map((layer) => layer.id), ['bottom', 'top', 'middle'])
 })
+
+test('selected layer lock uses the selection command and preserves selection', () => {
+  let selectionLockCalls = 0
+  let layerLockCalls = 0
+  const editor = {
+    selectedElements: [{}],
+    toggleSelectionLock() {
+      selectionLockCalls += 1
+    },
+    layer: {
+      toggleLock() {
+        layerLockCalls += 1
+      }
+    }
+  }
+  const controls = useLayerControls(() => editor)
+
+  controls.setLayers([{ id: 'selected', selected: true }])
+  controls.toggleLayerLock('selected')
+
+  assert.equal(selectionLockCalls, 1)
+  assert.equal(layerLockCalls, 0)
+})
+
+test('unselected layer lock remains a per-layer operation', () => {
+  let selectionLockCalls = 0
+  const layerLockCalls = []
+  const editor = {
+    selectedElements: [{}],
+    toggleSelectionLock() {
+      selectionLockCalls += 1
+    },
+    layer: {
+      toggleLock(id) {
+        layerLockCalls.push(id)
+      }
+    }
+  }
+  const controls = useLayerControls(() => editor)
+
+  controls.setLayers([{ id: 'other', selected: false }])
+  controls.toggleLayerLock('other')
+
+  assert.equal(selectionLockCalls, 0)
+  assert.deepEqual(layerLockCalls, ['other'])
+})
