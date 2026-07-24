@@ -72,7 +72,7 @@
                 <span class="theme-preview">
                   <img :src="option.url" alt="" />
                 </span>
-                <span class="theme-label">{{ option.label }}</span>
+                <!-- <span class="theme-label">{{ option.label }}</span> -->
               </button>
 
               <button type="button" class="theme-item add-theme" @click="tryMoreThemes">
