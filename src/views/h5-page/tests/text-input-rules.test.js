@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   applyTextInputRules,
   createH5TextInputController,
+  extractTextInputValue,
   normalizeTextInputRules,
   supportsMultilineInput
 } from '../services/text-input-rules.js'
@@ -145,4 +146,20 @@ test('single vertical line disables wrapping and removes user newlines', () => {
   assert.equal(rules.maxLines, null)
   assert.equal(supportsMultilineInput(rules), false)
   assert.equal(applyTextInputRules('甲乙\n丙丁', rules), '甲乙丙丁')
+})
+
+test('vertical canvas layout newlines are removed from the H5 input value', () => {
+  assert.equal(extractTextInputValue({
+    tag: 'Text',
+    text: '天\n涯\n共\n此\n时',
+    writingMode: 'y'
+  }), '天涯共此时')
+})
+
+test('horizontal multiline content keeps its meaningful line breaks', () => {
+  assert.equal(extractTextInputValue({
+    tag: 'Text',
+    text: '海上生明月\n天涯共此时',
+    writingMode: 'x'
+  }), '海上生明月\n天涯共此时')
 })

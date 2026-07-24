@@ -50,12 +50,11 @@
 
       <div class="field-section">
         <div class="section-heading">
-          <h2>输入出生年月日</h2>
+          <h2>请输入生日</h2>
         </div>
 
         <div class="date-inputs">
           <label>
-            <span>年</span>
             <input
               :value="year"
               inputmode="numeric"
@@ -64,30 +63,6 @@
               @compositionstart="handleDateCompositionStart"
               @compositionend="handleDateCompositionEnd('年', $event)"
               @input="handleDateInput('年', $event)"
-            />
-          </label>
-          <label>
-            <span>月</span>
-            <input
-              :value="month"
-              inputmode="numeric"
-              maxlength="2"
-              placeholder="01"
-              @compositionstart="handleDateCompositionStart"
-              @compositionend="handleDateCompositionEnd('月', $event)"
-              @input="handleDateInput('月', $event)"
-            />
-          </label>
-          <label>
-            <span>日</span>
-            <input
-              :value="day"
-              inputmode="numeric"
-              maxlength="2"
-              placeholder="01"
-              @compositionstart="handleDateCompositionStart"
-              @compositionend="handleDateCompositionEnd('日', $event)"
-              @input="handleDateInput('日', $event)"
             />
           </label>
         </div>
@@ -141,12 +116,12 @@ const monthRules = ref(normalizeTextInputRules())
 const dayRules = ref(normalizeTextInputRules())
 const canvasLoaded = ref(false)
 const h5CanvasFitOptions = Object.freeze({
-  padding: 8,
-  viewportRatio: 0.92,
+  padding: 0,
+  viewportRatio: 1,
   expandZoomRange: true
 })
 const h5CanvasLoadOptions = Object.freeze({ interactive: false })
-const h5CanvasZoomLimits = Object.freeze({ minRatio: 1, maxRatio: 2 })
+const h5CanvasZoomLimits = Object.freeze({ minRatio: 1, maxRatio: 1 })
 const dateTextBindings = [
   { description: '年', value: year, rules: yearRules },
   { description: '月', value: month, rules: monthRules },
@@ -175,12 +150,7 @@ const {
   handleCanvasError: handleTemplateCanvasError,
   loadTemplateFromRoute
 } = useH5TemplateDocument({ errorLabel: 'Chinese zodiac' })
-const {
-  saving,
-  saveStatus,
-  resetSaveStatus,
-  savePage
-} = useH5PageSave({
+const { saving, saveStatus, resetSaveStatus, savePage } = useH5PageSave({
   route,
   router,
   pageId: 'chinese-zodiac',
@@ -390,7 +360,6 @@ async function onSubmit() {
 
   await savePage()
 }
-
 </script>
 
 <style lang="scss" scoped>
@@ -426,6 +395,8 @@ async function onSubmit() {
 .canvas-frame {
   position: relative;
   width: 100%;
+  margin: 0;
+  padding: 0;
   overflow: hidden;
   background: #eef0f2;
 }
@@ -433,6 +404,8 @@ async function onSubmit() {
 .canvas-frame :deep(.canvas-document-viewport) {
   width: 100%;
   height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 .canvas-runtime-loading {
@@ -570,8 +543,6 @@ async function onSubmit() {
 
 .date-inputs {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr;
-  gap: 8px;
 }
 
 .date-inputs label {

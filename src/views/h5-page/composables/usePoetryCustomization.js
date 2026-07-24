@@ -8,6 +8,7 @@ import { readRouteImageOptions } from '../services/route-image-options.js'
 import { readRouteValue } from '../services/route-navigation.js'
 import {
   applyTextInputRules,
+  extractTextInputValue,
   normalizeTextInputRules,
   supportsMultilineInput
 } from '../services/text-input-rules.js'
@@ -663,7 +664,7 @@ function createTextFields(editor, labels) {
       id: String(element.elementId ?? description),
       description,
       label: resolveTextLabel(description, labels),
-      value: String(element.text ?? ''),
+      value: extractTextInputValue(element),
       multiline: resolveMultilineField(description, rules),
       rules
     })

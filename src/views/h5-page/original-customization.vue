@@ -1,5 +1,5 @@
 <template>
-  <ImageTextCustomizationPage page-title="原图定制" page-id="original-customization" />
+  <ImageTextCustomizationPage page-title="原图定制" page-id="original-customization" image-crop />
 </template>
 
 <script setup>

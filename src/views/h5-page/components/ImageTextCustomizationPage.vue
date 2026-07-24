@@ -66,40 +66,6 @@
           </div>
         </div>
       </div>
-
-      <div class="field-group">
-        <div class="field-heading">
-          <span class="field-marker" aria-hidden="true"></span>
-          <h2>输入文字</h2>
-        </div>
-
-        <textarea
-          v-if="textInputMultiline"
-          class="text-input"
-          :value="textValue"
-          rows="3"
-          placeholder="自定义输入"
-          :disabled="!canvasLoaded || !hasTextTarget"
-          @compositionstart="handleTextCompositionStart"
-          @compositionend="handleTextCompositionEnd"
-          @input="handleTextInput"
-        ></textarea>
-        <input
-          v-else
-          class="text-input"
-          type="text"
-          :value="textValue"
-          placeholder="自定义输入"
-          :disabled="!canvasLoaded || !hasTextTarget"
-          @compositionstart="handleTextCompositionStart"
-          @compositionend="handleTextCompositionEnd"
-          @input="handleTextInput"
-        />
-      </div>
-
-      <p v-if="operationStatus.text" class="operation-status" :class="`is-${operationStatus.type}`" role="status">
-        {{ operationStatus.text }}
-      </p>
     </section>
 
     <footer class="submit-footer">
@@ -145,15 +111,29 @@
         </section>
       </div>
     </Transition>
+
+    <Transition name="crop-dialog">
+      <ImageCropDialog
+        v-if="imageCrop && showImageCropDialog"
+        :key="cropSourceUrl"
+        :source-url="cropSourceUrl"
+        :aspect-ratio="cropAspectRatio"
+        :output-type="cropOutputType"
+        :busy="imageReplacing"
+        @cancel="closeImageCropDialog"
+        @confirm="handleCropConfirm"
+      />
+    </Transition>
   </main>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { IMAGE_FILE_ACCEPT } from '../../../config/image-upload.js'
 import CanvasDocumentViewport from './CanvasDocumentViewport.vue'
+import ImageCropDialog from './ImageCropDialog.vue'
 import { customerPictureApi } from '../api/customer-picture.js'
 import { useH5PageSave } from '../composables/useH5PageSave.js'
 import { useH5TemplateDocument } from '../composables/useH5TemplateDocument.js'
@@ -183,6 +163,14 @@ const props = defineProps({
   imagePickerSheet: {
     type: Boolean,
     default: false
+  },
+  imageCrop: {
+    type: Boolean,
+    default: false
+  },
+  separateTextInputs: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -196,8 +184,12 @@ const imageReplacing = ref(false)
 const imagePreviewUrl = ref('')
 const hasUploadedImage = ref(false)
 const showImagePickerSheet = ref(false)
-const textValue = ref('')
-const textRules = ref(normalizeTextInputRules())
+const showImageCropDialog = ref(false)
+const cropSourceFile = ref(null)
+const cropSourceUrl = ref('')
+const cropOutputType = ref('jpeg')
+const cropAspectRatio = ref([1, 1])
+const textFields = ref([])
 const hasImageTarget = ref(false)
 const hasTextTarget = ref(false)
 const operationStatus = ref({ type: 'success', text: '' })
@@ -235,14 +227,18 @@ const canvasFrameStyle = computed(() => {
 })
 
 const canPickImage = computed(() => {
-  return canvasLoaded.value && !imageReplacing.value && !saving.value
+  return canvasLoaded.value && !imageReplacing.value && !saving.value && !showImageCropDialog.value
 })
 
 const canSubmit = computed(() => {
-  return canvasLoaded.value && !templateLoading.value && !imageReplacing.value && !saving.value
+  return (
+    canvasLoaded.value &&
+    !templateLoading.value &&
+    !imageReplacing.value &&
+    !saving.value &&
+    !showImageCropDialog.value
+  )
 })
-
-const textInputMultiline = computed(() => supportsMultilineInput(textRules.value))
 
 /** @returns {Promise<void>} 根据路由模板 ID 加载 customer 模板。 */
 async function reloadTemplate() {
@@ -256,8 +252,8 @@ function resetPageState() {
   imagePreviewUrl.value = ''
   hasUploadedImage.value = false
   showImagePickerSheet.value = false
-  textValue.value = ''
-  textRules.value = normalizeTextInputRules()
+  resetImageCropState()
+  textFields.value = []
   hasImageTarget.value = false
   hasTextTarget.value = false
   operationStatus.value = { type: 'success', text: '' }
@@ -276,8 +272,8 @@ function handleDocumentLoaded(payload) {
   hasImageTarget.value = imageTargets.length > 0
   hasTextTarget.value = textTargets.length > 0
   imagePreviewUrl.value = String(editor.image?.getSource?.(imageTargets[0]) ?? '')
-  textValue.value = String(textTargets[0]?.text ?? '')
-  textRules.value = resolveTextInputRules(payload.document, props.textDescription)
+  cropAspectRatio.value = resolveCropAspectRatio(imageTargets[0])
+  textFields.value = createTextFields(payload.document, textTargets)
   canvasLoaded.value = true
   templateError.value = ''
 
@@ -370,6 +366,66 @@ async function handleImageChange(event) {
     return
   }
 
+  if (event.target instanceof HTMLInputElement) {
+    event.target.value = ''
+  }
+  if (props.imageCrop) {
+    openImageCropDialog(file)
+    return
+  }
+
+  await uploadAndReplaceImage(file)
+}
+
+/** @param {File} file 用户选择的原始图片。 @returns {void} 打开裁剪弹框。 */
+function openImageCropDialog(file) {
+  resetImageCropState()
+  cropSourceFile.value = file
+  cropOutputType.value = file.type === 'image/jpeg' ? 'jpeg' : 'png'
+  cropSourceUrl.value = URL.createObjectURL(file)
+  showImageCropDialog.value = true
+  operationStatus.value = { type: 'success', text: '' }
+}
+
+/** @returns {void} 关闭裁剪弹框并释放本地图片地址。 */
+function closeImageCropDialog() {
+  if (!imageReplacing.value) {
+    resetImageCropState()
+  }
+}
+
+/** @returns {void} 清理裁剪弹框状态和对象 URL。 */
+function resetImageCropState() {
+  showImageCropDialog.value = false
+  cropSourceFile.value = null
+  if (cropSourceUrl.value) {
+    URL.revokeObjectURL(cropSourceUrl.value)
+  }
+  cropSourceUrl.value = ''
+  cropOutputType.value = 'jpeg'
+}
+
+/** @param {Blob} blob 裁剪结果。 @returns {Promise<void>} 上传并替换画布图片。 */
+async function handleCropConfirm(blob) {
+  const croppedFile = createCroppedImageFile(blob, cropSourceFile.value, cropOutputType.value)
+  const replaced = await uploadAndReplaceImage(croppedFile)
+  if (replaced) {
+    resetImageCropState()
+  }
+}
+
+/**
+ * 上传图片并使用服务端 URL 替换全部目标节点。
+ *
+ * @param {File | Blob} file 待上传图片。
+ * @returns {Promise<boolean>} 是否上传并替换成功。
+ */
+async function uploadAndReplaceImage(file) {
+  const editor = canvasViewportRef.value?.getEditor?.()
+  if (!editor || !hasImageTarget.value) {
+    return false
+  }
+
   imageReplacing.value = true
   operationStatus.value = { type: 'success', text: '' }
   try {
@@ -388,31 +444,54 @@ async function handleImageChange(event) {
     hasUploadedImage.value = true
     showImagePickerSheet.value = false
     operationStatus.value = { type: 'success', text: '图片已更新' }
+    return true
   } catch (error) {
     console.error(`${props.pageId} image replacement failed.`, error)
     operationStatus.value = { type: 'error', text: error.message || '图片上传失败，请重试。' }
+    return false
   } finally {
     imageReplacing.value = false
-    if (event.target instanceof HTMLInputElement) {
-      event.target.value = ''
-    }
   }
 }
 
-/** @param {Event} event 文字输入事件。 @returns {void} */
-function handleTextInput(event) {
-  textInputController.handleInput(event, textRules.value, applyTextValue)
+/**
+ * @param {Blob} blob 裁剪结果。
+ * @param {File | null} sourceFile 原始文件。
+ * @param {'jpeg' | 'png'} outputType 输出格式。
+ * @returns {File} 带文件名的裁剪图片。
+ */
+function createCroppedImageFile(blob, sourceFile, outputType) {
+  const baseName = String(sourceFile?.name ?? 'image').replace(/\.[^.]+$/, '') || 'image'
+  const extension = outputType === 'png' ? 'png' : 'jpg'
+  const mimeType = blob.type || `image/${outputType}`
+  return new File([blob], `${baseName}-cropped.${extension}`, { type: mimeType })
 }
 
-/** @param {string} nextValue 过滤后的文字。 @returns {void} */
-function applyTextValue(nextValue) {
-  textValue.value = nextValue
+/** @param {Object | undefined} target 图片目标节点。 @returns {[number, number]} 裁剪宽高比。 */
+function resolveCropAspectRatio(target) {
+  const width = Number(target?.width)
+  const height = Number(target?.height)
+  return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+    ? [width, height]
+    : [1, 1]
+}
+
+/** @param {Object} field 文本输入项。 @param {Event} event 输入事件。 @returns {void} */
+function handleTextInput(field, event) {
+  textInputController.handleInput(event, field.rules, (nextValue) => {
+    applyTextFieldValue(field, nextValue)
+  })
+}
+
+/** @param {Object} field 文本输入项。 @param {string} nextValue 过滤后的文字。 @returns {void} */
+function applyTextFieldValue(field, nextValue) {
+  field.value = nextValue
   const editor = canvasViewportRef.value?.getEditor?.()
   if (!editor || !canvasLoaded.value) {
     return
   }
 
-  getTextTargets(editor).forEach((target) => {
+  resolveFieldTargets(editor, field).forEach((target) => {
     if (String(target.text ?? '') !== nextValue) {
       editor.replaceTextWithRules(target, nextValue)
     }
@@ -424,24 +503,83 @@ function handleTextCompositionStart(event) {
   textInputController.handleCompositionStart(event)
 }
 
-/** @param {CompositionEvent} event 组合输入结束事件。 @returns {void} */
-function handleTextCompositionEnd(event) {
-  textInputController.handleCompositionEnd(event, textRules.value, applyTextValue)
+/** @param {Object} field 文本输入项。 @param {CompositionEvent} event 组合输入结束事件。 @returns {void} */
+function handleTextCompositionEnd(field, event) {
+  textInputController.handleCompositionEnd(event, field.rules, (nextValue) => {
+    applyTextFieldValue(field, nextValue)
+  })
 }
 
 /**
- * 从统一文档中读取目标文字的 H5 输入规则。
+ * 根据模板中的文本替换节点创建输入项。
  *
  * @param {Object} document 已加载的统一文档。
- * @param {string} description 文字描述。
+ * @param {Object[]} targets 文本替换节点。
+ * @returns {Object[]} 文本输入项。
+ */
+function createTextFields(document, targets) {
+  if (!targets.length) {
+    return []
+  }
+
+  const shouldSeparate = props.separateTextInputs && targets.length > 1
+  const groups = shouldSeparate
+    ? targets.map((target, index) => ({ targets: [target], indexes: [index] }))
+    : [{ targets, indexes: targets.map((target, index) => index) }]
+
+  return groups.map((group, index) => createTextField(document, group, index, shouldSeparate))
+}
+
+/**
+ * @param {Object} document 已加载的统一文档。
+ * @param {{ targets: Object[], indexes: number[] }} group 文本节点分组。
+ * @param {number} index 输入项序号。
+ * @param {boolean} shouldSeparate 是否独立展示。
+ * @returns {Object} 文本输入项。
+ */
+function createTextField(document, group, index, shouldSeparate) {
+  const target = group.targets[0]
+  return {
+    key: String(target?.elementId ?? `text-${index + 1}`),
+    inputId: `${props.pageId}-text-${index + 1}`,
+    label: shouldSeparate ? `文本${index + 1}` : '',
+    value: String(target?.text ?? ''),
+    rules: resolveTextInputRules(document, target, group.indexes[0]),
+    targetIndexes: group.indexes
+  }
+}
+
+/**
+ * 从统一文档中读取指定文本节点的 H5 输入规则。
+ *
+ * @param {Object} document 已加载的统一文档。
+ * @param {Object} target 画布文本节点。
+ * @param {number} targetIndex 文本替换节点序号。
  * @returns {Object} 归一化后的输入规则。
  */
-function resolveTextInputRules(document, description) {
-  const target = flattenElements(document?.elements).find((element) => {
-    return element.attributes?.text?.description === description
+function resolveTextInputRules(document, target, targetIndex) {
+  const documentTargets = flattenElements(document?.elements).filter((element) => {
+    return element.attributes?.text?.description === props.textDescription
   })
+  const matchedTarget = documentTargets.find((element) => element.elementId === target?.elementId)
 
-  return normalizeTextInputRules(target?.attributes?.textInput)
+  return normalizeTextInputRules((matchedTarget ?? documentTargets[targetIndex])?.attributes?.textInput)
+}
+
+/** @param {Object} field 文本输入项。 @returns {boolean} 是否使用多行输入。 */
+function isTextInputMultiline(field) {
+  return supportsMultilineInput(field.rules)
+}
+
+/**
+ * @param {Object} editor 核心编辑器实例。
+ * @param {Object} field 文本输入项。
+ * @returns {Object[]} 输入项对应的画布节点。
+ */
+function resolveFieldTargets(editor, field) {
+  const targets = getTextTargets(editor)
+
+  return field.targetIndexes.map((index) => targets[index]).filter(Boolean)
 }
 
 /** @param {Object[]} elements 文档元素。 @returns {Object[]} 递归展平后的元素。 */
@@ -492,6 +630,8 @@ watch(
   },
   { immediate: true }
 )
+
+onBeforeUnmount(resetImageCropState)
 </script>
 
 <style lang="scss" scoped>
@@ -699,6 +839,23 @@ watch(
   transition:
     border-color 160ms ease-out,
     box-shadow 160ms ease-out;
+}
+
+.text-input-list {
+  display: grid;
+  gap: 12px;
+}
+
+.text-input-field {
+  display: grid;
+  gap: 6px;
+}
+
+.text-input-field > span {
+  color: #555555;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 textarea.text-input {

@@ -6,6 +6,31 @@ import {
 } from '../../../canvas-editor-core/src/utils/text-input-rules.js'
 
 /**
+ * 提取供 H5 表单编辑的完整文字。
+ *
+ * 竖排模板可能通过换行保存视觉布局，输入框不应继承这些布局换行；
+ * 横排或普通多行文本保留原换行，避免改变真实文案结构。
+ *
+ * @param {Object} element 编辑器文本元素数据。
+ * @returns {string} 适合表单编辑的文字。
+ */
+export function extractTextInputValue(element) {
+  const value = String(element?.text ?? '')
+  return isVerticalTextElement(element) ? value.replace(/\r\n?|\n/g, '') : value
+}
+
+/** @param {Object} element 编辑器文本元素数据。 @returns {boolean} 是否使用竖排布局。 */
+function isVerticalTextElement(element) {
+  const writingMode = String(element?.writingMode ?? '').toLowerCase()
+  return (
+    writingMode === 'y' ||
+    writingMode.startsWith('vertical') ||
+    element?.attributes?.textInput?.singleVerticalLine === true ||
+    element?.attributes?.textLayout?.mode === 'vertical'
+  )
+}
+
+/**
  * 创建 H5 文本输入控制器。
  *
  * 页面只提供元素规则和最终值回调；控制器负责避开输入法组合中的临时字符，
