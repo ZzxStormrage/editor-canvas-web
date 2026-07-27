@@ -165,14 +165,6 @@ const selectedAnimal = computed(() => {
   return animalList.find((item) => item.type === type.value) ?? animalList[0]
 })
 
-const describedImageMap = computed(() => {
-  return new Map(
-    (documentData.value?.elements ?? [])
-      .map((element) => [getImageDescription(element), element])
-      .filter(([description]) => description)
-  )
-})
-
 const canvasFrameStyle = computed(() => {
   const width = Number(documentData.value?.canvas?.width)
   const height = Number(documentData.value?.canvas?.height)
@@ -190,12 +182,8 @@ const canvasFrameStyle = computed(() => {
   }
 })
 
-function getImageDescription(element) {
-  return typeof element.attributes?.image?.description === 'string' ? element.attributes.image.description.trim() : ''
-}
-
 function resolveAnimalIcon(item) {
-  return describedImageMap.value.get(item.name)?.url || item.icon
+  return item.icon
 }
 
 function selectType(item) {
