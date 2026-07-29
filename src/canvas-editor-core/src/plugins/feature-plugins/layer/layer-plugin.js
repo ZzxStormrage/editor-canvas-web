@@ -66,6 +66,10 @@ export class LayerPlugin {
     this._thumbnailTasks = new Map()
     /** @private @type {ReturnType<typeof setTimeout> | null} */
     this._thumbnailChangeTimer = null
+    /** @private @type {Set<string>} 被手动置顶锁定、需始终保持在最上层的图层 ID。 */
+    this._pinnedTopIds = new Set()
+    /** @private @type {boolean} 是否正在执行 reorder，用于防止 _restorePinnedOrder 循环。 */
+    this._isReordering = false
   }
 
   /** @returns {string} 插件 ID。 */
@@ -177,10 +181,21 @@ export class LayerPlugin {
       return
     }
 
+    this._isReordering = true
+
     const orderedNodes = orderedIds.map((id) => this._nodes.get(String(id))).filter(Boolean).reverse()
 
     orderedNodes.forEach((node, index) => contentLayer.add(node, index))
     this._context.artboard?.syncAllElements?.()
+
+    // 更新置顶锁定：最上层元素（orderedIds[0]）在重排后自动锁定，其余解锁。
+    this._pinnedTopIds.clear()
+    const topId = orderedIds[0]
+    if (topId) {
+      this._pinnedTopIds.add(String(topId))
+    }
+
+    this._isReordering = false
     this._emitChanged()
     this._context.eventBus.emit('selection:layer-changed', {
       action: 'reorder',
@@ -371,12 +386,62 @@ export class LayerPlugin {
     this._thumbnailCache.clear()
     this._thumbnailTasks.clear()
     this._nodes.clear()
+    this._pinnedTopIds.clear()
     this._context = null
   }
 
   /** @private */
   _handleChildrenChanged() {
     this._syncNodeListeners()
+    this._emitChanged()
+    if (!this._isReordering) {
+      this._restorePinnedOrder()
+    }
+  }
+
+  /**
+   * 将已锁定的置顶层重新移到 children 末尾（视觉最上层）。
+   *
+   * @private
+   * @returns {void}
+   */
+  _restorePinnedOrder() {
+    if (this._pinnedTopIds.size === 0) {
+      return
+    }
+
+    const contentLayer = this._context?.contentLayer
+    if (!contentLayer || !contentLayer.children?.length) {
+      return
+    }
+
+    const children = contentLayer.children
+    let needsRestore = false
+
+    for (const pinnedId of this._pinnedTopIds) {
+      const node = this._nodes.get(pinnedId)
+      if (node && children[children.length - 1] !== node) {
+        needsRestore = true
+        break
+      }
+    }
+
+    if (!needsRestore) {
+      return
+    }
+
+    // 将锁定节点移动到 children 末尾（视觉最上层），其余保持相对顺序。
+    for (const pinnedId of this._pinnedTopIds) {
+      const node = this._nodes.get(pinnedId)
+      if (node) {
+        const idx = children.indexOf(node)
+        if (idx >= 0 && idx < children.length - 1) {
+          contentLayer.add(node)
+        }
+      }
+    }
+
+    this._context?.artboard?.syncAllElements?.()
     this._emitChanged()
   }
 
