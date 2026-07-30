@@ -2,7 +2,7 @@
  * @Author: zzx 452436275@qq.com
  * @Date: 2026-05-12 17:53:58
  * @LastEditors: zzx 452436275@qq.com
- * @LastEditTime: 2026-07-24 16:03:03
+ * @LastEditTime: 2026-07-30 16:45:14
  * @FilePath: /ele-editor-v2/README.md
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 -->
@@ -99,3 +99,6 @@ canvas-editor-core/
 └── tsconfig.json
 
 https://ele-editor-v2.ele007.com
+
+## 百家信
+https://ele-editor-v2.ele007.com/#/h5-page/hundred-family-surnames?productInfoId=2822&skuId=538&skuCustomId=2277&templateId=111&quantity=1&flowId=custom-1785398734264-uzd886sy&seriesType=1&aiSubjectIds=&themeFlowId=custom-1785398734264-uzd886sy&redirectPath=%252FsubPackage2%252Fcustom-order%252Fcallback%253FflowId%253Dcustom-1785398734264-uzd886sy%2526source%253DSERIES&token=eyJhbGciOiJIUzI1NiJ9.eyJnZW5kZXIiOjAsIm9wZW5pZCI6Im9MS1VpNDUtQThFQ21wVWpON0hYOVF6dlFqY0kiLCJjcmVkZW50aWFsc05vbkV4cGlyZWQiOnRydWUsIm1vYmlsZSI6Im9MS1VpNDUtQThFQ21wVWpON0hYOVF6dlFqY0kiLCJhdmF0YXIiOiJodHRwczovL2VsZS1haWtldGllLmVsZTAwNy5jb20veWlueGlhbmcvMjAyNjA0L2M3ZGYyOGEyLTgxY2ItNDEwYi1hZjVlLTEyMGJhZDZhM2VhNy5qcGVnIiwiZW5hYmxlZCI6ZmFsc2UsImxhc3RMb2dpblRpbWUiOjE3ODQ4NjQ0Nzg5NTIsImNyZWF0ZVRpbWUiOjE3NjIxMzk1MTgwMDAsIm5pY2tuYW1lIjoi55So5oi377yaNjY2OSIsImFjY291bnROb25FeHBpcmVkIjp0cnVlLCJpZCI6MjEsImFjY291bnROb25Mb2NrZWQiOnRydWUsInVzZXJuYW1lIjoib0xLVWk0NS1BOEVDbXBVak43SFg5UXp2UWpjSSIsInN1YiI6Im9MS1VpNDUtQThFQ21wVWpON0hYOVF6dlFqY0kiLCJpYXQiOjE3ODQ4NjQ0NzgsImV4cCI6MTg1Njg2NDQ3OH0.7EtJP59RC7hS7o50jd38RmfFe5FBRffbNbB9fARV_YM
