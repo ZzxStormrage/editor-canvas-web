@@ -150,12 +150,17 @@
             <p class="text-rule-unit-note">中文计 2，英文计 1；限制两个中文时填写 4。</p>
             <div class="text-rule-number-grid">
               <CompactNumberField
+                v-model="textDraft.maxCharacters"
+                class="text-rule-number-field--full"
+                label="最大内容长度"
+                :max="5000"
+              />
+              <CompactNumberField
                 v-if="showsLineLimits"
                 v-model="textDraft.maxCharactersPerLine"
-                label="单行长度"
+                label="每行最大内容"
                 :max="200"
               />
-              <CompactNumberField v-model="textDraft.maxCharacters" label="最大内容长度" :max="5000" />
               <CompactNumberField
                 v-if="showsLineLimits"
                 v-model="textDraft.maxLines"
@@ -338,7 +343,7 @@ function saveAttributes() {
 function buildTextInputPayload() {
   const maxCharactersPerLine = hasFixedTextFlow.value
     ? null
-    : validateOptionalInteger(textDraft.maxCharactersPerLine, '单行长度', 200)
+    : validateOptionalInteger(textDraft.maxCharactersPerLine, '每行最大内容', 200)
   if (attributeError.value) return null
   const maxCharactersSource = textDraft.maxCharacters
     ?? (isSingleLineLayout.value ? textDraft.maxCharactersPerLine : null)

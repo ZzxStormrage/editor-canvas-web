@@ -1631,9 +1631,13 @@
 }
 
 .text-rule-number-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.text-rule-number-field--full {
+  grid-column: 1 / -1;
 }
 
 .text-rule-unit-note {
@@ -1641,20 +1645,6 @@
   color: var(--editor-muted);
   font-size: 10px;
   line-height: 1.4;
-}
-
-.text-rule-number-field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.text-rule-number-field > span {
-  color: var(--editor-text);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.2;
 }
 
 .text-rule-master .v-switch,
