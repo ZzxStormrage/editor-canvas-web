@@ -52,6 +52,8 @@ export class TextPlugin {
     this._activeText = null
     /** @private @type {HTMLElement | HTMLCanvasElement | null} */
     this._view = null
+    /** @private @type {WeakMap<LeaferText, number>} */
+    this._textCenterRestoreVersions = new WeakMap()
     this._handleNativeDoubleClick = this._handleNativeDoubleClick.bind(this)
   }
 
@@ -187,6 +189,7 @@ export class TextPlugin {
     text.forceUpdate?.()
     text.updateLayout?.()
     this._restoreTextCenter(text, textCenter)
+    this._restoreTextCenterAfterLayout(text, textCenter)
 
     if (behavior.select !== false) {
       this._activeText = text
@@ -481,6 +484,7 @@ export class TextPlugin {
     this._context = null
     this._activeText = null
     this._view = null
+    this._textCenterRestoreVersions = new WeakMap()
   }
 
   /**
@@ -1115,6 +1119,41 @@ export class TextPlugin {
     text.set?.({
       x: center.x - width / 2,
       y: center.y - height / 2
+    })
+  }
+
+  /**
+   * 在 Leafer 完成异步文本测量后再次恢复原中心点。
+   *
+   * H5 页面替换文字时不会选中节点，因此不能依赖选择框的下一帧刷新来触发布局。
+   * 版本号用于丢弃快速连续输入产生的旧回调，避免较早的内容覆盖最新位置。
+   *
+   * @private
+   * @param {LeaferText} text 文本节点。
+   * @param {{ x: number, y: number } | null} center 更新前保存的中心点。
+   * @returns {void}
+   */
+  _restoreTextCenterAfterLayout(text, center) {
+    if (!center || !isTextElement(text)) {
+      return
+    }
+
+    const version = (this._textCenterRestoreVersions.get(text) ?? 0) + 1
+    this._textCenterRestoreVersions.set(text, version)
+    const schedule =
+      typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (callback) => setTimeout(callback, 0)
+
+    schedule(() => {
+      if (
+        this._textCenterRestoreVersions.get(text) !== version ||
+        !this._isUsableText(text)
+      ) {
+        return
+      }
+
+      text.forceUpdate?.()
+      text.updateLayout?.()
+      this._restoreTextCenter(text, center)
     })
   }
 
