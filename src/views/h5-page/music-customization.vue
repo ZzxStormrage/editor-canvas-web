@@ -2,6 +2,7 @@
   <ImageTextCustomizationPage
     page-title="音乐款定制"
     page-id="music-customization"
+    image-crop
     image-picker-sheet
     separate-text-inputs
   />
