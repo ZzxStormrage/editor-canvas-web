@@ -52,7 +52,7 @@ export function applyTextInputRules(value, source = {}) {
   result = result.replace(/\r\n?/g, '\n')
   if (!rules.allowManualNewline) result = result.replaceAll('\n', '')
   if (rules.characterSet === 'latin') result = result.replace(/[^\x20-\x7E\n\t]/g, '')
-  if (!rules.allowSymbols) result = result.replace(/[^\p{L}\p{N}\s]/gu, '')
+  if (!rules.allowSymbols) result = result.replace(/[^\p{L}\p{N}\s\p{P}]/gu, '')
   if (rules.maxCharacters) result = truncateByWeightedLength(result, rules.maxCharacters)
   if (rules.maxCharactersPerLine) {
     result = wrapByWeightedLength(result, rules.maxCharactersPerLine)

@@ -58,7 +58,6 @@
             <input
               :value="year"
               inputmode="numeric"
-              maxlength="4"
               placeholder="1990"
               @compositionstart="handleDateCompositionStart"
               @compositionend="handleDateCompositionEnd('年', $event)"
@@ -111,9 +110,9 @@ const router = useRouter()
 const year = ref('')
 const month = ref('')
 const day = ref('')
-const yearRules = ref(normalizeTextInputRules())
-const monthRules = ref(normalizeTextInputRules())
-const dayRules = ref(normalizeTextInputRules())
+const yearRules = ref(normalizeTextInputRules({ maxCharacters: 20 }))
+const monthRules = ref(normalizeTextInputRules({ maxCharacters: 20 }))
+const dayRules = ref(normalizeTextInputRules({ maxCharacters: 20 }))
 const canvasLoaded = ref(false)
 const h5CanvasFitOptions = Object.freeze({
   padding: 0,
@@ -199,21 +198,6 @@ function handleDocumentLoaded(payload) {
   applyDateTextValues(payload.editor)
   canvasLoaded.value = true
   templateError.value = ''
-}
-
-/**
- * 从模板读取年月日各自的 H5 输入限制，避免页面写死业务规则。
- *
- * @param {Object} document 已加载的统一文档。
- * @returns {void}
- */
-function syncDateRulesFromDocument(document) {
-  dateTextBindings.forEach(({ description, rules }) => {
-    const element = flattenElements(document?.elements).find((item) => {
-      return item.attributes?.text?.description === description
-    })
-    rules.value = normalizeTextInputRules(element?.attributes?.textInput)
-  })
 }
 
 /** @param {string} description 文字描述。 @param {Event} event 输入事件。 @returns {void} */
@@ -314,6 +298,21 @@ function syncDateValuesFromEditor(editor) {
     if (element) {
       value.value = applyTextInputRules(element.text, rules.value)
     }
+  })
+}
+
+/**
+ * 从模板 textInput 读取文字输入限制，未配置时回退到 maxCharacters: 20。
+ *
+ * @param {Object} document 已加载的统一文档。
+ * @returns {void}
+ */
+function syncDateRulesFromDocument(document) {
+  dateTextBindings.forEach(({ description, rules }) => {
+    const element = flattenElements(document?.elements).find((item) => {
+      return item.attributes?.text?.description === description
+    })
+    rules.value = normalizeTextInputRules(element?.attributes?.textInput ?? { maxCharacters: 20 })
   })
 }
 

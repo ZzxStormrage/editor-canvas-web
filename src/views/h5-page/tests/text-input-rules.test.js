@@ -24,13 +24,13 @@ test('latin and symbol rules are applied independently', () => {
     enabled: true,
     characterSet: 'any',
     allowSymbols: false
-  }), '中A1 ')
+  }), '中A1! ')
 })
 
-test('symbols and emoji are disabled by default and require explicit opt-in', () => {
+test('symbols and emoji are disabled by default, punctuation is kept', () => {
   const defaultRules = normalizeTextInputRules({ enabled: true })
   assert.equal(defaultRules.allowSymbols, false)
-  assert.equal(applyTextInputRules('中文 A1!😀', defaultRules), '中文 A1')
+  assert.equal(applyTextInputRules('中文 A1!😀', defaultRules), '中文 A1!')
   assert.equal(applyTextInputRules('中文 A1!😀', {
     enabled: true,
     allowSymbols: true
