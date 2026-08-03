@@ -23,7 +23,7 @@ export function createCustomTemplateApi(endpoint, namePrefix = 'customTemplate',
     list(params = {}, options = {}) {
       return client.Get(apiEndpoint, {
         name: `${namePrefix}.list`,
-        params: normalizeQueryParams(params),
+        params: { ...normalizeQueryParams(params), ...buildQueryParams(options) },
         headers: createRequestHeaders(options)
       })
     },
@@ -32,6 +32,7 @@ export function createCustomTemplateApi(endpoint, namePrefix = 'customTemplate',
     detail(id, options = {}) {
       return client.Get(createDetailURL(apiEndpoint, id), {
         name: `${namePrefix}.detail`,
+        params: buildQueryParams(options),
         headers: createRequestHeaders(options)
       })
     },
@@ -92,6 +93,20 @@ function createRequestHeaders(options = {}) {
   return {
     'X-Partner-Id': normalizePositiveInteger(partnerId, 'X-Partner-Id')
   }
+}
+
+/**
+ * 从请求上下文中提取业务查询参数（如 skuId）。
+ *
+ * @param {Object} [options={}] 请求上下文。
+ * @returns {Object} 查询参数。
+ */
+function buildQueryParams(options = {}) {
+  const params = {}
+  if (options.skuId !== undefined && options.skuId !== null && options.skuId !== '') {
+    params.skuId = options.skuId
+  }
+  return params
 }
 
 /**

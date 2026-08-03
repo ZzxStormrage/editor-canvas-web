@@ -42,6 +42,7 @@ function assertCustomerDesignDto(dto) {
   assertOptionalString(dto.designName, 'designName')
   assertOptionalString(dto.previewImgUrl, 'previewImgUrl')
   assertOptionalString(dto.productImgUrl, 'productImgUrl')
+  assertOptionalString(dto.skuId, 'skuId')
   return { ...dto, templateId }
 }
 

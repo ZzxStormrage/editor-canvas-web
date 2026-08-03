@@ -77,7 +77,8 @@ function createSavePayload(options) {
   return saveH5CustomDesign(options.getEditor?.(), {
     templateId: options.route.query.templateId,
     designName: readRouteValue(options.route.query.designName) || options.defaultDesignName,
-    partnerId: options.route.query.partnerId
+    partnerId: options.route.query.partnerId,
+    skuId: readRouteValue(options.route.query.skuId)
   })
 }
 

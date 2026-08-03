@@ -39,7 +39,8 @@ export function useH5TemplateDocument(options = {}) {
     templateLoading.value = true
     try {
       const result = await loadH5TemplateDocument(templateId, {
-        partnerId: readRouteValue(query.partnerId)
+        partnerId: readRouteValue(query.partnerId),
+        skuId: readRouteValue(query.skuId)
       })
       if (currentRequestId !== requestId) {
         return null

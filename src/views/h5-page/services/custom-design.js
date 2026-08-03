@@ -28,11 +28,13 @@ export async function saveH5CustomDesign(editor, options = {}) {
   const productImgUrl = editor.getPrintAreaProperties()
     ? await captureProductImage(editor)
     : null
+  const skuId = readRouteValue(options.skuId)
   const dto = {
     content: JSON.stringify(editorJson),
     designName: normalizeText(options.designName),
     previewImgUrl,
     ...(productImgUrl ? { productImgUrl } : {}),
+    ...(skuId ? { skuId } : {}),
     templateId
   }
   const response = await customerTemplateApi.createDesign(dto, {
