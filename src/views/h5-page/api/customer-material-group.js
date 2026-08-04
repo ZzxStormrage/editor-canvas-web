@@ -6,7 +6,10 @@ import {
   waitForH5AccessToken
 } from '../services/auth-token.js'
 
-export const MINI_PROGRAM_MATERIAL_API_BASE_URL = '/'
+const DEFAULT_MINI_PROGRAM_MATERIAL_API_BASE_URL = 'https://xiaoxiang.ele007.com'
+export const MINI_PROGRAM_MATERIAL_API_BASE_URL = import.meta.env?.DEV
+  ? '/'
+  : import.meta.env?.VITE_XIAOXIANG_API_PROXY_TARGET || DEFAULT_MINI_PROGRAM_MATERIAL_API_BASE_URL
 const CUSTOMER_MATERIAL_GROUP_ENDPOINT =
   import.meta.env?.VITE_CUSTOMER_MATERIAL_GROUP_API_PATH || '/customer/api/customMaterialGroup'
 

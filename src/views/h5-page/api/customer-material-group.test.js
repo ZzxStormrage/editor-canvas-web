@@ -27,8 +27,8 @@ test('H5 material group API uses the mini-program endpoint and keeps request par
     assert.equal(request.url, '/customer/api/customMaterialGroup/12/materials')
     assert.deepEqual(request.config.params, { page: 0, size: 1000 })
     assert.deepEqual(request.config.headers, { 'X-Partner-Id': 8 })
-    assert.equal(MINI_PROGRAM_MATERIAL_API_BASE_URL, '/')
-    assert.equal(miniProgramMaterialClient.options.baseURL, '')
+    assert.equal(MINI_PROGRAM_MATERIAL_API_BASE_URL.includes('/xiaoxiang-api'), false)
+    assert.equal(miniProgramMaterialClient.options.baseURL, MINI_PROGRAM_MATERIAL_API_BASE_URL)
   } finally {
     miniProgramMaterialClient.Get = originalGet
   }
