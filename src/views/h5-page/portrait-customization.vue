@@ -7,18 +7,12 @@
     replacement-text-label="定制文案"
     title-text-label="人像标题"
     :image-target-descriptions="portraitImageDescriptions"
-    art-text-mode
+    material-group-mode
   />
 </template>
 
 <script setup>
 import PoetryCustomizationPage from './poetry-customization.vue'
 
-const portraitImageDescriptions = Object.freeze([
-  '人像替换',
-  '人像定制',
-  'AI主题',
-  '原图替换',
-  '原图定制'
-])
+const portraitImageDescriptions = Object.freeze(['人像替换', '人像定制', 'AI主题', '原图替换', '原图定制'])
 </script>

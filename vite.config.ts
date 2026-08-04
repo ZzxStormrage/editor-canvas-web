@@ -91,6 +91,11 @@ export default ({ mode }) => {
               target: xiaoxiangProxyTarget,
               changeOrigin: true,
               rewrite: (path) => path.replace(/^\/xiaoxiang-api/, '')
+            },
+            '/customer': {
+              target: xiaoxiangProxyTarget,
+              changeOrigin: true,
+              // rewrite: (path) => path.replace(/^\/customer/, '')
             }
           }
         : {}

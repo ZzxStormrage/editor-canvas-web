@@ -47,7 +47,7 @@
       <span>请确认商品已配置 AI 主题 ID。</span>
     </div>
 
-    <div v-else class="topic-grid" aria-label="AI 主题">
+    <div v-else-if="topics.length > 1" class="topic-grid" aria-label="AI 主题">
       <button
         v-for="topic in topics"
         :key="topic.id"
@@ -206,7 +206,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['generated', 'error', 'topic-selected', 'update:generating'])
+const emit = defineEmits(['generated', 'error', 'topic-selected', 'request-close', 'update:generating'])
 const albumInputRef = ref(null)
 const cameraInputRef = ref(null)
 const topics = ref([])
@@ -271,7 +271,11 @@ async function loadTopics() {
     if (currentRequestId !== topicLoadRequestId) {
       return
     }
-    topics.value = resolveTopicRecords(response)
+    const records = resolveTopicRecords(response)
+    topics.value = records
+    if (records.length === 1) {
+      selectTopic(records[0])
+    }
   } catch (error) {
     if (currentRequestId !== topicLoadRequestId) {
       return
@@ -301,6 +305,9 @@ function selectTopic(topic) {
 /** @returns {void} 关闭图片来源选择面板。 */
 function closeSourceSheet() {
   showSourceSheet.value = false
+  if (topics.value.length === 1) {
+    emit('request-close')
+  }
 }
 
 /** @param {'album' | 'camera'} source 图片来源。 @returns {void} */
@@ -406,9 +413,9 @@ async function startGeneration(faceImageUrl) {
       subject_type: topic.subjectType || '',
       sex: requiresGender.value ? (gender.value === 'female' ? '女' : '男') : '',
       prompt,
-      person_x: toFiniteNumber(config.person_x ?? config.personX),
-      person_y: toFiniteNumber(config.person_y ?? config.personY),
-      person_size: toFiniteNumber(config.person_size ?? config.personSize),
+      person_x: toFiniteNumber(config.person_x ?? config.personX) ?? 0,
+      person_y: toFiniteNumber(config.person_y ?? config.personY) ?? 0,
+      person_size: toFiniteNumber(config.person_size ?? config.personSize) ?? 0,
       person_pose_img_file: config.person_pose_img_file || config.personPoseImgFile || ''
     })
     const taskUuid = String(result?.task_uuid ?? result?.taskUuid ?? '').trim()

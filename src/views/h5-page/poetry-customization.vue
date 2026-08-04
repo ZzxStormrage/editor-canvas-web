@@ -45,17 +45,17 @@
           :class="{ 'is-active': activeTab === 'text' }"
           @click="activeTab = 'text'"
         >
-          <v-icon icon="mdi-text-box-outline" size="16" />
-          <span>{{ props.artTextMode ? '艺术字' : '文案定制' }}</span>
+          <v-icon :icon="props.materialGroupMode ? 'mdi-image-multiple-outline' : 'mdi-text-box-outline'" size="16" />
+          <span>{{ props.materialGroupMode ? '素材组' : '文案定制' }}</span>
         </button>
       </div>
 
       <div class="sheet-content">
         <div v-if="activeTab === 'image'" class="image-customization" role="tabpanel">
           <section class="theme-section">
-            <div class="section-heading">
-              <h2>AI主题</h2>
-              <p>选择由商品页面提供的主题图片</p>
+            <div v-if="aiThemeOptions.length" class="section-heading">
+              <h2>已生成主题</h2>
+              <p>可切换本次定制中已生成的图片</p>
             </div>
 
             <div class="theme-list">
@@ -74,10 +74,9 @@
                 <span class="theme-preview">
                   <img :src="option.url" alt="" />
                 </span>
-                <!-- <span class="theme-label">{{ option.label }}</span> -->
               </button>
 
-              <button type="button" class="theme-item add-theme" @click="tryMoreThemes">
+              <button type="button" class="theme-item add-theme" @click="openAiTopicDialog">
                 <span class="theme-preview">
                   <v-icon icon="mdi-plus" size="22" />
                 </span>
@@ -140,22 +139,34 @@
           </Transition>
         </div>
 
-        <div v-else-if="props.artTextMode" class="copy-customization" role="tabpanel">
+        <div v-else-if="props.materialGroupMode" class="copy-customization" role="tabpanel">
           <div class="section-heading">
-            <h2>选择艺术字</h2>
-            <p>选择后会替换画布中标记为“艺术字”的图片</p>
+            <h2>选择素材</h2>
+            <p>选择后会替换模板中绑定对应素材组的图片</p>
           </div>
 
-          <div v-if="artTextOptions.length" class="art-text-list" aria-label="艺术字图片">
+          <div v-if="materialOptionsLoading" class="copy-empty" role="status" aria-live="polite">
+            <span class="spinner" aria-hidden="true"></span>
+            <strong>素材加载中...</strong>
+          </div>
+
+          <div v-else-if="materialOptionsError" class="copy-empty" role="alert">
+            <v-icon icon="mdi-alert-circle-outline" size="28" />
+            <strong>{{ materialOptionsError }}</strong>
+            <button type="button" class="material-retry" @click="loadMaterialOptions()">重新加载</button>
+          </div>
+
+          <div v-else-if="materialOptions.length" class="material-list" aria-label="素材图片">
             <button
-              v-for="option in artTextOptions"
+              v-for="option in materialOptions"
               :key="option.id"
               type="button"
-              class="art-text-option"
-              :class="{ 'is-selected': selectedArtTextId === option.id }"
-              :disabled="artTextReplacing || !canvasLoaded"
+              class="material-option"
+              :class="{ 'is-selected': selectedMaterialId === option.id }"
+              :disabled="materialReplacing || !canvasLoaded"
               :aria-label="`选择${option.label}`"
-              @click="selectArtText(option)"
+              :title="option.label"
+              @click="selectMaterial(option)"
             >
               <img :src="option.url" alt="" />
             </button>
@@ -163,8 +174,8 @@
 
           <div v-else class="copy-empty" role="status">
             <v-icon icon="mdi-image-off-outline" size="28" />
-            <strong>暂无艺术字图片</strong>
-            <span>请先在商品后台配置人像款艺术字图片。</span>
+            <strong>暂无可用素材</strong>
+            <span>请在模板图片图层中绑定素材组，并在素材库中添加图片。</span>
           </div>
         </div>
 
@@ -224,12 +235,44 @@
       <span class="spinner is-light" aria-hidden="true"></span>
       <span>正在保存...</span>
     </div>
+
+    <Teleport to="body">
+      <Transition name="ai-dialog">
+        <div v-if="showAiTopicDialog" class="ai-dialog-backdrop" role="presentation" @click.self="closeAiTopicDialog">
+          <section class="ai-dialog" role="dialog" aria-modal="true" aria-label="选择 AI 主题">
+            <button
+              type="button"
+              class="ai-dialog-close"
+              aria-label="关闭 AI 主题弹框"
+              :disabled="aiGenerating"
+              @click="closeAiTopicDialog"
+            >
+              <v-icon icon="mdi-close" size="20" />
+            </button>
+            <div class="ai-dialog-content">
+              <AiTopic
+                :ai-subject-ids="aiSubjectIds"
+                :disabled="imageReplacing || aiGenerating"
+                @generated="handleAiGenerated"
+                @request-close="closeAiTopicDialog"
+                @update:generating="aiGenerating = $event"
+              />
+            </div>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
   </main>
 </template>
 
 <script setup>
+import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
+
+import AiTopic from './components/ai-topic.vue'
 import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
 import { usePoetryCustomization } from './composables/usePoetryCustomization.js'
+import { readRouteValue } from './services/route-navigation.js'
 import { createH5TextInputController } from './services/text-input-rules.js'
 
 const props = defineProps({
@@ -261,17 +304,26 @@ const props = defineProps({
     type: Array,
     default: undefined
   },
-  artTextMode: {
+  materialGroupMode: {
     type: Boolean,
     default: false
   }
 })
 
+const route = useRoute()
+const aiGenerating = ref(false)
+const showAiTopicDialog = ref(!readRouteValue(route.query.imageUrl))
+const aiSubjectIds = computed(() => readRouteValue(route.query.aiSubjectIds))
+
 const {
   activeTab,
+  addGeneratedTheme,
   aiThemeOptions,
-  artTextOptions,
-  artTextReplacing,
+  loadMaterialOptions,
+  materialOptions,
+  materialOptionsError,
+  materialOptionsLoading,
+  materialReplacing,
   backgroundOptions,
   canvasFrameStyle,
   canvasLoaded,
@@ -288,10 +340,10 @@ const {
   saveStatus,
   saving,
   selectAiTheme,
-  selectArtText,
+  selectMaterial,
   selectBackground,
   selectedAiThemeId,
-  selectedArtTextId,
+  selectedMaterialId,
   selectedBackgroundId,
   setImageFit,
   showAdvancedSettings,
@@ -299,16 +351,31 @@ const {
   templateError,
   templateLoading,
   textFields,
-  tryMoreThemes,
   updateTextField
 } = usePoetryCustomization({
   pageId: props.pageId,
   defaultDesignName: props.defaultDesignName,
-  artTextMode: props.artTextMode,
+  materialGroupMode: props.materialGroupMode,
   imageTargetDescriptions: props.imageTargetDescriptions,
   replacementTextLabel: props.replacementTextLabel,
   titleTextLabel: props.titleTextLabel
 })
+
+/** @param {Object} result AI 主题生成结果。 @returns {Promise<void>} */
+async function handleAiGenerated(result) {
+  await addGeneratedTheme(result)
+  showAiTopicDialog.value = false
+}
+
+/** @returns {void} */
+function openAiTopicDialog() {
+  showAiTopicDialog.value = true
+}
+
+/** @returns {void} */
+function closeAiTopicDialog() {
+  if (!aiGenerating.value) showAiTopicDialog.value = false
+}
 
 const textInputController = createH5TextInputController()
 
@@ -522,7 +589,6 @@ function resolveTextFieldRules(fieldId) {
 
 .theme-list {
   display: flex;
-  margin-top: 8px;
   padding-bottom: 2px;
   overflow-x: auto;
   align-items: flex-start;
@@ -542,6 +608,10 @@ function resolveTextFieldRules(fieldId) {
   font: inherit;
   font-size: 9px;
   cursor: pointer;
+}
+
+.theme-item.add-theme {
+  flex: 0 0 48px;
 }
 
 .theme-item:disabled {
@@ -585,6 +655,94 @@ function resolveTextFieldRules(fieldId) {
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ai-dialog-backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: flex;
+  padding: max(12px, env(safe-area-inset-top)) 0 0;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(18, 18, 18, 0.58);
+}
+
+.ai-dialog {
+  position: relative;
+  display: flex;
+  width: min(100%, 430px);
+  max-height: min(88vh, 720px);
+  max-height: min(88dvh, 720px);
+  min-height: 280px;
+  overflow: hidden;
+  flex-direction: column;
+  border-radius: 16px 16px 0 0;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.22);
+}
+
+.ai-dialog-close {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  color: #3f3f3f;
+  background: #f0f1f2;
+  cursor: pointer;
+}
+
+.ai-dialog-close:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ai-dialog-close:active:not(:disabled) {
+  background: #e3e4e6;
+}
+
+.ai-dialog-content {
+  min-height: 0;
+  padding: 24px 20px calc(18px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.section-heading + .theme-list {
+  margin-top: 8px;
+}
+
+.ai-dialog-content :deep(.topic-heading) {
+  padding-right: 38px;
+}
+
+.ai-dialog-enter-active,
+.ai-dialog-leave-active {
+  transition: opacity 180ms ease-out;
+}
+
+.ai-dialog-enter-active .ai-dialog,
+.ai-dialog-leave-active .ai-dialog {
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ai-dialog-enter-from,
+.ai-dialog-leave-to {
+  opacity: 0;
+}
+
+.ai-dialog-enter-from .ai-dialog,
+.ai-dialog-leave-to .ai-dialog {
+  transform: translateY(100%);
 }
 
 .background-section {
@@ -698,13 +856,13 @@ function resolveTextFieldRules(fieldId) {
   gap: 10px;
 }
 
-.art-text-list {
+.material-list {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
-.art-text-option {
+.material-option {
   width: 100%;
   aspect-ratio: 1;
   padding: 3px;
@@ -715,20 +873,33 @@ function resolveTextFieldRules(fieldId) {
   cursor: pointer;
 }
 
-.art-text-option.is-selected {
+.material-option.is-selected {
   border-color: #e6002d;
 }
 
-.art-text-option:disabled {
+.material-option:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.art-text-option img {
+.material-option img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.material-retry {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid #d9002d;
+  border-radius: 8px;
+  color: #d9002d;
+  background: #ffffff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .copy-field {
@@ -875,9 +1046,11 @@ function resolveTextFieldRules(fieldId) {
 .customization-tabs button:focus-visible,
 .theme-item:focus-visible,
 .background-option:focus-visible,
-.art-text-option:focus-visible,
+.material-option:focus-visible,
+.material-retry:focus-visible,
 .advanced-toggle:focus-visible,
 .fit-options button:focus-visible,
+.ai-dialog-close:focus-visible,
 .submit-button:focus-visible {
   outline: 2px solid #d9002d;
   outline-offset: 2px;
@@ -925,13 +1098,23 @@ function resolveTextFieldRules(fieldId) {
   }
 }
 
+@media (hover: hover) {
+  .ai-dialog-close:hover:not(:disabled) {
+    background: #e7e8ea;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .customization-tabs button,
   .background-option,
   .copy-field input,
   .copy-field textarea,
   .advanced-settings-enter-active,
-  .advanced-settings-leave-active {
+  .advanced-settings-leave-active,
+  .ai-dialog-enter-active,
+  .ai-dialog-leave-active,
+  .ai-dialog-enter-active .ai-dialog,
+  .ai-dialog-leave-active .ai-dialog {
     transition: none;
   }
 

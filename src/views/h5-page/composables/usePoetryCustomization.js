@@ -1,8 +1,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import {
+  normalizeMaterialGroupIds,
+  normalizeMaterialPage
+} from '../../../composables/canvas-editor/material-group-data.js'
 import { useH5PageSave } from './useH5PageSave.js'
 import { useH5TemplateDocument } from './useH5TemplateDocument.js'
+import { customerMaterialGroupApi } from '../api/customer-material-group.js'
 import { loadAiSubjectBackgroundOptions } from '../services/ai-subject-backgrounds.js'
 import { readRouteImageOptions } from '../services/route-image-options.js'
 import { readRouteValue } from '../services/route-navigation.js'
@@ -16,9 +21,9 @@ import { clearThemeFlow, loadThemeFlow, saveThemeFlow, upsertTheme } from '../se
 import { wxAPI } from '../services/wx-api.js'
 
 const DEFAULT_IMAGE_TARGET_DESCRIPTIONS = Object.freeze(['诗词配图', 'AI主题', '原图替换', '原图定制'])
+const MATERIAL_PAGE_SIZE = 1000
 
 const AI_THEME_QUERY_KEYS = Object.freeze(['imageUrl'])
-const ART_TEXT_QUERY_KEYS = Object.freeze(['artTextImageUrls'])
 const BACKGROUND_QUERY_KEYS = Object.freeze([
   'background_img_urls',
   'backgroundImages',
@@ -56,7 +61,7 @@ const TRY_MORE_EXCLUDED_QUERY_KEYS = new Set([
  * @param {string[]} [options.imageTargetDescriptions] 可替换图片描述。
  * @param {string} [options.replacementTextLabel] 通用替换文本的表单名称。
  * @param {string} [options.titleTextLabel] 主标题文本的表单名称。
- * @param {boolean} [options.artTextMode] 是否启用人像款艺术字图片选择。
+ * @param {boolean} [options.materialGroupMode] 是否启用人像款素材组选择。
  * @returns {Object} 页面状态和操作方法。
  */
 export function usePoetryCustomization(options = {}) {
@@ -65,7 +70,7 @@ export function usePoetryCustomization(options = {}) {
   const pageId = options.pageId || 'poetry-customization'
   const defaultDesignName = options.defaultDesignName || '诗词定制'
   const imageTargetDescriptions = normalizeDescriptionList(options.imageTargetDescriptions)
-  const artTextMode = options.artTextMode === true
+  const materialGroupMode = options.materialGroupMode === true
   const textLabels = {
     replacement: options.replacementTextLabel || '诗词内容',
     title: options.titleTextLabel || '诗词标题'
@@ -80,12 +85,15 @@ export function usePoetryCustomization(options = {}) {
   const imageTargets = ref([])
   const backgroundTargets = ref([])
   const aiThemeOptions = ref([])
-  const artTextOptions = ref(artTextMode ? readRouteImageOptions(route.query, ART_TEXT_QUERY_KEYS, 'art-text') : [])
-  const artTextReplacing = ref(false)
-  const artTextTargets = ref([])
+  const materialOptions = ref([])
+  const materialOptionsLoading = ref(false)
+  const materialOptionsError = ref('')
+  const materialReplacing = ref(false)
+  const boundMaterialGroupIds = ref([])
+  const materialTargets = ref([])
   const backgroundOptions = ref([])
   const selectedAiThemeId = ref('')
-  const selectedArtTextId = ref(artTextOptions.value[0]?.id || '')
+  const selectedMaterialId = ref('')
   const selectedBackgroundId = ref('')
   const textFields = ref([])
   const operationStatus = ref({ type: 'success', text: '' })
@@ -134,7 +142,13 @@ export function usePoetryCustomization(options = {}) {
   })
 
   const canSubmit = computed(() => {
-    return canvasLoaded.value && !templateLoading.value && !imageReplacing.value && !saving.value
+    const materialReady =
+      !materialGroupMode ||
+      (!materialOptionsLoading.value &&
+        !materialReplacing.value &&
+        materialOptions.value.length > 0 &&
+        materialTargets.value.length > 0)
+    return canvasLoaded.value && !templateLoading.value && !imageReplacing.value && !saving.value && materialReady
   })
 
   /** @returns {Object | null} 当前 canvas-editor-core 实例。 */
@@ -180,22 +194,34 @@ export function usePoetryCustomization(options = {}) {
       }
     }
     syncThemeOptionsFromFlow()
-    await loadTemplateFromRoute(route.query)
+    const templateResult = await loadTemplateFromRoute(route.query)
+    if (currentRequestId !== reloadRequestId) return
+    boundMaterialGroupIds.value = materialGroupMode
+      ? resolveTemplateMaterialGroupIds(templateResult?.document)
+      : []
+    await loadMaterialOptions(currentRequestId)
   }
 
   /** @returns {void} 清理上一个模板的业务状态。 */
   function resetPageState() {
     canvasLoaded.value = false
     imageReplacing.value = false
+    materialReplacing.value = false
     imagePreviewUrl.value = ''
     activeTab.value = 'image'
     imageFit.value = 'contain'
     showAdvancedSettings.value = false
     imageTargets.value = []
     backgroundTargets.value = []
+    materialTargets.value = []
     aiThemeOptions.value = []
+    materialOptions.value = []
+    materialOptionsLoading.value = false
+    materialOptionsError.value = ''
+    boundMaterialGroupIds.value = []
     backgroundOptions.value = []
     selectedAiThemeId.value = ''
+    selectedMaterialId.value = ''
     selectedBackgroundId.value = ''
     textFields.value = []
     operationStatus.value = { type: 'success', text: '' }
@@ -242,10 +268,15 @@ export function usePoetryCustomization(options = {}) {
    * @returns {void}
    */
   function handleDocumentLoaded(payload) {
+    if (materialGroupMode) {
+      boundMaterialGroupIds.value = resolveTemplateMaterialGroupIds(documentData.value)
+    }
     imageTargets.value = resolveImageTargets(payload.editor, imageTargetDescriptions)
     backgroundTargets.value = resolveBackgroundTargets(payload.editor)
-    artTextTargets.value = artTextMode ? payload.editor.getElementsByAttribute('image.description', '艺术字') : []
-    textFields.value = artTextMode ? [] : createTextFields(payload.editor, textLabels)
+    materialTargets.value = materialGroupMode
+      ? resolveMaterialTargetGroups(payload.editor, boundMaterialGroupIds.value)
+      : []
+    textFields.value = materialGroupMode ? [] : createTextFields(payload.editor, textLabels)
     canvasLoaded.value = true
     templateError.value = ''
 
@@ -270,29 +301,67 @@ export function usePoetryCustomization(options = {}) {
 
   async function applyInitialDocumentImages(editor) {
     await applyInitialRouteImages(editor)
-    if (!artTextMode || artTextOptions.value.length === 0) return
-    if (artTextTargets.value.length === 0) {
-      operationStatus.value = { type: 'warning', text: '模板未配置“艺术字”图片标记。' }
-      return
-    }
-    await selectArtText(artTextOptions.value[0])
+    await applyInitialMaterial(editor)
   }
 
-  async function selectArtText(option) {
-    if (!option?.url || artTextReplacing.value || artTextTargets.value.length === 0) return
-    artTextReplacing.value = true
+  /** @param {Object | null} [editor] 画布实例。 @returns {Promise<void>} 应用默认素材。 */
+  async function applyInitialMaterial(editor = getEditor()) {
+    if (!materialGroupMode || !editor || materialOptions.value.length === 0 || materialReplacing.value) return
+    if (materialTargets.value.length === 0) {
+      operationStatus.value = { type: 'warning', text: '模板图片图层未绑定素材组。' }
+      return
+    }
+    await selectMaterial(materialOptions.value[0], editor)
+  }
+
+  /** @param {Object} option 素材选项。 @param {Object | null} [editor] 画布实例。 @returns {Promise<void>} */
+  async function selectMaterial(option, editor = getEditor()) {
+    const targets = resolveMaterialTargetsForGroup(materialTargets.value, option?.groupId)
+    if (!option?.url || !editor || materialReplacing.value || targets.length === 0) return
+    materialReplacing.value = true
     operationStatus.value = { type: 'success', text: '' }
     try {
       await withTimeout(
-        replaceImageTargets(getEditor(), option.url, artTextTargets.value, 'contain'),
+        replaceImageTargets(editor, option.url, targets, 'contain'),
         IMAGE_REPLACEMENT_TIMEOUT
       )
-      selectedArtTextId.value = option.id
+      selectedMaterialId.value = option.id
     } catch (error) {
-      console.error('[portrait-customization] 艺术字替换失败', error)
-      operationStatus.value = { type: 'error', text: '艺术字图片切换失败。' }
+      console.error('[portrait-customization] 素材替换失败', error)
+      operationStatus.value = { type: 'error', text: '素材切换失败，请重试。' }
     } finally {
-      artTextReplacing.value = false
+      materialReplacing.value = false
+    }
+  }
+
+  /** @param {number} [requestId] 当前页面请求 ID。 @returns {Promise<void>} 加载模板图片图层绑定的素材。 */
+  async function loadMaterialOptions(requestId = reloadRequestId) {
+    if (!materialGroupMode) return
+    const groupIds = boundMaterialGroupIds.value
+    materialOptions.value = []
+    selectedMaterialId.value = ''
+    materialOptionsError.value = ''
+    if (groupIds.length === 0) return
+
+    materialOptionsLoading.value = true
+    try {
+      const partnerId = readRouteValue(route.query.partnerId)
+      const requestOptions = partnerId ? { partnerId } : {}
+      const responses = await Promise.all(
+        groupIds.map((groupId) =>
+          customerMaterialGroupApi.materials(groupId, { page: 0, size: MATERIAL_PAGE_SIZE }, requestOptions)
+        )
+      )
+      if (requestId !== reloadRequestId) return
+      materialOptions.value = resolveMaterialOptions(responses, groupIds)
+      selectedMaterialId.value = materialOptions.value[0]?.id || ''
+      await applyInitialMaterial()
+    } catch (error) {
+      if (requestId !== reloadRequestId) return
+      console.error('[portrait-customization] 素材组加载失败', error)
+      materialOptionsError.value = '素材加载失败，请稍后重试。'
+    } finally {
+      if (requestId === reloadRequestId) materialOptionsLoading.value = false
     }
   }
 
@@ -421,6 +490,40 @@ export function usePoetryCustomization(options = {}) {
     } finally {
       imageReplacing.value = false
     }
+  }
+
+  /**
+   * 将 H5 内生成的 AI 图片加入本次主题列表并立即应用到画布。
+   *
+   * @param {Object} result AI 主题组件生成结果。
+   * @returns {Promise<void>} 图片应用完成。
+   */
+  async function addGeneratedTheme(result) {
+    const imageUrl = String(result?.imageUrl ?? '').trim()
+    if (!imageUrl) {
+      operationStatus.value = { type: 'error', text: 'AI 生成结果缺少图片地址。' }
+      return
+    }
+
+    const backgrounds = (Array.isArray(result?.backgroundImageUrls) ? result.backgroundImageUrls : []).map(
+      (url, index) => ({
+        id: 'background-' + (result?.topicId || 'generated') + '-' + (index + 1),
+        label: '背景' + (index + 1),
+        url
+      })
+    )
+    themeFlow = upsertTheme(themeFlow, {
+      id: result?.themeEntryId,
+      label: result?.themeName,
+      url: imageUrl,
+      subjectId: result?.topicId,
+      backgrounds
+    })
+    saveThemeFlow(themeFlowId.value, themeFlow)
+    syncThemeOptionsFromFlow()
+
+    const option = aiThemeOptions.value.find((item) => item.id === themeFlow.selectedThemeId)
+    if (option) await selectAiTheme(option)
   }
 
   /**
@@ -559,9 +662,13 @@ export function usePoetryCustomization(options = {}) {
 
   return {
     activeTab,
+    addGeneratedTheme,
     aiThemeOptions,
-    artTextOptions,
-    artTextReplacing,
+    loadMaterialOptions,
+    materialOptions,
+    materialOptionsError,
+    materialOptionsLoading,
+    materialReplacing,
     backgroundOptions,
     canvasFrameStyle,
     canvasLoaded,
@@ -579,10 +686,10 @@ export function usePoetryCustomization(options = {}) {
     saveStatus,
     saving,
     selectAiTheme,
-    selectArtText,
+    selectMaterial,
     selectBackground,
     selectedAiThemeId,
-    selectedArtTextId,
+    selectedMaterialId,
     selectedBackgroundId,
     setImageFit,
     showAdvancedSettings,
@@ -598,15 +705,102 @@ export function usePoetryCustomization(options = {}) {
 /**
  * @param {Object} editor 编辑器实例。
  * @param {string[]} descriptions 图片描述列表。
+ * @param {boolean} [includeRoleTargets=true] 是否包含 ai-variable 角色节点。
  * @returns {Object[]} 可替换图片节点。
  */
-function resolveImageTargets(editor, descriptions) {
+function resolveImageTargets(editor, descriptions, includeRoleTargets = true) {
   const targets = descriptions.flatMap((description) => {
     return editor.getElementsByAttribute('image.description', description)
   })
-  const roleTargets = editor.getElementsByRole('ai-variable')
+  const roleTargets = includeRoleTargets ? editor.getElementsByRole('ai-variable') : []
 
   return [...new Set([...targets, ...roleTargets])]
+}
+
+/**
+ * 合并模板图片图层绑定的多个素材组，并在各组内按素材 URL 去重。
+ *
+ * @param {Array<*>} responses 素材组分页响应。
+ * @param {Array<string | number>} groupIds 素材组 ID。
+ * @returns {Array<{ id: string, label: string, url: string, groupId: string | number }>} 素材选项。
+ */
+export function resolveMaterialOptions(responses, groupIds) {
+  const materialKeys = new Set()
+
+  return (Array.isArray(responses) ? responses : []).flatMap((response, index) => {
+    const groupId = groupIds?.[index]
+    const page = normalizeMaterialPage(response, { page: 0, size: MATERIAL_PAGE_SIZE })
+
+    return page.items.reduce((options, material) => {
+      const materialKey = `${groupId}\u0000${material.materialUrl}`
+      if (materialKeys.has(materialKey)) return options
+
+      materialKeys.add(materialKey)
+      options.push({
+        id: `material-${groupId}-${material.id}`,
+        label: material.materialName,
+        url: material.materialUrl,
+        groupId
+      })
+      return options
+    }, [])
+  })
+}
+
+/**
+ * 从统一模板文档中递归读取图片图层绑定的素材组 ID。
+ *
+ * @param {Object | null | undefined} document 统一模板文档。
+ * @returns {Array<string | number>} 去重后的素材组 ID。
+ */
+export function resolveTemplateMaterialGroupIds(document) {
+  const ids = flattenDocumentElements(document?.elements).reduce((result, element) => {
+    if (String(element?.tag ?? '').toLowerCase() !== 'image') return result
+
+    const groupId = element?.attributes?.image?.materialGroupId
+    if (groupId !== undefined && groupId !== null && groupId !== '') result.push(groupId)
+    return result
+  }, [])
+
+  return normalizeMaterialGroupIds(ids)
+}
+
+/**
+ * 按模板素材组绑定收集画布图片节点。
+ *
+ * @param {Object} editor 编辑器实例。
+ * @param {Array<string | number>} groupIds 素材组 ID。
+ * @returns {Array<{ groupId: string | number, targets: Object[] }>} 分组后的图片节点。
+ */
+export function resolveMaterialTargetGroups(editor, groupIds) {
+  if (!editor?.getElementsByAttribute) return []
+
+  return normalizeMaterialGroupIds(groupIds).reduce((groups, groupId) => {
+    const aliases = [groupId]
+    const stringId = String(groupId)
+    if (!aliases.includes(stringId)) aliases.push(stringId)
+    const numberId = Number(groupId)
+    if (Number.isSafeInteger(numberId) && numberId > 0 && !aliases.includes(numberId)) {
+      aliases.push(numberId)
+    }
+    const targets = [...new Set(aliases.flatMap((id) => {
+      return editor.getElementsByAttribute('image.materialGroupId', id)
+    }))]
+
+    if (targets.length > 0) groups.push({ groupId, targets })
+    return groups
+  }, [])
+}
+
+/**
+ * @param {Array<{ groupId: string | number, targets: Object[] }>} groups 图片节点分组。
+ * @param {string | number} groupId 素材所属分组。
+ * @returns {Object[]} 对应分组的图片节点。
+ */
+export function resolveMaterialTargetsForGroup(groups, groupId) {
+  return (Array.isArray(groups) ? groups : []).find((group) => {
+    return String(group.groupId) === String(groupId)
+  })?.targets ?? []
 }
 
 /** @param {Object} editor 编辑器实例。 @returns {Object[]} 背景图片节点。 */

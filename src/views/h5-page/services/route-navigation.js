@@ -31,9 +31,7 @@ const INTERNAL_QUERY_KEYS = new Set([
  */
 export function readH5RedirectPath(route) {
   const path = readRouteValue(route?.query?.redirectPath)
-  return typeof path === 'string' && path.trim()
-    ? appendBusinessQuery(path.trim(), route.query)
-    : null
+  return typeof path === 'string' && path.trim() ? appendBusinessQuery(path.trim(), route.query) : null
 }
 
 /**
@@ -68,7 +66,7 @@ export async function navigateToH5RedirectPath(path, router) {
 
 /** @param {*} value 路由参数值。 @returns {*} 单值。 */
 export function readRouteValue(value) {
-  return Array.isArray(value) ? value[0] ?? null : value ?? null
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null)
 }
 
 /** @param {*} value 路由模板 ID。 @returns {number | null} 正整数模板 ID。 */
