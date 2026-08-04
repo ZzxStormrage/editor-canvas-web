@@ -176,11 +176,8 @@ import ImageCropDialog from './ImageCropDialog.vue'
 import { customerPictureApi } from '../api/customer-picture.js'
 import { useH5PageSave } from '../composables/useH5PageSave.js'
 import { useH5TemplateDocument } from '../composables/useH5TemplateDocument.js'
-import {
-  createH5TextInputController,
-  normalizeTextInputRules,
-  supportsMultilineInput
-} from '../services/text-input-rules.js'
+import { createImageTextFields } from '../services/image-text-fields.js'
+import { createH5TextInputController, supportsMultilineInput } from '../services/text-input-rules.js'
 
 const props = defineProps({
   pageTitle: {
@@ -312,7 +309,13 @@ function handleDocumentLoaded(payload) {
   hasTextTarget.value = textTargets.length > 0
   imagePreviewUrl.value = String(editor.image?.getSource?.(imageTargets[0]) ?? '')
   cropAspectRatio.value = resolveCropAspectRatio(imageTargets[0])
-  textFields.value = createTextFields(payload.document, textTargets)
+  textFields.value = props.separateTextInputs
+    ? createImageTextFields(payload.document, textTargets, {
+      pageId: props.pageId,
+      separate: true,
+      textDescription: props.textDescription
+    })
+    : []
   canvasLoaded.value = true
   templateError.value = ''
 
@@ -549,62 +552,6 @@ function handleTextCompositionEnd(field, event) {
   })
 }
 
-/**
- * 根据模板中的文本替换节点创建输入项。
- *
- * @param {Object} document 已加载的统一文档。
- * @param {Object[]} targets 文本替换节点。
- * @returns {Object[]} 文本输入项。
- */
-function createTextFields(document, targets) {
-  if (!targets.length) {
-    return []
-  }
-
-  const shouldSeparate = props.separateTextInputs && targets.length > 1
-  const groups = shouldSeparate
-    ? targets.map((target, index) => ({ targets: [target], indexes: [index] }))
-    : [{ targets, indexes: targets.map((target, index) => index) }]
-
-  return groups.map((group, index) => createTextField(document, group, index, shouldSeparate))
-}
-
-/**
- * @param {Object} document 已加载的统一文档。
- * @param {{ targets: Object[], indexes: number[] }} group 文本节点分组。
- * @param {number} index 输入项序号。
- * @param {boolean} shouldSeparate 是否独立展示。
- * @returns {Object} 文本输入项。
- */
-function createTextField(document, group, index, shouldSeparate) {
-  const target = group.targets[0]
-  return {
-    key: String(target?.elementId ?? `text-${index + 1}`),
-    inputId: `${props.pageId}-text-${index + 1}`,
-    label: shouldSeparate ? `文本${index + 1}` : '',
-    value: String(target?.text ?? ''),
-    rules: resolveTextInputRules(document, target, group.indexes[0]),
-    targetIndexes: group.indexes
-  }
-}
-
-/**
- * 从统一文档中读取指定文本节点的 H5 输入规则。
- *
- * @param {Object} document 已加载的统一文档。
- * @param {Object} target 画布文本节点。
- * @param {number} targetIndex 文本替换节点序号。
- * @returns {Object} 归一化后的输入规则。
- */
-function resolveTextInputRules(document, target, targetIndex) {
-  const documentTargets = flattenElements(document?.elements).filter((element) => {
-    return element.attributes?.text?.description === props.textDescription
-  })
-  const matchedTarget = documentTargets.find((element) => element.elementId === target?.elementId)
-
-  return normalizeTextInputRules((matchedTarget ?? documentTargets[targetIndex])?.attributes?.textInput)
-}
-
 /** @param {Object} field 文本输入项。 @returns {boolean} 是否使用多行输入。 */
 function isTextInputMultiline(field) {
   return supportsMultilineInput(field.rules)
@@ -619,15 +566,6 @@ function resolveFieldTargets(editor, field) {
   const targets = getTextTargets(editor)
 
   return field.targetIndexes.map((index) => targets[index]).filter(Boolean)
-}
-
-/** @param {Object[]} elements 文档元素。 @returns {Object[]} 递归展平后的元素。 */
-function flattenElements(elements) {
-  if (!Array.isArray(elements)) {
-    return []
-  }
-
-  return elements.flatMap((element) => [element, ...flattenElements(element.children)])
 }
 
 /** @returns {Promise<void>} 生成保存数据并通知小程序。 */

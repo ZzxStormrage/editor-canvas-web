@@ -74,11 +74,15 @@ async function loadDocument(document = props.document) {
 
 /** @returns {void} 按当前容器适配画板。 */
 function fitArtboard() {
-  if (editor && props.fitOptions !== false) {
-    restoreInitialZoomOptions()
-    editor.fitArtboardToView(props.fitOptions)
-    applyZoomLimits()
+  if (!editor) {
+    return
   }
+
+  restoreInitialZoomOptions()
+  if (props.fitOptions !== false) {
+    editor.fitArtboardToView(props.fitOptions)
+  }
+  applyZoomLimits()
 }
 
 /**

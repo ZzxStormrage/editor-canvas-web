@@ -25,7 +25,7 @@ globalThis.document = {
   })
 };
 
-const [{ ImagePlugin }, { Image: LeaferImage, Resource }] = await Promise.all([
+const [{ ImagePlugin }, { Group, Image: LeaferImage, Resource }] = await Promise.all([
   import('../src/plugins/feature-plugins/image/image-plugin.js'),
   import('leafer-ui')
 ]);
@@ -35,6 +35,8 @@ test('hidden document image loads once and renders after its first activation', 
   const refreshes = [];
   const plugin = new ImagePlugin();
   const image = new LeaferImage({ visible: false, width: 100, height: 80 });
+  const parent = new Group();
+  parent.add(image);
   const originalLoadImage = Resource.loadImage;
   let resolveLoad;
   let loadCount = 0;
@@ -99,7 +101,10 @@ test('failed deferred image activation can be retried', async () => {
   const events = [];
   const plugin = new ImagePlugin();
   const image = new LeaferImage({ visible: true, width: 100, height: 80 });
+  const parent = new Group();
+  parent.add(image);
   const originalLoadImage = Resource.loadImage;
+  const originalWarn = console.warn;
   let loadCount = 0;
   Resource.loadImage = async () => {
     loadCount += 1;
@@ -108,6 +113,7 @@ test('failed deferred image activation can be retried', async () => {
     }
     return { width: 100, height: 80 };
   };
+  console.warn = () => {};
   plugin._context = {
     state: { destroyed: false },
     eventBus: { emit: (...args) => events.push(args) }
@@ -126,6 +132,43 @@ test('failed deferred image activation can be retried', async () => {
     assert.equal(await plugin.activateDeferredSource(image), true);
     assert.equal(loadCount, 2);
     assert.equal(image.__?.__input?.fill?.url, 'https://example.com/retry.png');
+  } finally {
+    Resource.loadImage = originalLoadImage;
+    console.warn = originalWarn;
+  }
+});
+
+test('detached deferred image ignores a completed resource load', async () => {
+  const events = [];
+  const plugin = new ImagePlugin();
+  const parent = new Group();
+  const image = new LeaferImage({ visible: true, width: 100, height: 80 });
+  const originalLoadImage = Resource.loadImage;
+  let resolveLoad;
+  Resource.loadImage = () => new Promise((resolve) => {
+    resolveLoad = resolve;
+  });
+  parent.add(image);
+  plugin._context = {
+    state: { destroyed: false },
+    eventBus: { emit: (...args) => events.push(args) }
+  };
+
+  try {
+    plugin.restoreDocumentState(
+      image,
+      { tag: 'Image', url: 'https://example.com/detached.png', visible: false },
+      undefined,
+      { deferResource: true }
+    );
+
+    const activation = plugin.activateDeferredSource(image);
+    image.remove();
+    resolveLoad({ width: 100, height: 80 });
+
+    assert.equal(await activation, false);
+    assert.equal(image.__?.__input?.fill, undefined);
+    assert.equal(events.length, 0);
   } finally {
     Resource.loadImage = originalLoadImage;
   }

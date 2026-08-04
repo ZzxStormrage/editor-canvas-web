@@ -1923,8 +1923,15 @@ const savedDocument = editor.exportDocument()
 | `document` | `object \| string` | 是 | 无 | `version=1` 文档对象或 JSON 字符串。 |
 | `options.interactive` | `boolean` | 否 | 保留 JSON | 统一覆盖节点的 `draggable`、`editable`、`hittable`。 |
 | `options.productionVisibility` | `'preserve' \| 'hidden'` | 否 | `'preserve'` | 保留或隐藏打印区域等生产辅助节点。 |
+| `options.deferHiddenImages` | `boolean` | 否 | `false` | 是否跳过隐藏图片预加载，并在图片首次显示时再加载资源。 |
 
-图片会在替换场景前预加载。任意图片加载失败时，原文档保持不变。
+默认会在替换场景前预加载全部图片。`deferHiddenImages: true` 时只预加载有效显示的图片；
+隐藏图片仍保留 URL、业务属性、位置和层级，但不会向 Leafer 写入渲染资源。图片通过
+`setElementsVisibilityByAttribute()`、图层显隐 API 或组合显隐首次显示时，资源加载完成后才会
+绑定并刷新画布。同一资源在加载期间不会重复请求，加载失败后再次显示可以重试。
+
+预加载阶段任意可见图片失败时，原文档保持不变。延迟图片加载失败不会清空场景，会发布
+`image:source-activation-failed` 事件。
 
 ### `editor.exportDocument()`
 
@@ -1957,8 +1964,10 @@ editor.fitArtboardToView({ viewportRatio: 0.8, expandZoomRange: true })
 
 ### 生产业务页面中加载
 
-`CanvasDocumentViewport` 只创建核心实例、调用文档 API 并负责容器尺寸适配。是否允许选择、
-拖动和缩放由调用方通过文档字段或 `loadOptions.interactive` 决定。
+`CanvasDocumentViewport` 只创建核心实例、调用文档 API 并负责容器尺寸适配。是否允许选择和
+拖动由调用方通过文档字段或 `loadOptions.interactive` 决定。生产 H5 页面默认设置
+`deferHiddenImages: true`，并把视口缩放上下限锁定在完整画板适配比例；鼠标滚轮、触控板和
+移动端双指都不会放大或缩小画布。该约束只属于 H5 公共组件，不修改 `#/editor` 的缩放能力。
 
 ```vue
 <CanvasDocumentViewport
@@ -1986,6 +1995,9 @@ function onDocumentLoaded({ editor }) {
 
 `arrangeLayersByRole()` 和 `setElementsVisibilityByAttribute()` 只改变当前运行时状态；
 `loadDocument()` 本身始终按 JSON 顺序无损还原。
+
+即使 `fit-options` 设为 `false`，H5 公共组件仍会按当前比例应用缩放锁定。业务页面不要传入
+`zoom-limits="false"`，否则会重新开放画布缩放。
 
 ### 生肖 H5 模板路由
 
@@ -2072,7 +2084,7 @@ const result = await saveH5CustomDesign(editor, {
 
 ### 图片文字定制 H5 路由
 
-原图定制和音乐款定制共用同一套生产运行时，只通过页面配置区分业务标识：
+原图定制和音乐款定制共用图片上传运行时，通过页面配置区分可用表单：
 
 ```text
 # 原图定制
@@ -2082,12 +2094,16 @@ const result = await saveH5CustomDesign(editor, {
 #/h5-page/music-customization?templateId=1001
 ```
 
-两类模板使用相同的元素标记约定：
+| 页面 | 元素 | 自定义属性路径 | 属性值 | 页面行为 |
+| --- | --- | --- | --- | --- |
+| 原图定制、音乐款 | 可替换图片 | `image.description` | `原图替换` | 图片上传成功后保持节点位置、尺寸、层级和变换属性，只替换资源。 |
+| 音乐款 | 可替换文字 | `text.description` | `文本替换` | 根据匹配节点数量生成文字输入框，并实时更新对应节点。 |
 
-| 元素 | 自定义属性路径 | 属性值 | 页面行为 |
-| --- | --- | --- | --- |
-| 可替换图片 | `image.description` | `原图替换` | 图片上传成功后保持节点位置、尺寸、层级和变换属性，只替换资源。 |
-| 可替换文字 | `text.description` | `文本替换` | 输入内容实时同步到所有匹配文本节点。 |
+音乐款只有一个 `文本替换` 节点时显示一个普通输入框；存在多个节点时，按统一文档中的元素
+顺序显示“文本1”“文本2”……，每个输入框只修改对应节点并独立使用该节点的
+`attributes.textInput` 规则。竖排节点的输入框读取统一文档原文，不展示渲染阶段插入的换行。
+
+当前原图定制页面只提供图片上传，不会因为模板配置了 `文本替换` 而生成文字输入框。
 
 页面先通过 `/customer/api/localStorage/pictures` 上传用户图片，取得永久 URL 后再调用
 `editor.replaceImage()`。保存成功后通过 `MESSAGE_TYPES.H5_PAGE_SAVED` 将 `page`、
@@ -2178,6 +2194,8 @@ unsubscribe()
 | `text:selected` | `{ text, options }` | 同步文本属性面板。 |
 | `image:added` | `{ image }` | 图片创建完成。 |
 | `image:replaced` | `{ image, fit, properties }` | 当前图片资源替换完成。 |
+| `image:source-activated` | `{ image, source }` | 隐藏图片首次显示并完成延迟资源绑定。 |
+| `image:source-activation-failed` | `{ image, source, error }` | 延迟图片加载失败，可在下次显示时重试。 |
 | `image:updated` | `{ image, properties }` | 图片属性通过 Editor API 更新。 |
 | `image:selection-changed` | `{ image, properties }` | 同步当前单选图片属性；非图片时 `properties` 为 `null`。 |
 | `production:mask-changed` | `{ image }` | 遮罩图片完成标记。 |

@@ -363,7 +363,13 @@ export class ImagePlugin {
       this._context.eventBus.emit('image:source-activated', { image: target, source: url });
       return true;
     } catch (error) {
-      if (target[IMAGE_SOURCE_URL_KEY] === url && !target.destroyed) {
+      if (
+        this._context
+        && !this._context.state?.destroyed
+        && target.parent
+        && target[IMAGE_SOURCE_URL_KEY] === url
+        && !target.destroyed
+      ) {
         target[DEFERRED_IMAGE_RESOURCE_KEY] = true;
       }
       this._context?.eventBus.emit('image:source-activation-failed', {
@@ -371,6 +377,7 @@ export class ImagePlugin {
         source: url,
         error
       });
+      console.warn('[ImagePlugin] Deferred image activation failed.', error);
       return false;
     }
   }
@@ -671,7 +678,7 @@ export class ImagePlugin {
    */
   _canCommitDeferredSource(image, url) {
     const context = this._context;
-    if (!context || context.state?.destroyed || image.destroyed) {
+    if (!context || context.state?.destroyed || image.destroyed || !image.parent) {
       return false;
     }
 
