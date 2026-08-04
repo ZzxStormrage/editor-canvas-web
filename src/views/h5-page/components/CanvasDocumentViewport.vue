@@ -30,7 +30,7 @@ const props = defineProps({
   },
   zoomLimits: {
     type: [Object, Boolean],
-    default: false
+    default: () => ({ minRatio: 1, maxRatio: 1 })
   }
 })
 
@@ -39,6 +39,7 @@ const hostRef = ref(null)
 let editor = null
 let resizeObserver = null
 let initialZoomOptions = null
+const H5_DOCUMENT_LOAD_DEFAULTS = Object.freeze({ deferHiddenImages: true })
 
 /** @returns {import('../../../canvas-editor-core/src/core/Editor.js').Editor | null} 编辑器实例。 */
 function getEditor() {
@@ -57,7 +58,10 @@ async function loadDocument(document = props.document) {
   }
 
   try {
-    const loadedDocument = await editor.loadDocument(document, props.loadOptions)
+    const loadedDocument = await editor.loadDocument(document, {
+      ...H5_DOCUMENT_LOAD_DEFAULTS,
+      ...props.loadOptions
+    })
     await nextTick()
     fitArtboard()
     emit('loaded', { editor, document: loadedDocument })

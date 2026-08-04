@@ -1,4 +1,4 @@
-import { Platform } from 'leafer-ui';
+import { Resource } from 'leafer-ui';
 
 import { EditorError } from '../../../errors/editor-error.js';
 import { getElementDataContainer, normalizeElementAttributes } from '../../../utils/element-data.js';
@@ -58,7 +58,11 @@ export class DocumentPlugin {
    * 默认保留文档内的交互、锁定和生产标记状态，调用方可以按展示需求覆盖。
    *
    * @param {string | Object} value JSON 字符串或文档对象。
-   * @param {{ interactive?: boolean, productionVisibility?: 'preserve' | 'hidden' }} [options={}] 加载选项。
+   * @param {{
+   *   interactive?: boolean,
+   *   productionVisibility?: 'preserve' | 'hidden',
+   *   deferHiddenImages?: boolean
+   * }} [options={}] 加载选项。
    * @returns {Promise<Object>} 已加载的规范化文档副本。
    * @throws {EditorError} 文档或图片资源无效时抛出。
    */
@@ -67,7 +71,7 @@ export class DocumentPlugin {
     const normalizedOptions = this._normalizeLoadOptions(options);
     const document = parseEditorDocument(value);
     const [imageResources] = await Promise.all([
-      this._preloadImages(document.elements),
+      this._preloadImages(document.elements, normalizedOptions),
       this._preloadFonts(document.elements)
     ]);
 
@@ -143,8 +147,13 @@ export class DocumentPlugin {
     contentLayer.add(leaferNodes);
 
     // 3. 恢复 Leafer JSON 不负责的稳定 ID、业务属性和插件运行时标记。
-    visitDocumentNodePairs(document.elements, contentLayer.children ?? [], (source, target) => {
-      this._restoreNodeState(source, target, imageResources.get(source.url));
+    visitDocumentNodePairs(document.elements, contentLayer.children ?? [], (source, target, nodeContext) => {
+      this._restoreNodeState(
+        source,
+        target,
+        imageResources.get(source.url),
+        { deferResource: options.deferHiddenImages && !nodeContext.visible }
+      );
     });
 
     artboard?.syncAllElements?.();
@@ -158,16 +167,17 @@ export class DocumentPlugin {
    * @param {Object} source 文档节点。
    * @param {Object} target Leafer 节点。
    * @param {Object | undefined} imageResource 图片资源。
+   * @param {{ deferResource?: boolean }} [options={}] 图片恢复选项。
    * @returns {void}
    */
-  _restoreNodeState(source, target, imageResource) {
+  _restoreNodeState(source, target, imageResource, options = {}) {
     const container = getElementDataContainer(target, true);
     container.elementId = this._normalizeElementId(source.elementId, container.elementId);
     container.attributes = normalizeElementAttributes(source.attributes ?? {});
     target[DOCUMENT_NODE_SOURCE_KEY] = getDocumentNodeSource(source);
 
     const pluginManager = this._context.pluginManager;
-    pluginManager?.get('image')?.restoreDocumentState?.(target, source, imageResource);
+    pluginManager?.get('image')?.restoreDocumentState?.(target, source, imageResource, options);
     pluginManager?.get('text')?.restoreDocumentState?.(target, source);
     pluginManager?.get('production')?.restoreDocumentState?.(target, source);
   }
@@ -232,10 +242,13 @@ export class DocumentPlugin {
    *
    * @private
    * @param {Object[]} elements 文档节点。
+   * @param {{ deferHiddenImages?: boolean }} options 加载选项。
    * @returns {Promise<Map<string, Object>>} URL 到图片资源的映射。
    */
-  async _preloadImages(elements) {
-    const urls = collectDocumentImageUrls(elements);
+  async _preloadImages(elements, options) {
+    const urls = collectDocumentImageUrls(elements, {
+      visibleOnly: options.deferHiddenImages === true
+    });
 
     try {
       const svgUrls = urls.filter((url) => isSvgImageSource(url));
@@ -260,7 +273,7 @@ export class DocumentPlugin {
    */
   async _loadImagesDirectly(urls) {
     const entries = await Promise.all(urls.map(async (url) => {
-      return [url, await Platform.origin.loadImage(url)];
+      return [url, await Resource.loadImage(url)];
     }));
     return new Map(entries);
   }
@@ -296,7 +309,8 @@ export class DocumentPlugin {
 
     return {
       interactive: typeof options.interactive === 'boolean' ? options.interactive : undefined,
-      productionVisibility
+      productionVisibility,
+      deferHiddenImages: options.deferHiddenImages === true
     };
   }
 

@@ -4,7 +4,7 @@
       <div v-if="documentData && !templateLoading" class="canvas-frame" :style="canvasFrameStyle">
         <CanvasDocumentViewport
           ref="canvasViewportRef"
-          :document="documentData"
+          :document="canvasDocumentData"
           :fit-options="h5CanvasFitOptions"
           :load-options="h5CanvasLoadOptions"
           :zoom-limits="h5CanvasZoomLimits"
@@ -102,6 +102,7 @@ import {
   createH5TextInputController,
   normalizeTextInputRules
 } from './services/text-input-rules.js'
+import { createDocumentWithAttributeVisibility } from './services/document-visibility.js'
 
 const type = ref(1)
 const canvasViewportRef = ref(null)
@@ -162,6 +163,13 @@ const { saving, saveStatus, resetSaveStatus, savePage } = useH5PageSave({
 
 const selectedAnimal = computed(() => {
   return animalList.find((item) => item.type === type.value) ?? animalList[0]
+})
+const canvasDocumentData = computed(() => {
+  return createDocumentWithAttributeVisibility(
+    documentData.value,
+    'image.description',
+    animalList[0].name
+  )
 })
 
 const canvasFrameStyle = computed(() => {

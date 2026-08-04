@@ -69,6 +69,7 @@ export class SvgRasterCachePlugin {
     ];
     this.#unsubscribeEvents = [
       context.eventBus.on('image:replaced', ({ image }) => this.#handleImageChanged(image, true)),
+      context.eventBus.on('image:source-activated', ({ image }) => this.#handleImageChanged(image, true)),
       context.eventBus.on('image:selection-changed', ({ image }) => this.#scheduleNode(image)),
       context.eventBus.on('selection:duplicated', ({ pairs }) => {
         (pairs ?? []).forEach(({ clone }) => this.#handleImageChanged(clone, false));

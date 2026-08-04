@@ -54,11 +54,15 @@ export function parseEditorDocument(value) {
  *
  * @param {Object[]} elements 文档节点。
  * @param {{ x: number, y: number }} artboardOrigin 画板在内容层中的原点。
- * @param {{ interactive?: boolean, productionVisibility?: 'preserve' | 'hidden' }} [options={}] 加载选项。
+ * @param {{
+ *   interactive?: boolean,
+ *   productionVisibility?: 'preserve' | 'hidden',
+ *   deferHiddenImages?: boolean
+ * }} [options={}] 加载选项。
  * @returns {Object[]} Leafer 节点数据。
  */
 export function createLeaferDocumentNodes(elements, artboardOrigin, options = {}) {
-  return elements.map((element) => createLeaferDocumentNode(element, artboardOrigin, options, true));
+  return elements.map((element) => createLeaferDocumentNode(element, artboardOrigin, options, true, true));
 }
 
 /**
@@ -66,10 +70,11 @@ export function createLeaferDocumentNodes(elements, artboardOrigin, options = {}
  *
  * @param {Object[]} documentNodes 文档节点。
  * @param {Object[]} runtimeNodes Leafer 节点。
- * @param {(documentNode: Object, runtimeNode: Object) => void} visitor 节点访问器。
+ * @param {(documentNode: Object, runtimeNode: Object, context: { visible: boolean }) => void} visitor 节点访问器。
+ * @param {boolean} [parentVisible=true] 父节点是否有效显示。
  * @returns {void}
  */
-export function visitDocumentNodePairs(documentNodes, runtimeNodes, visitor) {
+export function visitDocumentNodePairs(documentNodes, runtimeNodes, visitor, parentVisible = true) {
   documentNodes.forEach((documentNode, index) => {
     const runtimeNode = runtimeNodes[index];
 
@@ -77,8 +82,9 @@ export function visitDocumentNodePairs(documentNodes, runtimeNodes, visitor) {
       throw new EditorError(`Document node could not be created: ${documentNode.tag}`, 'DOCUMENT_NODE_CREATE_FAILED');
     }
 
-    visitor(documentNode, runtimeNode);
-    visitDocumentNodePairs(documentNode.children ?? [], runtimeNode.children ?? [], visitor);
+    const visible = parentVisible && documentNode.visible !== false;
+    visitor(documentNode, runtimeNode, { visible });
+    visitDocumentNodePairs(documentNode.children ?? [], runtimeNode.children ?? [], visitor, visible);
   });
 }
 
@@ -86,13 +92,18 @@ export function visitDocumentNodePairs(documentNodes, runtimeNodes, visitor) {
  * 递归读取文档中的图片 URL。
  *
  * @param {Object[]} elements 文档节点。
+ * @param {{ visibleOnly?: boolean }} [options={}] 收集选项。
  * @returns {string[]} 去重后的图片 URL。
  */
-export function collectDocumentImageUrls(elements) {
+export function collectDocumentImageUrls(elements, options = {}) {
   const urls = new Set();
 
-  visitDocumentNodes(elements, (element) => {
-    if (String(element.tag ?? '').toLowerCase().includes('image') && typeof element.url === 'string') {
+  visitDocumentNodes(elements, (element, context) => {
+    if (
+      isImageDocumentNode(element)
+      && typeof element.url === 'string'
+      && (!options.visibleOnly || context.visible)
+    ) {
       urls.add(element.url);
     }
   });
@@ -130,10 +141,12 @@ export function getDocumentNodeSource(element) {
  * @param {{ x: number, y: number }} artboardOrigin 画板原点。
  * @param {Object} options 加载选项。
  * @param {boolean} isRoot 是否为顶层节点。
+ * @param {boolean} parentVisible 父节点是否有效显示。
  * @returns {Object} Leafer JSON。
  */
-function createLeaferDocumentNode(element, artboardOrigin, options, isRoot) {
+function createLeaferDocumentNode(element, artboardOrigin, options, isRoot, parentVisible) {
   const node = {};
+  const visible = parentVisible && element.visible !== false;
 
   Object.entries(element).forEach(([key, value]) => {
     if (key !== 'children' && !DOCUMENT_METADATA_KEYS.has(key)) {
@@ -156,8 +169,15 @@ function createLeaferDocumentNode(element, artboardOrigin, options, isRoot) {
     node.visible = false;
   }
 
+  if (options.deferHiddenImages && !visible && isImageDocumentNode(element)) {
+    delete node.url;
+    delete node.fill;
+  }
+
   if (element.children?.length) {
-    node.children = element.children.map((child) => createLeaferDocumentNode(child, artboardOrigin, options, false));
+    node.children = element.children.map((child) => {
+      return createLeaferDocumentNode(child, artboardOrigin, options, false, visible);
+    });
   }
 
   return node;
@@ -168,14 +188,21 @@ function createLeaferDocumentNode(element, artboardOrigin, options, isRoot) {
  *
  * @private
  * @param {Object[]} elements 文档节点。
- * @param {(element: Object) => void} visitor 访问器。
+ * @param {(element: Object, context: { visible: boolean }) => void} visitor 访问器。
+ * @param {boolean} [parentVisible=true] 父节点是否有效显示。
  * @returns {void}
  */
-function visitDocumentNodes(elements, visitor) {
+function visitDocumentNodes(elements, visitor, parentVisible = true) {
   elements.forEach((element) => {
-    visitor(element);
-    visitDocumentNodes(element.children ?? [], visitor);
+    const visible = parentVisible && element.visible !== false;
+    visitor(element, { visible });
+    visitDocumentNodes(element.children ?? [], visitor, visible);
   });
+}
+
+/** @private @param {Object} element 文档节点。 @returns {boolean} 是否为图片节点。 */
+function isImageDocumentNode(element) {
+  return String(element?.tag ?? '').toLowerCase().includes('image');
 }
 
 /** @private @param {Object} element 文档节点。 @returns {void} */

@@ -66,6 +66,45 @@
           </div>
         </div>
       </div>
+
+      <div v-if="separateTextInputs && textFields.length" class="field-group">
+        <div class="field-heading">
+          <span class="field-marker" aria-hidden="true"></span>
+          <h2>输入文字</h2>
+        </div>
+
+        <div class="text-input-list">
+          <label v-for="field in textFields" :key="field.key" class="text-input-field" :for="field.inputId">
+            <span v-if="field.label">{{ field.label }}</span>
+            <textarea
+              v-if="isTextInputMultiline(field)"
+              :id="field.inputId"
+              class="text-input"
+              :value="field.value"
+              rows="3"
+              :aria-label="field.label || '输入文字'"
+              :placeholder="field.label ? `请输入${field.label}` : '自定义输入'"
+              :disabled="!canvasLoaded"
+              @compositionstart="handleTextCompositionStart"
+              @compositionend="handleTextCompositionEnd(field, $event)"
+              @input="handleTextInput(field, $event)"
+            ></textarea>
+            <input
+              v-else
+              :id="field.inputId"
+              class="text-input"
+              type="text"
+              :value="field.value"
+              :aria-label="field.label || '输入文字'"
+              :placeholder="field.label ? `请输入${field.label}` : '自定义输入'"
+              :disabled="!canvasLoaded"
+              @compositionstart="handleTextCompositionStart"
+              @compositionend="handleTextCompositionEnd(field, $event)"
+              @input="handleTextInput(field, $event)"
+            />
+          </label>
+        </div>
+      </div>
     </section>
 
     <footer class="submit-footer">

@@ -318,6 +318,10 @@ export class LayerPlugin {
     node.forceUpdate?.()
     innerEditor?.update?.()
     this._context?.artboard?.syncAllElements?.()
+    this._context?.eventBus.emit('element:visibility-changed', {
+      elements: [node],
+      visible: node.visible !== false
+    })
     this._emitChanged()
   }
 

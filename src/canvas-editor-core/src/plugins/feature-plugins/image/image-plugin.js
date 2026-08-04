@@ -23,6 +23,8 @@ import {
 const ORIGINAL_WIDTH_KEY = '__canvasEditorOriginalWidth';
 const ORIGINAL_HEIGHT_KEY = '__canvasEditorOriginalHeight';
 const IMAGE_FIT_KEY = '__canvasEditorImageFit';
+const IMAGE_ALIGN_KEY = '__canvasEditorImageAlign';
+const DEFERRED_IMAGE_RESOURCE_KEY = '__canvasEditorDeferredImageResource';
 
 /**
  * 图片插件 —— 全部基于 leafer-ui 原生 API。
@@ -38,6 +40,8 @@ export class ImagePlugin {
     this._ownedObjectUrls = new Set();
     /** @private @type {Function | null} */
     this._unsubscribeDuplicated = null;
+    /** @private @type {Function | null} */
+    this._unsubscribeVisibilityChanged = null;
   }
 
   /**
@@ -82,6 +86,10 @@ export class ImagePlugin {
     this._unsubscribeDuplicated = context.eventBus.on(
       'selection:duplicated',
       this._copyDuplicatedRuntimeState.bind(this)
+    );
+    this._unsubscribeVisibilityChanged = context.eventBus.on(
+      'element:visibility-changed',
+      this._handleVisibilityChanged.bind(this)
     );
   }
 
@@ -287,28 +295,84 @@ export class ImagePlugin {
    * @param {Object} target Leafer 图片节点。
    * @param {Object} source 文档图片数据。
    * @param {{ width?: number, height?: number }} [resource] 已预加载图片资源。
+   * @param {{ deferResource?: boolean }} [options={}] 图片资源恢复选项。
    * @returns {Object} 原图片节点。
    */
-  restoreDocumentState(target, source, resource) {
+  restoreDocumentState(target, source, resource, options = {}) {
     if (!(target instanceof LeaferImage)) {
       return target;
     }
 
     const fit = normalizeImageReplacementFit(source.objectFit === 'fill' ? 'stretch' : source.objectFit ?? 'stretch');
     const url = source.url ?? this.getSource(target);
+    const align = this._resolveDocumentImageAlign(source.objectPosition);
 
-    this._setImageResourceAndFit(
-      target,
-      url,
-      fit,
-      this._resolveDocumentImageAlign(source.objectPosition)
-    );
+    if (options.deferResource && url) {
+      this._clearImageResource(target);
+    } else {
+      this._setImageResourceAndFit(target, url, fit, align);
+    }
     target[ORIGINAL_WIDTH_KEY] = Number(source.sourceWidth ?? resource?.width ?? target.width ?? 0);
     target[ORIGINAL_HEIGHT_KEY] = Number(source.sourceHeight ?? resource?.height ?? target.height ?? 0);
     target[IMAGE_FIT_KEY] = fit;
+    target[IMAGE_ALIGN_KEY] = align;
     target[IMAGE_SOURCE_URL_KEY] = url;
     target[IMAGE_SOURCE_FORMAT_KEY] = isSvgImageSource(url) ? 'svg' : 'image';
+    target[DEFERRED_IMAGE_RESOURCE_KEY] = Boolean(options.deferResource && url);
     return target;
+  }
+
+  /**
+   * 激活延迟图片资源，首次显示节点时先完成加载，再写入 Leafer 渲染属性。
+   *
+   * @param {Object} target 图片节点。
+   * @returns {Promise<boolean>} 是否成功激活了延迟资源。
+   */
+  async activateDeferredSource(target) {
+    if (!(target instanceof LeaferImage) || !target[DEFERRED_IMAGE_RESOURCE_KEY]) {
+      return false;
+    }
+
+    const url = target[IMAGE_SOURCE_URL_KEY];
+    if (!url) {
+      return false;
+    }
+
+    // 1. 加载期间先占用激活状态，避免显隐事件重复创建相同请求。
+    target[DEFERRED_IMAGE_RESOURCE_KEY] = false;
+
+    try {
+      await Resource.loadImage(url);
+
+      // 2. 异步完成后确认节点仍属于当前资源和可显示状态。
+      if (!this._canCommitDeferredSource(target, url)) {
+        return false;
+      }
+
+      // 3. 资源进入 Leafer 缓存后再绑定 fill，并同步场景和编辑器视图。
+      this._setImageResourceAndFit(
+        target,
+        url,
+        target[IMAGE_FIT_KEY] ?? 'stretch',
+        target[IMAGE_ALIGN_KEY] ?? 'center'
+      );
+      target.forceUpdate?.();
+      target.updateLayout?.();
+      this._context.artboard?.syncAllElements?.();
+      this._context.innerEditor?.update?.();
+      this._context.eventBus.emit('image:source-activated', { image: target, source: url });
+      return true;
+    } catch (error) {
+      if (target[IMAGE_SOURCE_URL_KEY] === url && !target.destroyed) {
+        target[DEFERRED_IMAGE_RESOURCE_KEY] = true;
+      }
+      this._context?.eventBus.emit('image:source-activation-failed', {
+        image: target,
+        source: url,
+        error
+      });
+      return false;
+    }
   }
 
   /**
@@ -412,6 +476,8 @@ export class ImagePlugin {
     this._context?.innerEditor?.off_(EditorRotateEvent.ROTATE, this._emitSelectionChanged, this);
     this._unsubscribeDuplicated?.();
     this._unsubscribeDuplicated = null;
+    this._unsubscribeVisibilityChanged?.();
+    this._unsubscribeVisibilityChanged = null;
     this._ownedObjectUrls.forEach((url) => URL.revokeObjectURL(url));
     this._ownedObjectUrls.clear();
     this._context = null;
@@ -556,6 +622,7 @@ export class ImagePlugin {
     image[ORIGINAL_WIDTH_KEY] = imageSize.width;
     image[ORIGINAL_HEIGHT_KEY] = imageSize.height;
     image[IMAGE_FIT_KEY] = fit;
+    image[DEFERRED_IMAGE_RESOURCE_KEY] = false;
     image[IMAGE_SOURCE_FORMAT_KEY] = format;
     image.forceUpdate?.();
     image.updateLayout?.();
@@ -586,6 +653,38 @@ export class ImagePlugin {
       }
     });
     image[IMAGE_SOURCE_URL_KEY] = url;
+    image[IMAGE_ALIGN_KEY] = align;
+  }
+
+  /** @private @param {LeaferImage} image 图片节点。 @returns {void} */
+  _clearImageResource(image) {
+    image.set?.({ url: undefined, fill: undefined });
+  }
+
+  /**
+   * 判断异步加载完成后是否仍可把延迟资源绑定到节点。
+   *
+   * @private
+   * @param {LeaferImage} image 图片节点。
+   * @param {string} url 本次加载的图片 URL。
+   * @returns {boolean} 是否允许提交资源。
+   */
+  _canCommitDeferredSource(image, url) {
+    const context = this._context;
+    if (!context || context.state?.destroyed || image.destroyed) {
+      return false;
+    }
+
+    if (image[IMAGE_SOURCE_URL_KEY] !== url) {
+      return false;
+    }
+
+    if (image.visible === false) {
+      image[DEFERRED_IMAGE_RESOURCE_KEY] = true;
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -951,6 +1050,39 @@ export class ImagePlugin {
   }
 
   /**
+   * 显示元素时激活其中尚未加载的图片资源。
+   *
+   * @private
+   * @param {{ elements?: Object[], visible?: boolean }} payload 显隐事件。
+   * @returns {void}
+   */
+  _handleVisibilityChanged(payload) {
+    if (payload?.visible !== true) {
+      return;
+    }
+
+    this._activateDeferredSources(payload.elements ?? []);
+  }
+
+  /**
+   * 递归激活当前有效显示节点中的延迟图片。
+   *
+   * @private
+   * @param {Object[]} elements 起始节点。
+   * @returns {void}
+   */
+  _activateDeferredSources(elements) {
+    elements.forEach((element) => {
+      if (element?.visible === false) {
+        return;
+      }
+
+      void this.activateDeferredSource(element);
+      this._activateDeferredSources(element.children ?? []);
+    });
+  }
+
+  /**
    * 复制图片节点时同步不可序列化的原图尺寸、适配方式和源地址。
    *
    * @private
@@ -967,7 +1099,9 @@ export class ImagePlugin {
       clone[ORIGINAL_WIDTH_KEY] = source[ORIGINAL_WIDTH_KEY];
       clone[ORIGINAL_HEIGHT_KEY] = source[ORIGINAL_HEIGHT_KEY];
       clone[IMAGE_FIT_KEY] = source[IMAGE_FIT_KEY];
+      clone[IMAGE_ALIGN_KEY] = source[IMAGE_ALIGN_KEY];
       clone[IMAGE_SOURCE_URL_KEY] = sourceUrl;
+      clone[DEFERRED_IMAGE_RESOURCE_KEY] = source[DEFERRED_IMAGE_RESOURCE_KEY] === true;
       clone[IMAGE_SOURCE_FORMAT_KEY] = source[IMAGE_SOURCE_FORMAT_KEY]
         ?? (isSvgImageSource(sourceUrl) ? 'svg' : 'image');
     });

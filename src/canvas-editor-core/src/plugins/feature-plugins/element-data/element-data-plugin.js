@@ -172,6 +172,10 @@ export class ElementDataPlugin {
     })
 
     this._context?.artboard?.syncAllElements?.()
+    this._context?.eventBus.emit('element:visibility-changed', {
+      elements: matched,
+      visible: true
+    })
     this._context?.eventBus.emit('element-data:visibility-changed', { path, value, matched })
     return matched
   }
