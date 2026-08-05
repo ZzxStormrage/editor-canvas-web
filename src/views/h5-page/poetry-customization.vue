@@ -238,7 +238,7 @@
 
     <Teleport to="body">
       <Transition name="ai-dialog">
-        <div v-if="showAiTopicDialog" class="ai-dialog-backdrop" role="presentation" @click.self="closeAiTopicDialog">
+        <div v-show="showAiTopicDialog" class="ai-dialog-backdrop" role="presentation" @click.self="closeAiTopicDialog">
           <section class="ai-dialog" role="dialog" aria-modal="true" aria-label="选择 AI 主题">
             <button
               type="button"
@@ -251,11 +251,15 @@
             </button>
             <div class="ai-dialog-content">
               <AiTopic
+                ref="aiTopicRef"
                 :ai-subject-ids="aiSubjectIds"
+                :auto-open-single-topic="shouldOpenInitialAiTopicDialog"
                 :disabled="imageReplacing || aiGenerating"
+                @error="handleAiTopicError"
                 @generated="handleAiGenerated"
                 @request-close="closeAiTopicDialog"
-                @update:generating="aiGenerating = $event"
+                @topics-loaded="handleAiTopicsLoaded"
+                @update:generating="handleAiGeneratingChange"
               />
             </div>
           </section>
@@ -311,8 +315,10 @@ const props = defineProps({
 })
 
 const route = useRoute()
+const aiTopicRef = ref(null)
 const aiGenerating = ref(false)
-const showAiTopicDialog = ref(!readRouteValue(route.query.imageUrl))
+const shouldOpenInitialAiTopicDialog = !readRouteValue(route.query.imageUrl)
+const showAiTopicDialog = ref(false)
 const aiSubjectIds = computed(() => readRouteValue(route.query.aiSubjectIds))
 
 const {
@@ -369,7 +375,32 @@ async function handleAiGenerated(result) {
 
 /** @returns {void} */
 function openAiTopicDialog() {
+  if (aiTopicRef.value?.openSingleTopicSource?.()) {
+    return
+  }
   showAiTopicDialog.value = true
+}
+
+/** @param {Object[]} topics 已加载的 AI 主题。 @returns {void} */
+function handleAiTopicsLoaded(topics) {
+  if (shouldOpenInitialAiTopicDialog && topics.length !== 1) {
+    showAiTopicDialog.value = true
+  }
+}
+
+/** @param {{ stage?: string }} payload AI 主题错误信息。 @returns {void} */
+function handleAiTopicError(payload) {
+  if (payload?.stage !== 'topics' || shouldOpenInitialAiTopicDialog) {
+    showAiTopicDialog.value = true
+  }
+}
+
+/** @param {boolean} value AI 生成状态。 @returns {void} */
+function handleAiGeneratingChange(value) {
+  aiGenerating.value = value
+  if (value) {
+    showAiTopicDialog.value = true
+  }
 }
 
 /** @returns {void} */

@@ -95,74 +95,76 @@
       @change="handleImageChange"
     />
 
-    <Transition name="picker-sheet">
-      <div v-if="showSourceSheet" class="source-backdrop" @click.self="closeSourceSheet">
-        <section class="source-sheet" role="dialog" aria-modal="true" aria-labelledby="ai-source-title">
-          <button type="button" class="sheet-close" aria-label="关闭上传图片面板" @click="closeSourceSheet">
-            <v-icon icon="mdi-close" size="18" />
-          </button>
-          <h3 id="ai-source-title">上传人像开始定制</h3>
-          <p class="source-hint">请选择正面、清晰、光线均匀的人像照片。</p>
+    <Teleport to="body">
+      <Transition name="picker-sheet">
+        <div v-if="showSourceSheet" class="source-backdrop" @click.self="closeSourceSheet">
+          <section class="source-sheet" role="dialog" aria-modal="true" aria-labelledby="ai-source-title">
+            <button type="button" class="sheet-close" aria-label="关闭上传图片面板" @click="closeSourceSheet">
+              <v-icon icon="mdi-close" size="18" />
+            </button>
+            <h3 id="ai-source-title">上传人像开始定制</h3>
+            <p class="source-hint">请选择正面、清晰、光线均匀的人像照片。</p>
 
-          <div v-if="requiresGender" class="gender-field">
-            <span>选择人像类型</span>
-            <div role="radiogroup" aria-label="人像类型">
-              <button
-                type="button"
-                role="radio"
-                :aria-checked="gender === 'female'"
-                :class="{ 'is-active': gender === 'female' }"
-                @click="gender = 'female'"
-              >
-                女士
+            <div v-if="requiresGender" class="gender-field">
+              <span>选择人像类型</span>
+              <div role="radiogroup" aria-label="人像类型">
+                <button
+                  type="button"
+                  role="radio"
+                  :aria-checked="gender === 'female'"
+                  :class="{ 'is-active': gender === 'female' }"
+                  @click="gender = 'female'"
+                >
+                  女士
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  :aria-checked="gender === 'male'"
+                  :class="{ 'is-active': gender === 'male' }"
+                  @click="gender = 'male'"
+                >
+                  男士
+                </button>
+              </div>
+            </div>
+
+            <div class="source-options">
+              <button type="button" @click="openImagePicker('camera')">
+                <span class="source-icon" aria-hidden="true">
+                  <v-icon icon="mdi-camera-outline" size="30" />
+                </span>
+                <strong>相机拍摄</strong>
               </button>
-              <button
-                type="button"
-                role="radio"
-                :aria-checked="gender === 'male'"
-                :class="{ 'is-active': gender === 'male' }"
-                @click="gender = 'male'"
-              >
-                男士
+              <button type="button" @click="openImagePicker('album')">
+                <span class="source-icon" aria-hidden="true">
+                  <v-icon icon="mdi-image-outline" size="30" />
+                </span>
+                <strong>相册选取</strong>
               </button>
             </div>
-          </div>
 
-          <div class="source-options">
-            <button type="button" @click="openImagePicker('camera')">
-              <span class="source-icon" aria-hidden="true">
-                <v-icon icon="mdi-camera-outline" size="30" />
-              </span>
-              <strong>相机拍摄</strong>
-            </button>
-            <button type="button" @click="openImagePicker('album')">
-              <span class="source-icon" aria-hidden="true">
-                <v-icon icon="mdi-image-outline" size="30" />
-              </span>
-              <strong>相册选取</strong>
-            </button>
-          </div>
+            <label class="agreement-field">
+              <input v-model="agreementAccepted" type="checkbox" />
+              <span>我已阅读并同意 AI 定制协议</span>
+            </label>
+          </section>
+        </div>
+      </Transition>
 
-          <label class="agreement-field">
-            <input v-model="agreementAccepted" type="checkbox" />
-            <span>我已阅读并同意 AI 定制协议</span>
-          </label>
-        </section>
-      </div>
-    </Transition>
-
-    <Transition name="crop-dialog">
-      <ImageCropDialog
-        v-if="showCropDialog"
-        :key="cropSourceUrl"
-        :source-url="cropSourceUrl"
-        :aspect-ratio="cropAspectRatio"
-        :output-type="cropOutputType"
-        :busy="uploading"
-        @cancel="closeCropDialog"
-        @confirm="handleCropConfirm"
-      />
-    </Transition>
+      <Transition name="crop-dialog">
+        <ImageCropDialog
+          v-if="showCropDialog"
+          :key="cropSourceUrl"
+          :source-url="cropSourceUrl"
+          :aspect-ratio="cropAspectRatio"
+          :output-type="cropOutputType"
+          :busy="uploading"
+          @cancel="closeCropDialog"
+          @confirm="handleCropConfirm"
+        />
+      </Transition>
+    </Teleport>
   </section>
 </template>
 
@@ -179,6 +181,10 @@ const props = defineProps({
   aiSubjectIds: {
     type: [String, Number, Array],
     default: ''
+  },
+  autoOpenSingleTopic: {
+    type: Boolean,
+    default: true
   },
   title: {
     type: String,
@@ -206,7 +212,14 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['generated', 'error', 'topic-selected', 'request-close', 'update:generating'])
+const emit = defineEmits([
+  'generated',
+  'error',
+  'topic-selected',
+  'request-close',
+  'topics-loaded',
+  'update:generating'
+])
 const albumInputRef = ref(null)
 const cameraInputRef = ref(null)
 const topics = ref([])
@@ -262,6 +275,7 @@ async function loadTopics() {
 
   if (!ids) {
     loading.value = false
+    emit('topics-loaded', [])
     return
   }
 
@@ -273,8 +287,12 @@ async function loadTopics() {
     }
     const records = resolveTopicRecords(response)
     topics.value = records
+    emit('topics-loaded', records)
     if (records.length === 1) {
-      selectTopic(records[0])
+      selectedTopic.value = records[0]
+      if (props.autoOpenSingleTopic) {
+        selectTopic(records[0])
+      }
     }
   } catch (error) {
     if (currentRequestId !== topicLoadRequestId) {
@@ -300,6 +318,18 @@ function selectTopic(topic) {
   operationStatus.value = { type: 'success', text: '' }
   showSourceSheet.value = true
   emit('topic-selected', topic)
+}
+
+/** @returns {boolean} 是否已直接打开唯一主题的图片来源面板。 */
+function openSingleTopicSource() {
+  if (topics.value.length !== 1 || props.disabled || generating.value) {
+    return false
+  }
+
+  selectedTopic.value = topics.value[0]
+  operationStatus.value = { type: 'success', text: '' }
+  showSourceSheet.value = true
+  return true
 }
 
 /** @returns {void} 关闭图片来源选择面板。 */
@@ -694,7 +724,8 @@ function decodeRepeatedly(value) {
 
 defineExpose({
   cancelGeneration,
-  loadTopics
+  loadTopics,
+  openSingleTopicSource
 })
 
 onBeforeUnmount(() => {
@@ -964,13 +995,20 @@ onBeforeUnmount(() => {
 }
 
 .source-backdrop {
+  --topic-accent: #d9002d;
+  --topic-accent-soft: #fff1f3;
+  --topic-border: #dedfe2;
+  --topic-ink: #202020;
+  --topic-muted: #626262;
   position: fixed;
   z-index: 50;
   inset: 0;
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  color: var(--topic-ink);
   background: rgba(0, 0, 0, 0.56);
+  font-family: Inter, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
 }
 
 .source-sheet {
