@@ -101,7 +101,9 @@ export class ImagePlugin {
    * 最终用 leafer-ui 原生 {@link LeaferImage} 渲染。
    *
    * @param {string | File | Blob} source 图片 URL、File 或 Blob。
-   * @param {Object} [options] 图片放置配置。
+   * @param {Object} [options={}] 图片放置配置。
+   * @param {'contain' | 'cover' | 'stretch'} [options.fit='stretch']
+   * 图片在节点外框中的适配方式。
    * @returns {Promise<LeaferImage>} 图片节点。
    * @throws {EditorError} 当读取或创建图片失败时抛出。
    */
@@ -115,6 +117,7 @@ export class ImagePlugin {
       imageSource = await this._normalizeSource(source);
       const imageSize = await this._loadImageSize(imageSource.url);
       const imageConfig = this._normalizePlacement(imageSize, options, state);
+      const fit = normalizeImageReplacementFit(options?.fit ?? 'stretch');
       const image = new LeaferImage({
         url: imageSource.url,
         draggable: true,
@@ -123,9 +126,14 @@ export class ImagePlugin {
         ...imageConfig
       });
 
+      if (fit !== 'stretch') {
+        this._setImageResourceAndFit(image, imageSource.url, fit, 'center');
+      }
+
       image[ORIGINAL_WIDTH_KEY] = imageSize.width;
       image[ORIGINAL_HEIGHT_KEY] = imageSize.height;
-      image[IMAGE_FIT_KEY] = 'stretch';
+      image[IMAGE_FIT_KEY] = fit;
+      image[IMAGE_ALIGN_KEY] = 'center';
       image[IMAGE_SOURCE_URL_KEY] = imageSource.url;
       image[IMAGE_SOURCE_FORMAT_KEY] = imageSource.format;
       getElementDataContainer(image, true);

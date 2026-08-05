@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue'
 
 import { pictureApi } from '../../api/index.js'
 import { formatMillimeter, pixelToMillimeter } from '../../canvas-editor-core/src/utils/unit.js'
+import { resizeArtboardWithContent } from './artboard-content-scaling.js'
 import { resolveContainedImagePlacement } from './artboard-image-placement.js'
 import { normalizePixelForUI } from './editor-ui-utils.js'
 
@@ -69,11 +70,20 @@ export function useArtboardControls(getEditor, notify = null) {
       return
     }
 
-    editor.setArtboardSize(
-      normalizePixelForUI(artboardWidth.value, 120),
-      normalizePixelForUI(artboardHeight.value, 120)
-    )
-    syncArtboardControls()
+    try {
+      resizeArtboardWithContent(
+        editor,
+        normalizePixelForUI(artboardWidth.value, 120),
+        normalizePixelForUI(artboardHeight.value, 120)
+      )
+      syncArtboardControls()
+      syncPrintAreaControls()
+      notify?.('画布与内容已等比调整。', 'success')
+    } catch (error) {
+      console.error('Artboard content resize failed.', error)
+      syncArtboardControls()
+      notify?.(error.message || '画布调整失败。', 'error')
+    }
   }
 
   /** @returns {void} */
@@ -117,7 +127,7 @@ export function useArtboardControls(getEditor, notify = null) {
   }
 
   /**
-   * 背景图使用图片原始像素作为画板尺寸，并占当前工作区可用区域的 80% 居中显示。
+   * 将背景图等比铺满当前画板，不改变画板尺寸和已有元素坐标。
    *
    * @param {File} file 图片文件。
    * @returns {Promise<void>}
@@ -129,38 +139,24 @@ export function useArtboardControls(getEditor, notify = null) {
       return
     }
 
-    const imageSize = await editor.image.getSize(file)
     const imageUrl = await pictureApi.upload(file)
-    const currentBounds = getArtboardBounds()
+    const bounds = getArtboardBounds()
     const backgroundImage = await editor.image.add(imageUrl, {
-      x: currentBounds.x,
-      y: currentBounds.y,
-      width: imageSize.width,
-      height: imageSize.height,
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      fit: 'cover',
       lockRatio: false,
       visible: false,
       select: false
-    })
-
-    editor.setArtboardSize(imageSize.width, imageSize.height)
-    syncArtboardControls()
-
-    const backgroundBounds = getArtboardBounds()
-    backgroundImage.set?.({
-      x: backgroundBounds.x,
-      y: backgroundBounds.y,
-      width: backgroundBounds.width,
-      height: backgroundBounds.height,
-      lockRatio: false,
-      visible: false
     })
 
     markBackgroundNode(editor, backgroundImage)
     moveElementToBottom(backgroundImage)
     editor.deselect()
     editor.fitArtboardToView({
-      viewportRatio: BACKGROUND_VIEWPORT_RATIO,
-      expandZoomRange: true
+      viewportRatio: BACKGROUND_VIEWPORT_RATIO
     })
     removeBackgroundImages(editor, backgroundImage)
     backgroundImage.visible = true
@@ -281,7 +277,7 @@ export function useArtboardControls(getEditor, notify = null) {
     const isMask = replacement.role === 'mask'
     await editor.replaceImage(replacement.target, imageUrl, {
       allowLocked: true,
-      fit: isMask ? 'contain' : 'stretch',
+      fit: isMask ? 'contain' : 'cover',
       preserveFrame: !isMask
     })
 

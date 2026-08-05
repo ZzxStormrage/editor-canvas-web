@@ -1072,6 +1072,7 @@ const image = await editor.image.add('/demo.png', {
 | `y` | `number` | 否 | 画板垂直居中位置 | 任意有限坐标，可为负数 | 相对内容层的 y 坐标；未传时根据最终图片高度居中。 |
 | `width` | `number` | 否 | `原始宽度 × 默认缩放比例` | 大于 `0` | 初始显示宽度。传入后覆盖默认宽度计算。 |
 | `height` | `number` | 否 | `原始高度 × 默认缩放比例` | 大于 `0` | 初始显示高度。传入后覆盖默认高度计算。 |
+| `fit` | `string` | 否 | `stretch` | `contain \| cover \| stretch` | 图片资源在节点外框中的初始适配方式。 |
 | `maxWidthRatio` | `number` | 否 | `0.8` | `0 < value <= 1` | 默认尺寸相对画板宽度的最大占比。可被全局 `image.maxWidthRatio` 修改。 |
 | `maxHeightRatio` | `number` | 否 | `0.8` | `0 < value <= 1` | 默认尺寸相对画板高度的最大占比。可被全局 `image.maxHeightRatio` 修改。 |
 | `lockRatio` | `boolean` | 否 | `true` | `true \| false` | 后续编辑宽高时是否保持图片比例，不负责补全首次创建时缺失的单边尺寸。 |
@@ -2259,38 +2260,35 @@ editor.commands.redo()
 
 ```js
 async function replaceBackground(editor, source) {
-  const imageSize = await editor.image.getSize(source)
-  const currentBounds = editor.artboard.getContentBounds()
+  const bounds = editor.artboard.getContentBounds()
   const background = await editor.image.add(source, {
-    x: currentBounds.x,
-    y: currentBounds.y,
-    width: imageSize.width,
-    height: imageSize.height,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    fit: 'cover',
     lockRatio: false,
     visible: false,
     select: false
   })
 
-  editor.setArtboardSize(imageSize.width, imageSize.height)
-
-  const bounds = editor.artboard.getContentBounds()
-  background.set({
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-    visible: false
-  })
-
   editor.fitArtboardToView({
-    viewportRatio: 0.8,
-    expandZoomRange: true
+    viewportRatio: 0.8
   })
   background.set({ visible: true })
 
   return background
 }
 ```
+
+背景图的原始像素尺寸与画板逻辑尺寸相互独立。上传或替换背景时不应根据图片
+原始像素调用 `setArtboardSize()`，否则已有元素的坐标和尺寸不会同步缩放。
+`cover` 会保持图片比例并铺满画板；如果业务必须完整显示背景，可改为 `contain`，
+但图片与画板比例不同时会产生留白。
+
+完整编辑器的“调整画布”会同时调整已有内容：背景图铺满新画板，其他顶层元素使用
+contain 比例统一缩放并居中。当新旧画板比例一致时，元素的相对坐标和尺寸同比例变化；
+比例不一致时，优先保证文字、图片和组合不变形，新增的空间对称分配在内容两侧。
 
 当前 Vue 页面已在 `useArtboardControls()` 中封装上传、标记、锁定、置底和替换逻辑，页面
 组件只调用 `openBackgroundImagePicker()` 和 `handleBackgroundImageChange(event)`。
