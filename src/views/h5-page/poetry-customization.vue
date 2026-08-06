@@ -222,18 +222,24 @@
       </div>
 
       <footer class="submit-footer">
-        <p v-if="saveStatus.text" class="save-status" :class="`is-${saveStatus.type}`" role="status">
+        <p v-if="saveStatus.type === 'error' && saveStatus.text" class="save-error" role="alert">
           {{ saveStatus.text }}
         </p>
-        <button class="submit-button" type="button" :disabled="!canSubmit" :aria-busy="saving" @click="submitDesign">
+        <button
+          class="submit-button"
+          type="button"
+          :disabled="!canSubmit"
+          :aria-busy="saving || redirecting"
+          @click="submitDesign"
+        >
           {{ saving ? '保存中...' : '立即购买' }}
         </button>
       </footer>
     </section>
 
-    <div v-if="saving" class="save-overlay" role="status" aria-live="assertive">
+    <div v-if="saving || redirecting" class="save-overlay" role="status" aria-live="assertive">
       <span class="spinner is-light" aria-hidden="true"></span>
-      <span>正在保存...</span>
+      <span>{{ saveProgressText }}</span>
     </div>
 
     <Teleport to="body">
@@ -343,6 +349,8 @@ const {
   imageFit,
   imageReplacing,
   operationStatus,
+  redirecting,
+  saveProgressText,
   saveStatus,
   saving,
   selectAiTheme,
@@ -1002,8 +1010,7 @@ function resolveTextFieldRules(fieldId) {
   font-size: 12px;
 }
 
-.operation-status,
-.save-status {
+.operation-status {
   margin: 7px 0 0;
   color: #27724d;
   font-size: 10px;
@@ -1012,8 +1019,7 @@ function resolveTextFieldRules(fieldId) {
 }
 
 .operation-status.is-warning,
-.operation-status.is-error,
-.save-status.is-error {
+.operation-status.is-error {
   color: #a42635;
 }
 
@@ -1041,9 +1047,13 @@ function resolveTextFieldRules(fieldId) {
   cursor: not-allowed;
 }
 
-.save-status {
+.save-error {
   margin: 0 0 6px;
+  color: #a42635;
+  font-size: 10px;
   font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .save-overlay {

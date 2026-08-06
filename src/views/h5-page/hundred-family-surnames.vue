@@ -84,30 +84,30 @@
     </section>
 
     <footer class="submit-footer">
-      <p v-if="saveStatus.text" class="save-status" :class="`is-${saveStatus.type}`" role="status">
+      <p v-if="saveStatus.type === 'error' && saveStatus.text" class="save-error" role="alert">
         {{ saveStatus.text }}
       </p>
       <button
         class="submit-button"
         type="button"
-        :disabled="saving || templateLoading || !documentData || !canvasLoaded || !surname"
-        :aria-busy="saving"
+        :disabled="saving || redirecting || templateLoading || !documentData || !canvasLoaded || !surname"
+        :aria-busy="saving || redirecting"
         @click="onSubmit"
       >
         {{ saving ? '保存中...' : '立即购买' }}
       </button>
     </footer>
 
-    <div v-if="saving" class="save-overlay" role="status" aria-live="assertive">
+    <div v-if="saving || redirecting" class="save-overlay" role="status" aria-live="assertive">
       <span class="save-spinner" aria-hidden="true"></span>
-      <span>正在保存...</span>
+      <span>{{ saveProgressText }}</span>
     </div>
   </main>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 
 import { loadFontFace } from '../../canvas-editor-core/src/index.js'
 import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
@@ -162,7 +162,6 @@ const DEFAULT_GIVEN_NAME_INPUT_RULES = Object.freeze({
 })
 const canvasViewportRef = ref(null)
 const route = useRoute()
-const router = useRouter()
 const surname = ref('')
 const givenName = ref('')
 const surnameRules = ref(normalizeTextInputRules(DEFAULT_SURNAME_INPUT_RULES))
@@ -187,15 +186,18 @@ const {
   handleCanvasError: handleTemplateCanvasError,
   loadTemplateFromRoute
 } = useH5TemplateDocument({ errorLabel: 'Hundred family surnames' })
-const { saving, saveStatus, resetSaveStatus, savePage } = useH5PageSave({
+const {
+  redirecting,
+  saving,
+  saveProgressText,
+  saveStatus,
+  resetSaveStatus,
+  savePage
+} = useH5PageSave({
   route,
-  router,
   pageId: 'hundred-family-surnames',
   defaultDesignName: '百家姓定制',
-  getEditor: () => canvasViewportRef.value?.getEditor?.(),
-  onBeforeNavigateBack: () => {
-    saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
-  }
+  getEditor: getCanvasEditor
 })
 
 const selectedFontStyle = computed(() => {
@@ -207,11 +209,10 @@ const canvasFrameStyle = computed(() => {
   const height = Number(documentData.value?.canvas?.height)
 
   if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-    return { '--canvas-ratio': 1, aspectRatio: '1 / 1' }
+    return { aspectRatio: '1 / 1' }
   }
 
   return {
-    '--canvas-ratio': width / height,
     aspectRatio: `${width} / ${height}`
   }
 })
@@ -406,8 +407,7 @@ function syncSelectedFontFromEditor(editor) {
 
 /** @returns {Object | null} 当前画布编辑器实例。 */
 function getCanvasEditor() {
-  const viewport = canvasViewportRef.value
-  return viewport && typeof viewport.getEditor === 'function' ? viewport.getEditor() : null
+  return canvasViewportRef.value?.getEditor?.() ?? null
 }
 
 /** @param {string} fontName 字体名称。 @returns {string} CSS 字体声明。 */
@@ -421,7 +421,10 @@ watch([surname, givenName], () => {
 
 /** @returns {Promise<void>} 保存当前 JSON，并按需获取打印区域截图。 */
 async function onSubmit() {
-  if (saving.value || templateLoading.value || !documentData.value || !canvasLoaded.value || !surname.value) {
+  if (
+    saving.value || redirecting.value || templateLoading.value ||
+    !documentData.value || !canvasLoaded.value || !surname.value
+  ) {
     return
   }
 
@@ -697,17 +700,13 @@ onMounted(loadFontStyles)
   background: #ffffff;
 }
 
-.save-status {
+.save-error {
   margin: 0 0 8px;
-  color: #237a42;
+  color: #b42318;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
   text-align: center;
-}
-
-.save-status.is-error {
-  color: #b42318;
 }
 
 .submit-button {

@@ -42,7 +42,7 @@
             :aria-pressed="type === item.type"
             @click="selectType(item.type)"
           >
-            <img :src="resolveAnimalIcon(item)" alt="" class="animal-icon" />
+            <img :src="item.icon" alt="" class="animal-icon" />
             <span>{{ item.name }}</span>
           </button>
         </div>
@@ -59,9 +59,9 @@
               :value="year"
               inputmode="numeric"
               placeholder="1990"
-              @compositionstart="handleDateCompositionStart"
-              @compositionend="handleDateCompositionEnd('年', $event)"
-              @input="handleDateInput('年', $event)"
+              @compositionstart="handleYearCompositionStart"
+              @compositionend="handleYearCompositionEnd"
+              @input="handleYearInput"
             />
           </label>
         </div>
@@ -69,30 +69,30 @@
     </section>
 
     <footer class="submit-footer">
-      <p v-if="saveStatus.text" class="save-status" :class="`is-${saveStatus.type}`" role="status" aria-live="polite">
+      <p v-if="saveStatus.type === 'error' && saveStatus.text" class="save-error" role="alert">
         {{ saveStatus.text }}
       </p>
       <button
         class="submit-button"
         type="button"
-        :disabled="saving || templateLoading || !documentData || !canvasLoaded"
-        :aria-busy="saving"
+        :disabled="saving || redirecting || templateLoading || !documentData || !canvasLoaded"
+        :aria-busy="saving || redirecting"
         @click="onSubmit"
       >
         {{ saving ? '保存中...' : '立即购买' }}
       </button>
     </footer>
 
-    <div v-if="saving" class="save-overlay" role="status" aria-live="assertive">
+    <div v-if="saving || redirecting" class="save-overlay" role="status" aria-live="assertive">
       <span class="save-spinner" aria-hidden="true"></span>
-      <span>正在保存...</span>
+      <span>{{ saveProgressText }}</span>
     </div>
   </main>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 
 import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
 import { useH5PageSave } from './composables/useH5PageSave.js'
@@ -107,13 +107,8 @@ import { createDocumentWithAttributeVisibility } from './services/document-visib
 const type = ref(1)
 const canvasViewportRef = ref(null)
 const route = useRoute()
-const router = useRouter()
 const year = ref('')
-const month = ref('')
-const day = ref('')
 const yearRules = ref(normalizeTextInputRules({ maxCharacters: 20 }))
-const monthRules = ref(normalizeTextInputRules({ maxCharacters: 20 }))
-const dayRules = ref(normalizeTextInputRules({ maxCharacters: 20 }))
 const canvasLoaded = ref(false)
 const h5CanvasFitOptions = Object.freeze({
   padding: 0,
@@ -122,11 +117,6 @@ const h5CanvasFitOptions = Object.freeze({
 })
 const h5CanvasLoadOptions = Object.freeze({ interactive: false })
 const h5CanvasZoomLimits = Object.freeze({ minRatio: 1, maxRatio: 1 })
-const dateTextBindings = [
-  { description: '年', value: year, rules: yearRules },
-  { description: '月', value: month, rules: monthRules },
-  { description: '日', value: day, rules: dayRules }
-]
 const textInputController = createH5TextInputController()
 const animalList = [
   { type: 1, name: '鼠', icon: 'https://xiaoxiang.ele007.com/file/image/animal1.png' },
@@ -150,26 +140,25 @@ const {
   handleCanvasError: handleTemplateCanvasError,
   loadTemplateFromRoute
 } = useH5TemplateDocument({ errorLabel: 'Chinese zodiac' })
-const { saving, saveStatus, resetSaveStatus, savePage } = useH5PageSave({
+const {
+  redirecting,
+  saving,
+  saveProgressText,
+  saveStatus,
+  resetSaveStatus,
+  savePage
+} = useH5PageSave({
   route,
-  router,
   pageId: 'chinese-zodiac',
   defaultDesignName: '生肖定制',
-  getEditor: () => canvasViewportRef.value?.getEditor?.(),
-  onBeforeNavigateBack: () => {
-    saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
-  }
+  getEditor: getCanvasEditor
 })
 
 const selectedAnimal = computed(() => {
   return animalList.find((item) => item.type === type.value) ?? animalList[0]
 })
 const canvasDocumentData = computed(() => {
-  return createDocumentWithAttributeVisibility(
-    documentData.value,
-    'image.description',
-    animalList[0].name
-  )
+  return createDocumentWithAttributeVisibility(documentData.value, 'image.description', animalList[0].name)
 })
 
 const canvasFrameStyle = computed(() => {
@@ -178,20 +167,14 @@ const canvasFrameStyle = computed(() => {
 
   if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
     return {
-      '--canvas-ratio': 1,
       aspectRatio: '1 / 1'
     }
   }
 
   return {
-    '--canvas-ratio': width / height,
     aspectRatio: `${width} / ${height}`
   }
 })
-
-function resolveAnimalIcon(item) {
-  return item.icon
-}
 
 function selectType(item) {
   type.value = item
@@ -200,44 +183,30 @@ function selectType(item) {
 
 /** @param {{ editor: Object }} payload 文档加载事件。 @returns {void} */
 function handleDocumentLoaded(payload) {
-  syncDateRulesFromDocument(payload.document)
-  syncDateValuesFromEditor(payload.editor)
+  syncYearRulesFromDocument(payload.document)
+  syncYearValueFromEditor(payload.editor)
   applySelectedAnimal(payload.editor)
-  applyDateTextValues(payload.editor)
+  applyYearTextValue(payload.editor)
   canvasLoaded.value = true
   templateError.value = ''
 }
 
-/** @param {string} description 文字描述。 @param {Event} event 输入事件。 @returns {void} */
-function handleDateInput(description, event) {
-  const binding = dateTextBindings.find((item) => item.description === description)
-  if (!binding) {
-    return
-  }
-
-  textInputController.handleInput(event, binding.rules.value, (nextValue) => {
-    binding.value.value = nextValue
+/** @param {Event} event 输入事件。 @returns {void} */
+function handleYearInput(event) {
+  textInputController.handleInput(event, yearRules.value, (nextValue) => {
+    year.value = nextValue
   })
 }
 
 /** @param {CompositionEvent} event 输入法组合开始事件。 @returns {void} */
-function handleDateCompositionStart(event) {
+function handleYearCompositionStart(event) {
   textInputController.handleCompositionStart(event)
 }
 
-/**
- * @param {string} description 文字描述。
- * @param {CompositionEvent} event 输入法组合结束事件。
- * @returns {void}
- */
-function handleDateCompositionEnd(description, event) {
-  const binding = dateTextBindings.find((item) => item.description === description)
-  if (!binding) {
-    return
-  }
-
-  textInputController.handleCompositionEnd(event, binding.rules.value, (nextValue) => {
-    binding.value.value = nextValue
+/** @param {CompositionEvent} event 输入法组合结束事件。 @returns {void} */
+function handleYearCompositionEnd(event) {
+  textInputController.handleCompositionEnd(event, yearRules.value, (nextValue) => {
+    year.value = nextValue
   })
 }
 
@@ -266,47 +235,42 @@ function applySelectedAnimal(editor) {
 }
 
 /**
- * 将年月日输入值同步到描述匹配的文字元素。
+ * 将年份输入值同步到描述匹配的文字元素。
  *
  * @param {Object | null} [editor] 核心编辑器实例。
  * @returns {void}
  */
-function applyDateTextValues(editor) {
+function applyYearTextValue(editor) {
   const activeEditor = editor ?? getCanvasEditor()
   if (!activeEditor) {
     return
   }
 
-  dateTextBindings.forEach(({ description, value }) => {
-    activeEditor.getElementsByAttribute('text.description', description).forEach((element) => {
-      activeEditor.replaceTextWithRules(element, value.value)
-    })
+  activeEditor.getElementsByAttribute('text.description', '年').forEach((element) => {
+    activeEditor.replaceTextWithRules(element, year.value)
   })
 }
 
 /** @returns {Object | null} 当前画布编辑器实例。 */
 function getCanvasEditor() {
-  const viewport = canvasViewportRef.value
-  return viewport && typeof viewport.getEditor === 'function' ? viewport.getEditor() : null
+  return canvasViewportRef.value?.getEditor?.() ?? null
 }
 
 /**
- * 从模板中读取带年月日描述的文字，作为生产页面初始输入值。
+ * 从模板中读取年份文字，作为生产页面初始输入值。
  *
  * @param {Object | null} editor 核心编辑器实例。
  * @returns {void}
  */
-function syncDateValuesFromEditor(editor) {
+function syncYearValueFromEditor(editor) {
   if (!editor) {
     return
   }
 
-  dateTextBindings.forEach(({ description, value, rules }) => {
-    const element = editor.getElementsByAttribute('text.description', description)[0]
-    if (element) {
-      value.value = applyTextInputRules(element.text, rules.value)
-    }
-  })
+  const element = editor.getElementsByAttribute('text.description', '年')[0]
+  if (element) {
+    year.value = applyTextInputRules(element.text, yearRules.value)
+  }
 }
 
 /**
@@ -315,13 +279,11 @@ function syncDateValuesFromEditor(editor) {
  * @param {Object} document 已加载的统一文档。
  * @returns {void}
  */
-function syncDateRulesFromDocument(document) {
-  dateTextBindings.forEach(({ description, rules }) => {
-    const element = flattenElements(document?.elements).find((item) => {
-      return item.attributes?.text?.description === description
-    })
-    rules.value = normalizeTextInputRules(element?.attributes?.textInput ?? { maxCharacters: 20 })
+function syncYearRulesFromDocument(document) {
+  const element = flattenElements(document?.elements).find((item) => {
+    return item.attributes?.text?.description === '年'
   })
+  yearRules.value = normalizeTextInputRules(element?.attributes?.textInput ?? { maxCharacters: 20 })
 }
 
 /** @param {Object[] | undefined} elements 文档元素。 @returns {Object[]} 展平元素。 */
@@ -333,8 +295,8 @@ function flattenElements(elements) {
   return elements.flatMap((element) => [element, ...flattenElements(element.children)])
 }
 
-watch([year, month, day], () => {
-  applyDateTextValues()
+watch(year, () => {
+  applyYearTextValue()
 })
 
 watch(
@@ -349,7 +311,10 @@ watch(
 
 /** @returns {Promise<void>} 保存当前 JSON，并按需获取打印区域截图。 */
 async function onSubmit() {
-  if (saving.value || templateLoading.value || !documentData.value || !canvasLoaded.value) {
+  if (
+    saving.value || redirecting.value || templateLoading.value ||
+    !documentData.value || !canvasLoaded.value
+  ) {
     return
   }
 
@@ -541,24 +506,13 @@ async function onSubmit() {
 }
 
 .date-inputs label {
-  position: relative;
   display: block;
-}
-
-.date-inputs label > span {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  color: #737373;
-  font-size: 12px;
-  pointer-events: none;
-  transform: translateY(-50%);
 }
 
 .date-inputs input {
   width: 100%;
   height: 38px;
-  padding: 0 30px 0 10px;
+  padding: 0 10px;
   border: 1px solid #d4d4d4;
   border-radius: 6px;
   outline: none;
@@ -579,17 +533,13 @@ async function onSubmit() {
   background: #ffffff;
 }
 
-.save-status {
+.save-error {
   margin: 0 0 8px;
-  color: #237a42;
+  color: #b42318;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
   text-align: center;
-}
-
-.save-status.is-error {
-  color: #b42318;
 }
 
 .submit-button {

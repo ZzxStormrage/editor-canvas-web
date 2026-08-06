@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { MESSAGE_TYPES, postBridgeMessage } from '../../../services/message-bridge.js'
 import { saveH5CustomDesign } from '../services/custom-design.js'
@@ -7,14 +7,12 @@ import {
   readH5RedirectPath,
   readRouteValue
 } from '../services/route-navigation.js'
-import { wxAPI } from '../services/wx-api.js'
 
 /**
  * 统一管理 H5 页面保存、宿主通信和保存后跳转。
  *
  * @param {Object} options 保存流程配置。
  * @param {Object} options.route Vue Router 当前路由。
- * @param {Object} options.router Vue Router 实例。
  * @param {string} options.pageId 页面业务标识。
  * @param {string} options.defaultDesignName 默认设计名称。
  * @param {() => Object | null} options.getEditor 获取核心编辑器实例的方法。
@@ -22,10 +20,15 @@ import { wxAPI } from '../services/wx-api.js'
  */
 export function useH5PageSave(options) {
   const saving = ref(false)
+  const redirecting = ref(false)
   const saveStatus = ref({ type: 'success', text: '' })
+  const saveProgressText = computed(() => {
+    return redirecting.value ? '保存成功，正在进入订单页' : '正在保存...'
+  })
 
-  /** @returns {void} 清空保存结果提示。 */
+  /** @returns {void} 重置保存和跳转状态。 */
   function resetSaveStatus() {
+    redirecting.value = false
     saveStatus.value = { type: 'success', text: '' }
   }
 
@@ -35,7 +38,7 @@ export function useH5PageSave(options) {
    * @returns {Promise<Object | null>} 保存结果；未执行或失败时返回 null。
    */
   async function savePage() {
-    if (saving.value) {
+    if (saving.value || redirecting.value) {
       return null
     }
 
@@ -43,19 +46,20 @@ export function useH5PageSave(options) {
     resetSaveStatus()
     try {
       const payload = await createSavePayload(options)
-      const bridgeResult = postSaveMessage(options, payload)
+      postSaveMessage(options, payload)
 
       // 用户设计可能包含完整文档和图片地址，仅在开发环境输出诊断数据。
       if (import.meta.env.DEV) {
         console.log(`${options.pageId} save result:`, JSON.stringify(payload, null, 2))
       }
-      if (await leavePageAfterSave(options, bridgeResult, payload)) {
-        return payload
-      }
-
-      saveStatus.value = { type: 'success', text: '保存数据已生成' }
+      leavePageAfterSave(options, payload, () => {
+        // 在调用 wx.miniProgram.redirectTo 前切换 Loading 文案，
+        // 并保持遮罩直到当前 WebView 被订单页替换。
+        redirecting.value = true
+      })
       return payload
     } catch (error) {
+      redirecting.value = false
       console.error(`${options.pageId} save failed.`, error)
       saveStatus.value = { type: 'error', text: error.message || '保存失败，请稍后重试。' }
       return null
@@ -65,7 +69,9 @@ export function useH5PageSave(options) {
   }
 
   return {
+    redirecting,
     saving,
+    saveProgressText,
     saveStatus,
     resetSaveStatus,
     savePage
@@ -85,10 +91,10 @@ function createSavePayload(options) {
 /**
  * @param {Object} options 页面配置。
  * @param {Object} payload 保存数据。
- * @returns {{ message: Object, channels: string[] }} 通信结果。
+ * @returns {void}
  */
 function postSaveMessage(options, payload) {
-  return postBridgeMessage(
+  postBridgeMessage(
     MESSAGE_TYPES.H5_PAGE_SAVED,
     {
       page: options.pageId,
@@ -105,20 +111,22 @@ function postSaveMessage(options, payload) {
 
 /**
  * @param {Object} options 页面配置。
- * @param {{ channels: string[] }} bridgeResult 通信结果。
- * @returns {Promise<boolean>} 是否已离开当前页面。
+ * @param {Object} payload 设计保存结果。
+ * @param {Function} markRedirecting 调用宿主替换跳转前的内部状态回调。
+ * @returns {void}
  */
-async function leavePageAfterSave(options, bridgeResult, payload) {
+function leavePageAfterSave(options, payload, markRedirecting) {
   const redirectPath = appendSavedDesignQuery(readH5RedirectPath(options.route), payload)
-  if (await navigateToH5RedirectPath(redirectPath, options.router)) {
-    return true
-  }
-  if (!bridgeResult.channels.includes('mini-program') || !wxAPI.isSupported()) {
-    return false
+  if (!redirectPath) {
+    throw new Error('缺少订单跳转路径，请返回商品页重新定制。')
   }
 
-  options.onBeforeNavigateBack?.()
-  return wxAPI.navigateBack({ delta: 1 })
+  // 先更新 Loading 文案，再由 wx.miniProgram.redirectTo 替换当前 WebView。
+  // 此处故意不提供 navigateBack 回退，避免宿主页闪现和重复跳转。
+  markRedirecting()
+  if (!navigateToH5RedirectPath(redirectPath)) {
+    throw new Error('微信小程序页面跳转失败，请重试。')
+  }
 }
 
 /** @param {string | null} path 小程序回调路径。 @param {Object} payload 保存结果。 @returns {string | null} */

@@ -30,38 +30,24 @@ const INTERNAL_QUERY_KEYS = new Set([
  * @returns {string | null} 包含业务参数的重定向路径；未传入时返回 null。
  */
 export function readH5RedirectPath(route) {
-  const path = readRouteValue(route?.query?.redirectPath)
+  const path = decodeRedirectPath(readRouteValue(route?.query?.redirectPath))
   return typeof path === 'string' && path.trim() ? appendBusinessQuery(path.trim(), route.query) : null
 }
 
 /**
- * 跳转到 redirectPath 指定的页面。
+ * 通过微信小程序宿主跳转到 redirectPath 指定的页面。
  *
  * @param {string | null} path 重定向路径。
- * @param {Object} router Vue Router 实例。
- * @returns {Promise<boolean>} 是否已发起跳转。
+ * @returns {boolean} 是否已调用 wx.miniProgram.redirectTo。
  */
-export async function navigateToH5RedirectPath(path, router) {
+export function navigateToH5RedirectPath(path) {
   const target = normalizeRedirectPath(path)
   if (!target) {
     return false
   }
 
-  if (wxAPI.redirectTo({ url: target })) {
-    return true
-  }
-
-  if (/^https?:\/\//i.test(target)) {
-    window.location.assign(target)
-    return true
-  }
-
-  if (!router) {
-    return false
-  }
-
-  await router.replace(target)
-  return true
+  // 购买路径只能交给小程序宿主，不允许回退或交给 H5 Router。
+  return wxAPI.redirectTo({ url: target })
 }
 
 /** @param {*} value 路由参数值。 @returns {*} 单值。 */
@@ -82,9 +68,6 @@ function normalizeRedirectPath(value) {
   }
 
   const path = value.trim()
-  if (/^https?:\/\//i.test(path)) {
-    return path
-  }
   if (path.startsWith('#/')) {
     return path.slice(1)
   }
@@ -92,6 +75,30 @@ function normalizeRedirectPath(value) {
     return path
   }
   return /^[\w.-]+(?:\/[\w.-]+)+(?:\?.*)?$/.test(path) ? `/${path}` : null
+}
+
+/**
+ * 仅在路径本身尚未可识别时逐层解码，避免 redirectPath 被路由和 H5 URL
+ * 连续编码后无法通过小程序路径校验；一旦得到合法路径即停止，不破坏内部查询参数。
+ * @param {*} value 原始回跳路径。
+ * @returns {*} 解码后的路径。
+ */
+function decodeRedirectPath(value) {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  let path = value.trim()
+  for (let i = 0; i < 2 && path && !normalizeRedirectPath(path); i += 1) {
+    try {
+      const decoded = decodeURIComponent(path)
+      if (decoded === path) break
+      path = decoded
+    } catch {
+      break
+    }
+  }
+  return path
 }
 
 /**

@@ -108,17 +108,23 @@
     </section>
 
     <footer class="submit-footer">
-      <p v-if="saveStatus.text" class="save-status" :class="`is-${saveStatus.type}`" role="status" aria-live="polite">
+      <p v-if="saveStatus.type === 'error' && saveStatus.text" class="save-error" role="alert">
         {{ saveStatus.text }}
       </p>
-      <button class="submit-button" type="button" :disabled="!canSubmit" :aria-busy="saving" @click="onSubmit">
+      <button
+        class="submit-button"
+        type="button"
+        :disabled="!canSubmit"
+        :aria-busy="saving || redirecting"
+        @click="onSubmit"
+      >
         {{ saving ? '保存中...' : '立即购买' }}
       </button>
     </footer>
 
-    <div v-if="saving" class="save-overlay" role="status" aria-live="assertive">
+    <div v-if="saving || redirecting" class="save-overlay" role="status" aria-live="assertive">
       <span class="spinner" aria-hidden="true"></span>
-      <span>正在保存...</span>
+      <span>{{ saveProgressText }}</span>
     </div>
 
     <Transition name="picker-sheet">
@@ -168,7 +174,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 
 import { IMAGE_FILE_ACCEPT } from '../../../config/image-upload.js'
 import CanvasDocumentViewport from './CanvasDocumentViewport.vue'
@@ -211,7 +217,6 @@ const props = defineProps({
 })
 
 const route = useRoute()
-const router = useRouter()
 const canvasViewportRef = ref(null)
 const albumInputRef = ref(null)
 const cameraInputRef = ref(null)
@@ -237,15 +242,18 @@ const {
   handleCanvasError: handleTemplateCanvasError,
   loadTemplateFromRoute
 } = useH5TemplateDocument({ errorLabel: props.pageId })
-const { saving, saveStatus, resetSaveStatus, savePage } = useH5PageSave({
+const {
+  redirecting,
+  saving,
+  saveProgressText,
+  saveStatus,
+  resetSaveStatus,
+  savePage
+} = useH5PageSave({
   route,
-  router,
   pageId: props.pageId,
   defaultDesignName: props.pageTitle,
-  getEditor: () => canvasViewportRef.value?.getEditor?.(),
-  onBeforeNavigateBack: () => {
-    saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
-  }
+  getEditor: getCanvasEditor
 })
 
 const canvasFrameStyle = computed(() => {
@@ -253,17 +261,17 @@ const canvasFrameStyle = computed(() => {
   const height = Number(documentData.value?.canvas?.height)
 
   if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-    return { '--canvas-ratio': 1, aspectRatio: '1 / 1' }
+    return { aspectRatio: '1 / 1' }
   }
 
   return {
-    '--canvas-ratio': width / height,
     aspectRatio: `${width} / ${height}`
   }
 })
 
 const canPickImage = computed(() => {
-  return canvasLoaded.value && !imageReplacing.value && !saving.value && !showImageCropDialog.value
+  return canvasLoaded.value && !imageReplacing.value && !saving.value &&
+    !redirecting.value && !showImageCropDialog.value
 })
 
 const canSubmit = computed(() => {
@@ -272,9 +280,15 @@ const canSubmit = computed(() => {
     !templateLoading.value &&
     !imageReplacing.value &&
     !saving.value &&
+    !redirecting.value &&
     !showImageCropDialog.value
   )
 })
+
+/** @returns {Object | null} 当前画布编辑器实例。 */
+function getCanvasEditor() {
+  return canvasViewportRef.value?.getEditor?.() ?? null
+}
 
 /** @returns {Promise<void>} 根据路由模板 ID 加载 customer 模板。 */
 async function reloadTemplate() {
@@ -394,7 +408,7 @@ function closeImagePickerSheet() {
  */
 async function handleImageChange(event) {
   const file = event.target.files?.[0]
-  const editor = canvasViewportRef.value?.getEditor?.()
+  const editor = getCanvasEditor()
 
   if (!file || !editor || !canPickImage.value) {
     return
@@ -463,7 +477,7 @@ async function handleCropConfirm(blob) {
  * @returns {Promise<boolean>} 是否上传并替换成功。
  */
 async function uploadAndReplaceImage(file) {
-  const editor = canvasViewportRef.value?.getEditor?.()
+  const editor = getCanvasEditor()
   if (!editor || !hasImageTarget.value) {
     return false
   }
@@ -528,7 +542,7 @@ function handleTextInput(field, event) {
 /** @param {Object} field 文本输入项。 @param {string} nextValue 过滤后的文字。 @returns {void} */
 function applyTextFieldValue(field, nextValue) {
   field.value = nextValue
-  const editor = canvasViewportRef.value?.getEditor?.()
+  const editor = getCanvasEditor()
   if (!editor || !canvasLoaded.value) {
     return
   }
@@ -570,7 +584,7 @@ function resolveFieldTargets(editor, field) {
 
 /** @returns {Promise<void>} 生成保存数据并通知小程序。 */
 async function onSubmit() {
-  const editor = canvasViewportRef.value?.getEditor?.()
+  const editor = getCanvasEditor()
   if (!editor || !canSubmit.value) {
     return
   }
@@ -880,17 +894,13 @@ textarea.text-input {
   backdrop-filter: blur(8px);
 }
 
-.save-status {
+.save-error {
   margin: 0 0 8px;
-  color: #26734d;
+  color: #a22b31;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
   text-align: center;
-}
-
-.save-status.is-error {
-  color: #a22b31;
 }
 
 .submit-button {

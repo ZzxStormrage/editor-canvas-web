@@ -1,33 +1,8 @@
 /**
- * 微信小程序 web-view API 兼容层。
+ * 微信小程序 web-view API 封装。
+ * 当前业务明确运行在微信小程序中，导航只使用 wx.miniProgram。
  */
 export const wxAPI = Object.freeze({
-  /** @returns {boolean} 当前是否存在微信小程序桥。 */
-  isSupported() {
-    return Boolean(resolveMiniProgramBridge())
-  },
-
-  /**
-   * 通过微信小程序桥发送原始数据。
-   *
-   * @param {*} data 可结构化克隆的数据。
-   * @returns {boolean} 是否成功调用微信 API。
-   */
-  postMessage(data) {
-    const bridge = resolveMiniProgramBridge()
-    if (typeof bridge?.postMessage !== 'function') {
-      return false
-    }
-
-    try {
-      bridge.postMessage({ data })
-      return true
-    } catch (error) {
-      console.warn('WeChat mini program postMessage failed.', error)
-      return false
-    }
-  },
-
   /**
    * 关闭当前小程序页面并跳转到指定页面。
    *
@@ -48,42 +23,23 @@ export const wxAPI = Object.freeze({
       console.warn('WeChat mini program redirectTo failed.', error)
       return false
     }
-  },
-
-  /**
-   * 返回微信小程序上一页。
-   *
-   * @param {{ delta?: number }} [options={}] 返回层级。
-   * @returns {boolean} 是否成功调用微信 API。
-   */
-  navigateBack(options = {}) {
-    const bridge = resolveMiniProgramBridge()
-    if (typeof bridge?.navigateBack !== 'function') {
-      return false
-    }
-
-    try {
-      bridge.navigateBack({ delta: normalizeDelta(options.delta) })
-      return true
-    } catch (error) {
-      console.warn('WeChat mini program navigateBack failed.', error)
-      return false
-    }
   }
 })
 
-/** @returns {Object | null} 微信小程序桥。 */
+/**
+ * 获取微信小程序桥。
+ * @returns {Object | null} 宿主桥。
+ */
 function resolveMiniProgramBridge() {
   return globalThis.window?.wx?.miniProgram ?? null
 }
 
-/** @param {*} value 返回层级。 @returns {number} 正整数返回层级。 */
-function normalizeDelta(value) {
-  const delta = Number(value ?? 1)
-  return Number.isSafeInteger(delta) && delta > 0 ? delta : 1
-}
-
 /** @param {*} value 小程序页面路径。 @returns {string | null} 有效路径。 */
 function normalizeMiniProgramPath(value) {
-  return typeof value === 'string' && value.trim() ? value.trim() : null
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const path = value.trim()
+  return path.startsWith('/') && !path.startsWith('//') ? path : null
 }

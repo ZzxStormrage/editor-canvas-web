@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 
 import {
   normalizeMaterialGroupIds,
@@ -66,7 +66,6 @@ const TRY_MORE_EXCLUDED_QUERY_KEYS = new Set([
  */
 export function usePoetryCustomization(options = {}) {
   const route = useRoute()
-  const router = useRouter()
   const pageId = options.pageId || 'poetry-customization'
   const defaultDesignName = options.defaultDesignName || '诗词定制'
   const imageTargetDescriptions = normalizeDescriptionList(options.imageTargetDescriptions)
@@ -108,15 +107,18 @@ export function usePoetryCustomization(options = {}) {
     handleCanvasError: handleTemplateCanvasError,
     loadTemplateFromRoute
   } = useH5TemplateDocument({ errorLabel: pageId })
-  const { saving, saveStatus, resetSaveStatus, savePage } = useH5PageSave({
+  const {
+    redirecting,
+    saving,
+    saveProgressText,
+    saveStatus,
+    resetSaveStatus,
+    savePage
+  } = useH5PageSave({
     route,
-    router,
     pageId,
     defaultDesignName,
-    getEditor: () => getEditor(),
-    onBeforeNavigateBack: () => {
-      saveStatus.value = { type: 'success', text: '保存成功，正在返回' }
-    }
+    getEditor
   })
 
   const canvasFrameStyle = computed(() => {
@@ -124,21 +126,22 @@ export function usePoetryCustomization(options = {}) {
     const height = Number(documentData.value?.canvas?.height)
 
     if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-      return { '--canvas-ratio': 1, aspectRatio: '1 / 1' }
+      return { aspectRatio: '1 / 1' }
     }
 
     return {
-      '--canvas-ratio': width / height,
       aspectRatio: `${width} / ${height}`
     }
   })
 
   const canSelectTheme = computed(() => {
-    return canvasLoaded.value && imageTargets.value.length > 0 && !imageReplacing.value && !saving.value
+    return canvasLoaded.value && imageTargets.value.length > 0 &&
+      !imageReplacing.value && !saving.value && !redirecting.value
   })
 
   const canSelectBackground = computed(() => {
-    return canvasLoaded.value && backgroundTargets.value.length > 0 && !imageReplacing.value && !saving.value
+    return canvasLoaded.value && backgroundTargets.value.length > 0 &&
+      !imageReplacing.value && !saving.value && !redirecting.value
   })
 
   const canSubmit = computed(() => {
@@ -148,7 +151,8 @@ export function usePoetryCustomization(options = {}) {
         !materialReplacing.value &&
         materialOptions.value.length > 0 &&
         materialTargets.value.length > 0)
-    return canvasLoaded.value && !templateLoading.value && !imageReplacing.value && !saving.value && materialReady
+    return canvasLoaded.value && !templateLoading.value && !imageReplacing.value &&
+      !saving.value && !redirecting.value && materialReady
   })
 
   /** @returns {Object | null} 当前 canvas-editor-core 实例。 */
@@ -683,6 +687,8 @@ export function usePoetryCustomization(options = {}) {
     imagePreviewUrl,
     imageReplacing,
     operationStatus,
+    redirecting,
+    saveProgressText,
     saveStatus,
     saving,
     selectAiTheme,
