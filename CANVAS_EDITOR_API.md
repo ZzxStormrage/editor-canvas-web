@@ -1830,7 +1830,7 @@ const textElements = editor.getElementsByType('text')
 
 #### `editor.getElementsByRole(role)`
 
-按业务角色精确匹配元素，例如 `background`、`mask`、`ai-variable`。始终返回数组。
+按业务角色精确匹配元素，例如 `background`、`ai-theme-background`、`mask`、`ai-variable`。始终返回数组。
 
 #### `editor.getElementsByType(type)`
 
@@ -1874,6 +1874,7 @@ const groupElements = editor.elementData.getElementsByType('group')
 | 值 | 用途 |
 | --- | --- |
 | `background` | 生产背景图。 |
+| `ai-theme-background` | AI 主题背景图，由人像定制页替换。 |
 | `mask` | 生产遮罩图。 |
 | `ai-variable` | AI 可变图片。 |
 

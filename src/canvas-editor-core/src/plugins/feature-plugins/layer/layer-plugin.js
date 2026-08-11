@@ -17,7 +17,7 @@ const OBSERVED_PROPERTIES = new Set([
   'url',
   'fill'
 ])
-const IMAGE_ROLES = new Set(['background', 'mask', 'ai-variable'])
+const IMAGE_ROLES = new Set(['background', 'ai-theme-background', 'mask', 'ai-variable'])
 const THUMBNAIL_STABLE_PROPERTIES = new Set([
   'x',
   'y',

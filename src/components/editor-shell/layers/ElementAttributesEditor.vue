@@ -84,13 +84,7 @@
                 <strong>仅支持竖行</strong>
                 <small>从上往下单列排列，不换到第二列</small>
               </span>
-              <v-switch
-                v-model="singleVerticalLineModel"
-                color="primary"
-                density="compact"
-                hide-details
-                inset
-              />
+              <v-switch v-model="singleVerticalLineModel" color="primary" density="compact" hide-details inset />
             </label>
             <v-btn-toggle
               v-if="!isVerticalLayout"
@@ -105,12 +99,7 @@
               <v-btn value="wrap">自动换行</v-btn>
               <v-btn value="single-line">单行适配</v-btn>
             </v-btn-toggle>
-            <CompactNumberField
-              v-if="isSingleLineLayout"
-              v-model="textDraft.minFontSize"
-              label="最小字号"
-              :max="500"
-            />
+            <CompactNumberField v-if="isSingleLineLayout" v-model="textDraft.minFontSize" label="最小字号" :max="500" />
             <label v-if="!hasFixedTextFlow" class="text-rule-toggle">
               <span>
                 <strong>允许用户主动换行</strong>
@@ -161,12 +150,7 @@
                 label="每行最大内容"
                 :max="200"
               />
-              <CompactNumberField
-                v-if="showsLineLimits"
-                v-model="textDraft.maxLines"
-                label="最大行数"
-                :max="100"
-              />
+              <CompactNumberField v-if="showsLineLimits" v-model="textDraft.maxLines" label="最大行数" :max="100" />
             </div>
             <p class="text-rule-summary">{{ textRuleSummary }}</p>
           </div>
@@ -198,6 +182,7 @@ import CompactNumberField from './CompactNumberField.vue'
 const IMAGE_ROLE_OPTIONS = Object.freeze([
   { label: '普通图片', value: '' },
   { label: '背景图', value: 'background' },
+  { label: 'AI主题背景图', value: 'ai-theme-background' },
   { label: '遮罩图', value: 'mask' },
   { label: 'AI 可变图', value: 'ai-variable' }
 ])
@@ -213,47 +198,47 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'saved'])
-const attributes = props.editor.getElementAttributesById(props.elementId) ?? {}
-const savedMaterialGroupBinding = readImageMaterialGroupBinding(attributes)
+
+// 属性抽屉以 elementId 为 key 重新挂载，因此这里只读取一次初始快照，不需要额外 watch。
+const initialAttributes = props.editor.getElementAttributesById(props.elementId) ?? {}
+const savedMaterialGroupBinding = readImageMaterialGroupBinding(initialAttributes)
 const attributeError = ref('')
-const imageDraft = reactive({
-  description: typeof attributes.image?.description === 'string' ? attributes.image.description : '',
-  role: IMAGE_ROLE_VALUES.has(attributes.image?.role) ? attributes.image.role : '',
-  materialGroupId: savedMaterialGroupBinding?.id ?? null
-})
-const textDescription = ref(typeof attributes.text?.description === 'string' ? attributes.text.description : '')
-const textDraft = reactive(createTextDraft(attributes.textInput, attributes.textLayout))
+const imageDraft = reactive(createImageDraft(initialAttributes, savedMaterialGroupBinding))
+const textDescription = ref(readTextDescription(initialAttributes))
+const textDraft = reactive(createTextDraft(initialAttributes))
 
 const editorTitle = computed(() => (props.layerType === 'image' ? '图片属性' : '文字属性'))
 const isSingleLineLayout = computed(() => textDraft.layoutMode === 'single-line')
 const isVerticalLayout = computed(() => textDraft.singleVerticalLine)
+
+// 单行缩放和单列竖排都自行控制文字流，不接受普通换行和行数规则。
 const hasFixedTextFlow = computed(() => isSingleLineLayout.value || isVerticalLayout.value)
 const showsLineLimits = computed(() => !isVerticalLayout.value && textDraft.layoutMode === 'wrap')
+
+// 竖排与单行缩放使用不同布局策略，开启竖排时退出单行模式。
 const singleVerticalLineModel = computed({
   get: () => textDraft.singleVerticalLine,
-  set: (value) => {
-    textDraft.singleVerticalLine = Boolean(value)
-    if (value) textDraft.layoutMode = 'wrap'
+  set: (enabled) => {
+    textDraft.singleVerticalLine = Boolean(enabled)
+    if (enabled) textDraft.layoutMode = 'wrap'
   }
 })
+
+// 固定文字流下始终关闭手动换行，避免 UI 状态与最终保存结果不一致。
 const manualNewlineModel = computed({
   get: () => (hasFixedTextFlow.value ? false : textDraft.allowManualNewline),
-  set: (value) => {
-    textDraft.allowManualNewline = Boolean(value)
+  set: (enabled) => {
+    textDraft.allowManualNewline = Boolean(enabled)
   }
 })
 const englishOnlyHint = computed(() => {
-  return textDraft.allowSymbols
-    ? '保留英文、数字、空格和英文符号'
-    : '仅保留英文字母、数字和空格'
+  return textDraft.allowSymbols ? '保留英文、数字、空格和英文符号' : '仅保留英文字母、数字和空格'
 })
 const symbolRuleLabel = computed(() => {
   return textDraft.englishOnly ? '支持英文符号' : '支持符号和 Emoji'
 })
 const symbolRuleHint = computed(() => {
-  return textDraft.englishOnly
-    ? 'Emoji 会被英文限制过滤'
-    : '默认关闭；关闭后仅保留文字、数字和空格'
+  return textDraft.englishOnly ? 'Emoji 会被英文限制过滤' : '默认关闭；关闭后仅保留文字、数字和空格'
 })
 const textRuleSummary = computed(() => {
   const perLine = normalizeOptionalInteger(textDraft.maxCharactersPerLine)
@@ -345,8 +330,8 @@ function buildTextInputPayload() {
     ? null
     : validateOptionalInteger(textDraft.maxCharactersPerLine, '每行最大内容', 200)
   if (attributeError.value) return null
-  const maxCharactersSource = textDraft.maxCharacters
-    ?? (isSingleLineLayout.value ? textDraft.maxCharactersPerLine : null)
+  const maxCharactersSource =
+    textDraft.maxCharacters ?? (isSingleLineLayout.value ? textDraft.maxCharactersPerLine : null)
   const maxCharacters = validateOptionalInteger(maxCharactersSource, '最大字符限制', 5000)
   if (attributeError.value) return null
   const maxLines = isSingleLineLayout.value
@@ -406,14 +391,49 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function createTextDraft(source = {}, layoutSource = {}) {
+/**
+ * 从元素属性快照创建图片表单草稿。
+ *
+ * @param {Object} attributes 元素业务属性。
+ * @param {{ id?: string | number } | null} materialGroupBinding 已保存的素材组绑定。
+ * @returns {{ description: string, role: string, materialGroupId: string | number | null }} 图片草稿。
+ */
+function createImageDraft(attributes, materialGroupBinding) {
+  const imageAttributes = isPlainObject(attributes.image) ? attributes.image : {}
+
+  return {
+    description: typeof imageAttributes.description === 'string' ? imageAttributes.description : '',
+    role: IMAGE_ROLE_VALUES.has(imageAttributes.role) ? imageAttributes.role : '',
+    materialGroupId: materialGroupBinding?.id ?? null
+  }
+}
+
+/**
+ * 读取文字描述；非法历史数据统一视为空字符串。
+ *
+ * @param {Object} attributes 元素业务属性。
+ * @returns {string} 文字描述。
+ */
+function readTextDescription(attributes) {
+  return typeof attributes.text?.description === 'string' ? attributes.text.description : ''
+}
+
+/**
+ * 从元素属性快照创建文字规则草稿，并兼容旧版单行规则。
+ *
+ * @param {Object} attributes 元素业务属性。
+ * @returns {Object} 文字规则草稿。
+ */
+function createTextDraft(attributes) {
+  const source = isPlainObject(attributes.textInput) ? attributes.textInput : {}
+  const layoutSource = isPlainObject(attributes.textLayout) ? attributes.textLayout : {}
   const layout = normalizeTextLayout(layoutSource)
   const singleVerticalLine = source.singleVerticalLine === true || layout.mode === 'vertical'
-  const hasExplicitLayoutMode = isPlainObject(layoutSource)
-    && Object.prototype.hasOwnProperty.call(layoutSource, 'mode')
-  const isLegacySingleLine = !hasExplicitLayoutMode
-    && source.allowManualNewline === false
-    && Number(source.maxLines) === 1
+  const hasExplicitLayoutMode = Object.prototype.hasOwnProperty.call(layoutSource, 'mode')
+
+  // 旧文档没有 textLayout.mode，以“禁止手动换行且最多一行”表示单行模式。
+  const isLegacySingleLine =
+    !hasExplicitLayoutMode && source.allowManualNewline === false && Number(source.maxLines) === 1
   const layoutMode = isLegacySingleLine || layout.mode === 'single-line' ? 'single-line' : 'wrap'
 
   return {

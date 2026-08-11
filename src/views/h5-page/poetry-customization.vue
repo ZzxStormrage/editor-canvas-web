@@ -317,6 +317,10 @@ const props = defineProps({
   materialGroupMode: {
     type: Boolean,
     default: false
+  },
+  backgroundRole: {
+    type: String,
+    default: 'background'
   }
 })
 
@@ -370,6 +374,7 @@ const {
   pageId: props.pageId,
   defaultDesignName: props.defaultDesignName,
   materialGroupMode: props.materialGroupMode,
+  backgroundRole: props.backgroundRole,
   imageTargetDescriptions: props.imageTargetDescriptions,
   replacementTextLabel: props.replacementTextLabel,
   titleTextLabel: props.titleTextLabel
@@ -804,7 +809,6 @@ function resolveTextFieldRules(fieldId) {
 .background-option {
   flex: 0 0 auto;
   width: 40px;
-  height: 40px;
   padding: 0;
   overflow: hidden;
   border: 2px solid transparent;

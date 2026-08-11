@@ -1,5 +1,6 @@
 const IMAGE_ROLE_LABELS = Object.freeze({
   background: '背景',
+  'ai-theme-background': 'AI主题背景',
   mask: '遮罩',
   'ai-variable': 'AI'
 });

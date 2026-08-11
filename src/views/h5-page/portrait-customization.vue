@@ -7,6 +7,7 @@
     replacement-text-label="定制文案"
     title-text-label="人像标题"
     :image-target-descriptions="portraitImageDescriptions"
+    background-role="ai-theme-background"
     material-group-mode
   />
 </template>

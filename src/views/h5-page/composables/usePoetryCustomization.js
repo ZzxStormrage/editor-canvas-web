@@ -31,6 +31,7 @@ const BACKGROUND_QUERY_KEYS = Object.freeze([
   'backgroundImageUrl'
 ])
 const IMAGE_REPLACEMENT_TIMEOUT = 15000
+const BACKGROUND_IMAGE_FIT = 'cover'
 const TRY_MORE_EXCLUDED_QUERY_KEYS = new Set([
   'Authorization',
   'authorization',
@@ -62,6 +63,7 @@ const TRY_MORE_EXCLUDED_QUERY_KEYS = new Set([
  * @param {string} [options.replacementTextLabel] 通用替换文本的表单名称。
  * @param {string} [options.titleTextLabel] 主标题文本的表单名称。
  * @param {boolean} [options.materialGroupMode] 是否启用人像款素材组选择。
+ * @param {'background' | 'ai-theme-background'} [options.backgroundRole='background'] 背景图角色。
  * @returns {Object} 页面状态和操作方法。
  */
 export function usePoetryCustomization(options = {}) {
@@ -70,6 +72,9 @@ export function usePoetryCustomization(options = {}) {
   const defaultDesignName = options.defaultDesignName || '诗词定制'
   const imageTargetDescriptions = normalizeDescriptionList(options.imageTargetDescriptions)
   const materialGroupMode = options.materialGroupMode === true
+  const backgroundRole = options.backgroundRole === 'ai-theme-background'
+    ? 'ai-theme-background'
+    : 'background'
   const textLabels = {
     replacement: options.replacementTextLabel || '诗词内容',
     title: options.titleTextLabel || '诗词标题'
@@ -276,7 +281,7 @@ export function usePoetryCustomization(options = {}) {
       boundMaterialGroupIds.value = resolveTemplateMaterialGroupIds(documentData.value)
     }
     imageTargets.value = resolveImageTargets(payload.editor, imageTargetDescriptions)
-    backgroundTargets.value = resolveBackgroundTargets(payload.editor)
+    backgroundTargets.value = resolveBackgroundTargets(payload.editor, backgroundRole)
     materialTargets.value = materialGroupMode
       ? resolveMaterialTargetGroups(payload.editor, boundMaterialGroupIds.value)
       : []
@@ -442,7 +447,7 @@ export function usePoetryCustomization(options = {}) {
       tasks.push(() => replaceImages(editor, themeOption.url))
     }
     if (backgroundOption && backgroundTargets.value.length > 0 && backgroundOption.url !== currentBackgroundUrl) {
-      tasks.push(() => replaceImageTargets(editor, backgroundOption.url, backgroundTargets.value, 'stretch'))
+      tasks.push(() => replaceImageTargets(editor, backgroundOption.url, backgroundTargets.value, BACKGROUND_IMAGE_FIT))
     }
     if (tasks.length === 0) {
       return
@@ -483,7 +488,7 @@ export function usePoetryCustomization(options = {}) {
       selectedBackgroundId.value = backgroundOption?.id ?? ''
       if (backgroundOption && backgroundTargets.value.length > 0) {
         await withTimeout(
-          replaceImageTargets(editor, backgroundOption.url, backgroundTargets.value, 'stretch'),
+          replaceImageTargets(editor, backgroundOption.url, backgroundTargets.value, BACKGROUND_IMAGE_FIT),
           IMAGE_REPLACEMENT_TIMEOUT
         )
       }
@@ -574,7 +579,7 @@ export function usePoetryCustomization(options = {}) {
     operationStatus.value = { type: 'success', text: '' }
     try {
       await withTimeout(
-        replaceImageTargets(editor, option.url, backgroundTargets.value, 'stretch'),
+        replaceImageTargets(editor, option.url, backgroundTargets.value, BACKGROUND_IMAGE_FIT),
         IMAGE_REPLACEMENT_TIMEOUT
       )
       selectedBackgroundId.value = option.id
@@ -809,9 +814,13 @@ export function resolveMaterialTargetsForGroup(groups, groupId) {
   })?.targets ?? []
 }
 
-/** @param {Object} editor 编辑器实例。 @returns {Object[]} 背景图片节点。 */
-function resolveBackgroundTargets(editor) {
-  return editor.getElementsByRole('background')
+/**
+ * @param {Object} editor 编辑器实例。
+ * @param {'background' | 'ai-theme-background'} role 背景图角色。
+ * @returns {Object[]} 背景图片节点。
+ */
+function resolveBackgroundTargets(editor, role) {
+  return editor.getElementsByRole(role)
 }
 
 /**
