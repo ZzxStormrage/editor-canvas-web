@@ -13,6 +13,8 @@ wufangzhai_production/
 production/
 diststaging/
 distproduction/
+distzhwy/
+distxiaoxiang/
 node_modules
 .eslintrc-auto-import.json
 .pnpm-store/
