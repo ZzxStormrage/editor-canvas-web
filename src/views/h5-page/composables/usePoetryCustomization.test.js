@@ -2,11 +2,40 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  resolvePoetrySubmitBlockedMessage,
   resolveMaterialOptions,
   resolveMaterialTargetGroups,
   resolveMaterialTargetsForGroup,
   resolveTemplateMaterialGroupIds
 } from './usePoetryCustomization.js'
+
+test('portrait submit explains that an AI portrait must be generated without disabling the CTA', () => {
+  assert.equal(
+    resolvePoetrySubmitBlockedMessage({
+      canvasLoaded: true,
+      materialGroupMode: true,
+      materialOptionCount: 1,
+      materialTargetCount: 1,
+      requiresAiTheme: true,
+      hasAiTheme: false
+    }),
+    '请先点击“尝试更多”，上传人像并生成定制效果。'
+  )
+})
+
+test('portrait submit is ready after materials and an AI portrait are available', () => {
+  assert.equal(
+    resolvePoetrySubmitBlockedMessage({
+      canvasLoaded: true,
+      materialGroupMode: true,
+      materialOptionCount: 1,
+      materialTargetCount: 1,
+      requiresAiTheme: true,
+      hasAiTheme: true
+    }),
+    ''
+  )
+})
 
 test('material options keep target group and deduplicate URLs within each group', () => {
   const options = resolveMaterialOptions(

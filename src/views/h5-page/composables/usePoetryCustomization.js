@@ -149,16 +149,26 @@ export function usePoetryCustomization(options = {}) {
       !imageReplacing.value && !saving.value && !redirecting.value
   })
 
-  const canSubmit = computed(() => {
-    const materialReady =
-      !materialGroupMode ||
-      (!materialOptionsLoading.value &&
-        !materialReplacing.value &&
-        materialOptions.value.length > 0 &&
-        materialTargets.value.length > 0)
-    return canvasLoaded.value && !templateLoading.value && !imageReplacing.value &&
-      !saving.value && !redirecting.value && materialReady
-  })
+  const submitBlockedMessage = computed(() =>
+    resolvePoetrySubmitBlockedMessage({
+      canvasLoaded: canvasLoaded.value,
+      templateLoading: templateLoading.value,
+      templateError: templateError.value,
+      imageReplacing: imageReplacing.value,
+      saving: saving.value,
+      redirecting: redirecting.value,
+      materialGroupMode,
+      materialOptionsLoading: materialOptionsLoading.value,
+      materialOptionsError: materialOptionsError.value,
+      materialReplacing: materialReplacing.value,
+      materialOptionCount: materialOptions.value.length,
+      materialTargetCount: materialTargets.value.length,
+      requiresAiTheme: materialGroupMode && Boolean(readRouteValue(route.query.aiSubjectIds)),
+      hasAiTheme: Boolean(selectedAiThemeId.value && aiThemeOptions.value.length)
+    })
+  )
+
+  const canSubmit = computed(() => !submitBlockedMessage.value)
 
   /** @returns {Object | null} 当前 canvas-editor-core 实例。 */
   function getEditor() {
@@ -631,6 +641,10 @@ export function usePoetryCustomization(options = {}) {
   /** @returns {Promise<void>} 保存统一 JSON、预览图和打印区域。 */
   async function submitDesign() {
     if (!canSubmit.value) {
+      operationStatus.value = {
+        type: 'warning',
+        text: submitBlockedMessage.value || '当前定制尚未准备完成，请稍后再试。'
+      }
       return
     }
 
@@ -704,6 +718,7 @@ export function usePoetryCustomization(options = {}) {
     selectedBackgroundId,
     setImageFit,
     showAdvancedSettings,
+    submitBlockedMessage,
     submitDesign,
     templateError,
     templateLoading,
@@ -711,6 +726,36 @@ export function usePoetryCustomization(options = {}) {
     tryMoreThemes,
     updateTextField
   }
+}
+
+/**
+ * 返回当前不能购买时的可操作提示；空字符串表示可以提交。
+ *
+ * @param {Object} state 页面提交状态。
+ * @returns {string} 阻止购买的原因。
+ */
+export function resolvePoetrySubmitBlockedMessage(state = {}) {
+  if (state.saving || state.redirecting) return '正在保存定制内容，请稍候。'
+  if (state.templateLoading) return '模板正在加载，请稍候再试。'
+  if (!state.canvasLoaded) {
+    return state.templateError
+      ? '模板加载失败，请重新进入页面后再试。'
+      : '画布正在加载，请稍候再试。'
+  }
+  if (state.imageReplacing) return '图片正在更新，请稍候再试。'
+
+  if (state.materialGroupMode) {
+    if (state.materialOptionsLoading) return '素材正在加载，请稍候再试。'
+    if (state.materialOptionsError) return '素材加载失败，请先重新加载。'
+    if (state.materialReplacing) return '素材正在更新，请稍候再试。'
+    if (!state.materialOptionCount) return '暂无可用素材，请先配置商品素材。'
+    if (!state.materialTargetCount) return '当前模板未绑定素材组，暂时无法购买。'
+    if (state.requiresAiTheme && !state.hasAiTheme) {
+      return '请先点击“尝试更多”，上传人像并生成定制效果。'
+    }
+  }
+
+  return ''
 }
 
 /**

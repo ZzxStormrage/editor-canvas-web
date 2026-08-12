@@ -225,12 +225,15 @@
         <p v-if="saveStatus.type === 'error' && saveStatus.text" class="save-error" role="alert">
           {{ saveStatus.text }}
         </p>
+        <p v-if="submitHint" class="submit-hint" role="status" aria-live="polite">
+          {{ submitHint }}
+        </p>
         <button
           class="submit-button"
           type="button"
-          :disabled="!canSubmit"
+          :disabled="saving || redirecting"
           :aria-busy="saving || redirecting"
-          @click="submitDesign"
+          @click="handleSubmitClick"
         >
           {{ saving ? '保存中...' : '立即购买' }}
         </button>
@@ -365,6 +368,7 @@ const {
   selectedBackgroundId,
   setImageFit,
   showAdvancedSettings,
+  submitBlockedMessage,
   submitDesign,
   templateError,
   templateLoading,
@@ -380,14 +384,29 @@ const {
   titleTextLabel: props.titleTextLabel
 })
 
+const submitHint = ref('')
+
+/** @returns {Promise<void>} 提交定制，未就绪时保持按钮可点并告知用户下一步。 */
+async function handleSubmitClick() {
+  if (!canSubmit.value) {
+    submitHint.value = submitBlockedMessage.value || '当前定制尚未准备完成，请稍后再试。'
+    return
+  }
+
+  submitHint.value = ''
+  await submitDesign()
+}
+
 /** @param {Object} result AI 主题生成结果。 @returns {Promise<void>} */
 async function handleAiGenerated(result) {
   await addGeneratedTheme(result)
+  submitHint.value = ''
   showAiTopicDialog.value = false
 }
 
 /** @returns {void} */
 function openAiTopicDialog() {
+  submitHint.value = ''
   if (aiTopicRef.value?.openSingleTopicSource?.()) {
     return
   }
@@ -1047,8 +1066,16 @@ function resolveTextFieldRules(fieldId) {
 }
 
 .submit-button:disabled {
-  background: #b7b7b7;
-  cursor: not-allowed;
+  cursor: wait;
+}
+
+.submit-hint {
+  margin: 0 0 6px;
+  color: #a42635;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .save-error {
