@@ -2,7 +2,7 @@
  * @Author: zzx 452436275@qq.com
  * @Date: 2024-04-29 14:38:47
  * @LastEditors: zzx 452436275@qq.com
- * @LastEditTime: 2026-07-17 16:48:18
+ * @LastEditTime: 2026-08-12 15:00:12
  * @FilePath: /wufangzhai-custom/vite.config.ts
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -19,6 +19,7 @@ import { versionInjector } from './vite-plugin-version.js'
 export default ({ mode }) => {
   const env = loadEnv(mode, process.cwd())
   const xiaoxiangProxyTarget = env.VITE_XIAOXIANG_API_PROXY_TARGET?.trim()
+  const nodeName = normalizeOutputName(env.VITE_NODE_NAME) || normalizeOutputName(mode)
 
   return {
     base: env.VITE_OUTDIR,
@@ -28,7 +29,7 @@ export default ({ mode }) => {
       }
     },
     build: {
-      outDir: 'dist' + mode
+      outDir: `dist${nodeName}`
     },
     plugins: [
       vue(),
@@ -94,11 +95,24 @@ export default ({ mode }) => {
             },
             '/customer': {
               target: xiaoxiangProxyTarget,
-              changeOrigin: true,
+              changeOrigin: true
               // rewrite: (path) => path.replace(/^\/customer/, '')
             }
           }
         : {}
     }
   }
+}
+
+/**
+ * 将环境节点名称转换为安全的构建目录后缀。
+ *
+ * @param {string | undefined} value 环境文件中的节点名称。
+ * @returns {string} 可用于目录名的节点名称。
+ */
+function normalizeOutputName(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
