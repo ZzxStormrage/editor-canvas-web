@@ -745,11 +745,7 @@ export function resolvePoetrySubmitBlockedMessage(state = {}) {
   if (state.imageReplacing) return '图片正在更新，请稍候再试。'
 
   if (state.materialGroupMode) {
-    if (state.materialOptionsLoading) return '素材正在加载，请稍候再试。'
-    if (state.materialOptionsError) return '素材加载失败，请先重新加载。'
     if (state.materialReplacing) return '素材正在更新，请稍候再试。'
-    if (!state.materialOptionCount) return '暂无可用素材，请先配置商品素材。'
-    if (!state.materialTargetCount) return '当前模板未绑定素材组，暂时无法购买。'
     if (state.requiresAiTheme && !state.hasAiTheme) {
       return '请先点击“尝试更多”，上传人像并生成定制效果。'
     }

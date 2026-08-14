@@ -37,6 +37,31 @@ test('portrait submit is ready after materials and an AI portrait are available'
   )
 })
 
+test('portrait submit does not require configured or selected materials', () => {
+  assert.equal(
+    resolvePoetrySubmitBlockedMessage({
+      canvasLoaded: true,
+      materialGroupMode: true,
+      materialOptionsError: '素材加载失败',
+      materialOptionCount: 0,
+      materialTargetCount: 0,
+      requiresAiTheme: false
+    }),
+    ''
+  )
+})
+
+test('portrait submit waits while a material replacement is in progress', () => {
+  assert.equal(
+    resolvePoetrySubmitBlockedMessage({
+      canvasLoaded: true,
+      materialGroupMode: true,
+      materialReplacing: true
+    }),
+    '素材正在更新，请稍候再试。'
+  )
+})
+
 test('material options keep target group and deduplicate URLs within each group', () => {
   const options = resolveMaterialOptions(
     [

@@ -27,7 +27,7 @@
     </section>
 
     <section class="customization-sheet" :aria-label="`${props.pageTitle}选项`">
-      <div class="customization-tabs" role="tablist" aria-label="定制类型">
+      <div v-if="showCustomizationTabs" class="customization-tabs" role="tablist" aria-label="定制类型">
         <button
           type="button"
           role="tab"
@@ -84,7 +84,7 @@
               </button>
             </div>
 
-            <div v-if="backgroundOptions.length" class="background-section">
+            <div v-if="backgroundOptions.length > 1" class="background-section">
               <h3>选择背景图</h3>
               <div class="background-list" aria-label="背景图片">
                 <button
@@ -279,7 +279,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import AiTopic from './components/ai-topic.vue'
@@ -385,6 +385,13 @@ const {
 })
 
 const submitHint = ref('')
+const showCustomizationTabs = computed(() => {
+  return !props.materialGroupMode || materialOptions.value.length > 1
+})
+
+watch(showCustomizationTabs, (visible) => {
+  if (!visible) activeTab.value = 'image'
+}, { immediate: true })
 
 /** @returns {Promise<void>} 提交定制，未就绪时保持按钮可点并告知用户下一步。 */
 async function handleSubmitClick() {
