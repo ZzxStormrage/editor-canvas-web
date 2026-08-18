@@ -123,27 +123,27 @@ import {
 const FONT_STYLE_MOCKS = [
   {
     id: 'jinshu',
-    displayName: '锦书',
-    fontName: '字由点字桃花诗体',
-    fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202301/119c5985a4cd4dc49b27d55c6a9f4b06.ttf'
+    displayName: 'AI数黑体',
+    fontName: 'AI数黑体',
+    fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/20260818/AlimamaDaoLiTi.ttf'
   },
   {
     id: 'song',
-    displayName: '宋体',
-    fontName: '字由点字典宋',
-    fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202302/389ce07001904657ba2ff371076fdf55.ttf'
+    displayName: '东方楷体',
+    fontName: '东方楷体',
+    fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/20260818/linhailishu.ttf'
   },
   {
     id: 'hei',
-    displayName: '黑体',
-    fontName: '字由点字典黑55J',
-    fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202301/f2ca136502894883bd2390a60f66a3c2.ttf'
+    displayName: '古隶书体',
+    fontName: '古隶书体',
+    fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/20260818/AlimamaShuHeiTi-Bold.ttf'
   },
   {
     id: 'xingshu',
-    displayName: '行书',
-    fontName: '字由点字淡墨行楷',
-    fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/202301/3e6dc58b785d499e9c5545344f3917f2.ttf'
+    displayName: '东方隶书',
+    fontName: '东方隶书',
+    fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/20260818/AlimamaDongFangDaKai-Regular.ttf'
   }
 ]
 const DEFAULT_NAME_INPUT_RULES = Object.freeze({
@@ -186,14 +186,7 @@ const {
   handleCanvasError: handleTemplateCanvasError,
   loadTemplateFromRoute
 } = useH5TemplateDocument({ errorLabel: 'Hundred family surnames' })
-const {
-  redirecting,
-  saving,
-  saveProgressText,
-  saveStatus,
-  resetSaveStatus,
-  savePage
-} = useH5PageSave({
+const { redirecting, saving, saveProgressText, saveStatus, resetSaveStatus, savePage } = useH5PageSave({
   route,
   pageId: 'hundred-family-surnames',
   defaultDesignName: '百家姓定制',
@@ -392,17 +385,24 @@ function applySelectedFontStyle(editor, style = selectedFontStyle.value) {
 /** @param {Object | null} [editor] 核心编辑器实例。 @returns {void} */
 function syncSelectedFontFromEditor(editor) {
   const activeEditor = editor ?? getCanvasEditor()
-  if (!activeEditor || fontStyles.value.length === 0) {
+  const defaultFontId = fontStyles.value[0]?.id ?? null
+  if (!activeEditor) {
+    selectedFontId.value = defaultFontId
     return
   }
 
   const element =
     activeEditor.getElementsByAttribute('text.description', '姓')[0] ??
     activeEditor.getElementsByAttribute('text.description', '名')[0]
-  const style = fontStyles.value.find((item) => {
+  const matchedStyle = fontStyles.value.find((item) => {
     return item.fontName === element?.fontFamily || item.fontUrl === element?.fontUrl
   })
-  selectedFontId.value = style?.id ?? null
+  const style = matchedStyle ?? fontStyles.value[0] ?? null
+  selectedFontId.value = style?.id ?? defaultFontId
+
+  if (!matchedStyle && style) {
+    applySelectedFontStyle(activeEditor, style)
+  }
 }
 
 /** @returns {Object | null} 当前画布编辑器实例。 */
@@ -422,8 +422,12 @@ watch([surname, givenName], () => {
 /** @returns {Promise<void>} 保存当前 JSON，并按需获取打印区域截图。 */
 async function onSubmit() {
   if (
-    saving.value || redirecting.value || templateLoading.value ||
-    !documentData.value || !canvasLoaded.value || !surname.value
+    saving.value ||
+    redirecting.value ||
+    templateLoading.value ||
+    !documentData.value ||
+    !canvasLoaded.value ||
+    !surname.value
   ) {
     return
   }
