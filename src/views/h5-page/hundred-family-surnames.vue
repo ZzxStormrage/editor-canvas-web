@@ -123,26 +123,26 @@ import {
 const FONT_STYLE_MOCKS = [
   {
     id: 'jinshu',
-    displayName: 'AI数黑体',
-    fontName: 'AI数黑体',
+    displayName: '古隶',
+    fontName: '古隶',
     fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/20260818/AlimamaDaoLiTi.ttf'
   },
   {
     id: 'song',
-    displayName: '东方楷体',
-    fontName: '东方楷体',
+    displayName: '东方隶书',
+    fontName: '东方隶书',
     fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/20260818/linhailishu.ttf'
   },
   {
     id: 'hei',
-    displayName: '古隶书体',
-    fontName: '古隶书体',
+    displayName: '数黑体',
+    fontName: '数黑体',
     fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/20260818/AlimamaShuHeiTi-Bold.ttf'
   },
   {
     id: 'xingshu',
-    displayName: '东方隶书',
-    fontName: '东方隶书',
+    displayName: '东方大楷',
+    fontName: '东方大楷',
     fontUrl: 'https://ec-sh.oss-cn-beijing.aliyuncs.com/items/font/20260818/AlimamaDongFangDaKai-Regular.ttf'
   }
 ]
