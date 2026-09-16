@@ -18,6 +18,7 @@
             :fixed="true"
             :fixed-number="aspectRatio"
             :auto-crop="true"
+            :can-move-box="false"
             :center-box="true"
             :max-img-size="2400"
             mode="cover"
