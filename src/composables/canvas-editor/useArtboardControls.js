@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue'
 
 import { pictureApi } from '../../api/index.js'
 import { formatMillimeter, pixelToMillimeter } from '../../canvas-editor-core/src/utils/unit.js'
+import { resolveCapturePixelRatio } from '../../utils/capture-resolution.js'
 import { resizeArtboardWithContent } from './artboard-content-scaling.js'
 import { resolveContainedImagePlacement } from './artboard-image-placement.js'
 import { normalizePixelForUI } from './editor-ui-utils.js'
@@ -430,6 +431,7 @@ export function useArtboardControls(getEditor, notify = null) {
       includeMask: false,
       type: 'image/png',
       quality: 1,
+      pixelRatio: resolveCaptureOptionPixelRatio(options, editor.getPrintAreaProperties()),
       ...options,
       upload: options.upload ?? pictureApi.upload
     })
@@ -453,6 +455,7 @@ export function useArtboardControls(getEditor, notify = null) {
       includeMask: true,
       type: 'image/png',
       quality: 1,
+      pixelRatio: resolveCaptureOptionPixelRatio(options, getArtboardBounds()),
       ...options,
       upload: options.upload ?? pictureApi.upload
     })
@@ -542,6 +545,19 @@ export function useArtboardControls(getEditor, notify = null) {
     captureCanvas,
     syncPrintAreaControls
   }
+}
+
+/**
+ * 显式传入的截图倍率优先，否则按截图区域动态计算。
+ *
+ * @param {{ pixelRatio?: number }} options 截图选项。
+ * @param {{ width?: number, height?: number } | null} bounds 截图区域。
+ * @returns {number} 截图输出倍率。
+ */
+function resolveCaptureOptionPixelRatio(options, bounds) {
+  return options.pixelRatio === undefined
+    ? resolveCapturePixelRatio(bounds)
+    : options.pixelRatio
 }
 
 /**

@@ -1376,6 +1376,7 @@ const result = await editor.capturePrintArea({
 ```
 
 通过 `useCanvasEditor()` 暴露的 `capturePrintArea(options)` 已默认注入 `pictureApi.upload`，
+并会在未显式传入 `pixelRatio` 时根据截图区域动态计算 `1-2` 倍输出，
 因此 Vue 组件直接调用即可得到上传结果：
 
 ```js
@@ -1430,7 +1431,9 @@ const imageUrl = await editor.captureCanvas({
 | `upload` | 无 | 接收 `File` 的上传函数。 |
 
 完整画板截图始终排除打印区域边框和吸附辅助线；如果需要透明 PNG，可显式传入
-`{ fill: undefined }`。通过 `useCanvasEditor()` 调用时，Vue 封装默认使用 `pictureApi.upload`。
+`{ fill: undefined }`。通过 `useCanvasEditor()` 调用时，Vue 封装默认使用 `pictureApi.upload`，
+并在未传 `pixelRatio` 时根据画板尺寸动态选择 `1-2` 倍输出。动态策略的最长边上限为
+`2400px`，总像素上限为 `800万`；显式传入 `pixelRatio` 可覆盖该策略。
 
 ### 保存与截图相互独立
 

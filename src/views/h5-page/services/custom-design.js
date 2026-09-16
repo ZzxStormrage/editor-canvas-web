@@ -1,5 +1,6 @@
 import { customerPictureApi } from '../api/customer-picture.js'
 import { customerTemplateApi } from '../api/customer-template.js'
+import { resolveCapturePixelRatio } from '../../../utils/capture-resolution.js'
 import { readRouteTemplateId, readRouteValue } from './route-navigation.js'
 
 /**
@@ -24,9 +25,13 @@ export async function saveH5CustomDesign(editor, options = {}) {
     throw new Error('无法获取当前画布 JSON。')
   }
 
-  const previewImgUrl = await capturePreviewImage(editor)
-  const productImgUrl = editor.getPrintAreaProperties()
-    ? await captureProductImage(editor)
+  const artboardBounds = editor.artboard?.getContentBounds?.()
+  const printAreaBounds = editor.getPrintAreaProperties()
+  const previewPixelRatio = resolveCapturePixelRatio(artboardBounds)
+  const productPixelRatio = resolveCapturePixelRatio(printAreaBounds)
+  const previewImgUrl = await capturePreviewImage(editor, previewPixelRatio)
+  const productImgUrl = printAreaBounds
+    ? await captureProductImage(editor, productPixelRatio)
     : null
   const skuId = readRouteValue(options.skuId)
   const dto = {
@@ -44,24 +49,34 @@ export async function saveH5CustomDesign(editor, options = {}) {
   return { editorJson, previewImgUrl, productImgUrl, dto, response }
 }
 
-/** @param {Object} editor 编辑器实例。 @returns {Promise<string>} 完整画板截图地址。 */
-function capturePreviewImage(editor) {
+/**
+ * @param {Object} editor 编辑器实例。
+ * @param {number} pixelRatio 截图输出倍率。
+ * @returns {Promise<string>} 完整画板截图地址。
+ */
+function capturePreviewImage(editor, pixelRatio) {
   return editor.captureCanvas({
     includeBackground: true,
     includeMask: true,
     type: 'image/png',
     quality: 1,
+    pixelRatio,
     upload: (file) => customerPictureApi.upload(file)
   })
 }
 
-/** @param {Object} editor 编辑器实例。 @returns {Promise<string>} 打印区域截图地址。 */
-function captureProductImage(editor) {
+/**
+ * @param {Object} editor 编辑器实例。
+ * @param {number} pixelRatio 截图输出倍率。
+ * @returns {Promise<string>} 打印区域截图地址。
+ */
+function captureProductImage(editor, pixelRatio) {
   return editor.capturePrintArea({
     includeBackground: false,
     includeMask: false,
     type: 'image/png',
     quality: 1,
+    pixelRatio,
     upload: (file) => customerPictureApi.upload(file)
   })
 }

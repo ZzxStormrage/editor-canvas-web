@@ -106,6 +106,7 @@
 
 <script>
 import exifmin from '../utils/exif-js-min'
+import { resolveCapturePixelRatio } from '../../../utils/capture-resolution.js'
 
 /**
  * 判断图片地址是否需要匿名跨域加载。
@@ -322,7 +323,7 @@ export default {
       if (this.infoTrue) {
         let dpr = 1
         if (this.high && !this.full) {
-          dpr = window.devicePixelRatio
+          dpr = resolveCapturePixelRatio({ width: this.cropW, height: this.cropH })
         }
         if (this.enlarge !== 1 && !this.full) {
           dpr = Math.abs(Number(this.enlarge))
@@ -1442,7 +1443,7 @@ export default {
           const ctx = canvas.getContext('2d')
           let dpr = 1
           if (this.high && !this.full) {
-            dpr = window.devicePixelRatio
+            dpr = resolveCapturePixelRatio({ width: this.cropW, height: this.cropH })
           }
           if (this.enlarge !== 1 && !this.full) {
             dpr = Math.abs(Number(this.enlarge))
