@@ -638,12 +638,13 @@ export class Editor {
   }
 
   /**
-   * 不改变缩放，仅将画板居中到当前可视区域。
+   * 不改变缩放，将画板指定方向居中到当前可视区域。
    *
+   * @param {{ horizontal?: boolean, vertical?: boolean }} [options] 居中方向。
    * @returns {Editor} 当前编辑器实例。
    */
-  centerArtboard() {
-    this.#viewport.centerArtboard()
+  centerArtboard(options) {
+    this.#viewport.centerArtboard(options)
     return this
   }
 

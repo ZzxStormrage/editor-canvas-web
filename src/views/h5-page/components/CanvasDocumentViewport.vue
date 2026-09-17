@@ -1,9 +1,7 @@
 <template>
-  <div
-    ref="hostRef"
-    class="canvas-document-viewport"
-    :class="{ 'is-zoom-limited': zoomLimits !== false }"
-  ></div>
+  <div class="canvas-document-viewport">
+    <div ref="hostRef" class="canvas-document-surface" :class="{ 'is-zoom-limited': zoomLimits !== false }"></div>
+  </div>
 </template>
 
 <script setup>
@@ -30,7 +28,7 @@ const props = defineProps({
   },
   zoomLimits: {
     type: [Object, Boolean],
-    default: () => ({ minRatio: 1, maxRatio: 1 })
+    default: () => ({ minRatio: 1, maxRatio: 2 })
   }
 })
 
@@ -39,6 +37,7 @@ const hostRef = ref(null)
 let editor = null
 let resizeObserver = null
 let initialZoomOptions = null
+let removeZoomListener = null
 const H5_DOCUMENT_LOAD_DEFAULTS = Object.freeze({ deferHiddenImages: true })
 
 /** @returns {import('../../../canvas-editor-core/src/core/Editor.js').Editor | null} 编辑器实例。 */
@@ -109,15 +108,15 @@ function applyZoomLimits() {
   }
 
   const options = typeof props.zoomLimits === 'object' ? props.zoomLimits : {}
-  const fittedZoom = Number(editor.state.zoom)
+  const nextFittedZoom = Number(editor.state.zoom)
   const minRatio = normalizeZoomRatio(options.minRatio, 1)
   const maxRatio = Math.max(minRatio, normalizeZoomRatio(options.maxRatio, 2))
 
   editor.state.zoomOptions = {
     ...editor.state.zoomOptions,
-    min: fittedZoom * minRatio,
-    max: fittedZoom * maxRatio,
-    initial: fittedZoom
+    min: nextFittedZoom * minRatio,
+    max: nextFittedZoom * maxRatio,
+    initial: nextFittedZoom
   }
 }
 
@@ -142,6 +141,7 @@ function mountEditor() {
     ...props.editorOptions
   })
   initialZoomOptions = { ...editor.state.zoomOptions }
+  removeZoomListener = editor.eventBus.on('viewport:zoom-changed', centerArtboardVertically)
   resizeObserver = new ResizeObserver(fitArtboard)
   resizeObserver.observe(hostRef.value)
   emit('ready', editor)
@@ -150,6 +150,8 @@ function mountEditor() {
 
 /** @returns {void} 销毁核心实例和尺寸监听。 */
 function unmountEditor() {
+  removeZoomListener?.()
+  removeZoomListener = null
   resizeObserver?.disconnect()
   resizeObserver = null
   editor?.destroy()
@@ -157,9 +159,17 @@ function unmountEditor() {
   initialZoomOptions = null
 }
 
-watch(() => props.document, (document) => {
-  void loadDocument(document)
-})
+/** @returns {void} 缩放时保持画板在 H5 可视区域内垂直居中。 */
+function centerArtboardVertically() {
+  editor?.centerArtboard({ horizontal: false, vertical: true })
+}
+
+watch(
+  () => props.document,
+  (document) => {
+    void loadDocument(document)
+  }
+)
 
 onMounted(mountEditor)
 onBeforeUnmount(unmountEditor)
@@ -179,7 +189,12 @@ defineExpose({
   overflow: hidden;
 }
 
-.canvas-document-viewport.is-zoom-limited {
+.canvas-document-surface {
+  position: absolute;
+  inset: 0;
+}
+
+.canvas-document-surface.is-zoom-limited {
   overscroll-behavior: contain;
   touch-action: none;
 }

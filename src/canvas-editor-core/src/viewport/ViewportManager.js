@@ -154,13 +154,14 @@ export class ViewportManager {
   }
 
   /**
-   * 不改变缩放，仅将画板中心对齐到当前可视区域中心。
+   * 不改变缩放，将画板指定方向对齐到当前可视区域中心。
    *
+   * @param {{ horizontal?: boolean, vertical?: boolean }} [options={}] 居中方向。
    * @returns {void}
    */
-  centerArtboard() {
+  centerArtboard(options = {}) {
     this.#stage.scale = this.#state.zoom;
-    this.#centerStageOnArtboard(this.#state.zoom);
+    this.#centerStageOnArtboard(this.#state.zoom, options);
   }
 
   /**
@@ -218,14 +219,21 @@ export class ViewportManager {
    * 按当前画板中心重新定位 stage，保证按钮缩放后画板居中。
    *
    * @param {number} zoom 当前缩放倍数。
+   * @param {{ horizontal?: boolean, vertical?: boolean }} [options={}] 居中方向。
    * @returns {void}
    */
-  #centerStageOnArtboard(zoom) {
+  #centerStageOnArtboard(zoom, options = {}) {
     const viewportCenter = this.#getViewportCenter();
     const artboardCenter = this.#getArtboardCenter();
+    const shouldCenterHorizontally = options.horizontal !== false;
+    const shouldCenterVertically = options.vertical !== false;
 
-    this.#stage.x = viewportCenter.x - artboardCenter.x * zoom;
-    this.#stage.y = viewportCenter.y - artboardCenter.y * zoom;
+    if (shouldCenterHorizontally) {
+      this.#stage.x = viewportCenter.x - artboardCenter.x * zoom;
+    }
+    if (shouldCenterVertically) {
+      this.#stage.y = viewportCenter.y - artboardCenter.y * zoom;
+    }
   }
 
   /**
