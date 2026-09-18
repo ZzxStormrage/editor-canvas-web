@@ -1,6 +1,14 @@
 <template>
   <div class="canvas-document-viewport">
-    <div ref="hostRef" class="canvas-document-surface" :class="{ 'is-zoom-limited': zoomLimits !== false }"></div>
+    <div
+      ref="hostRef"
+      class="canvas-document-surface"
+      :class="{ 'is-zoom-limited': zoomLimits !== false }"
+      @touchstart="handleTouchStart"
+      @touchmove="handleTouchMove"
+      @touchend="handleTouchEnd"
+      @touchcancel="resetArtboardPan"
+    ></div>
   </div>
 </template>
 
@@ -28,7 +36,7 @@ const props = defineProps({
   },
   zoomLimits: {
     type: [Object, Boolean],
-    default: () => ({ minRatio: 1, maxRatio: 2 })
+    default: () => ({ minRatio: 1, maxRatio: 4 })
   }
 })
 
@@ -38,7 +46,13 @@ let editor = null
 let resizeObserver = null
 let initialZoomOptions = null
 let removeZoomListener = null
-const H5_DOCUMENT_LOAD_DEFAULTS = Object.freeze({ deferHiddenImages: true })
+let artboardPanTouchId = null
+let artboardPanClientX = null
+let artboardPanClientY = null
+const H5_DOCUMENT_LOAD_DEFAULTS = Object.freeze({
+  deferHiddenImages: true,
+  interactive: false
+})
 
 /** @returns {import('../../../canvas-editor-core/src/core/Editor.js').Editor | null} 编辑器实例。 */
 function getEditor() {
@@ -59,8 +73,10 @@ async function loadDocument(document = props.document) {
   try {
     const loadedDocument = await editor.loadDocument(document, {
       ...H5_DOCUMENT_LOAD_DEFAULTS,
-      ...props.loadOptions
+      ...props.loadOptions,
+      interactive: false
     })
+    editor.deselect()
     await nextTick()
     fitArtboard()
     emit('loaded', { editor, document: loadedDocument })
@@ -110,7 +126,7 @@ function applyZoomLimits() {
   const options = typeof props.zoomLimits === 'object' ? props.zoomLimits : {}
   const nextFittedZoom = Number(editor.state.zoom)
   const minRatio = normalizeZoomRatio(options.minRatio, 1)
-  const maxRatio = Math.max(minRatio, normalizeZoomRatio(options.maxRatio, 2))
+  const maxRatio = Math.max(minRatio, normalizeZoomRatio(options.maxRatio, 4))
 
   editor.state.zoomOptions = {
     ...editor.state.zoomOptions,
@@ -132,16 +148,24 @@ function mountEditor() {
     return
   }
 
+  const customLeaferOptions = props.editorOptions.leaferOptions ?? {}
   editor = createEditor({
     view: hostRef.value,
     autoResize: true,
     areaType: 'blank',
     showGrid: false,
     background: 'transparent',
-    ...props.editorOptions
+    ...props.editorOptions,
+    leaferOptions: {
+      ...customLeaferOptions,
+      pointer: {
+        ...customLeaferOptions.pointer,
+        snap: false
+      }
+    }
   })
   initialZoomOptions = { ...editor.state.zoomOptions }
-  removeZoomListener = editor.eventBus.on('viewport:zoom-changed', centerArtboardVertically)
+  removeZoomListener = editor.eventBus.on('viewport:zoom-changed', stabilizeArtboardPosition)
   resizeObserver = new ResizeObserver(fitArtboard)
   resizeObserver.observe(hostRef.value)
   emit('ready', editor)
@@ -152,6 +176,7 @@ function mountEditor() {
 function unmountEditor() {
   removeZoomListener?.()
   removeZoomListener = null
+  resetArtboardPan()
   resizeObserver?.disconnect()
   resizeObserver = null
   editor?.destroy()
@@ -159,9 +184,81 @@ function unmountEditor() {
   initialZoomOptions = null
 }
 
-/** @returns {void} 缩放时保持画板在 H5 可视区域内垂直居中。 */
-function centerArtboardVertically() {
+/** @returns {void} 缩放时保持画板垂直居中，并约束水平边界。 */
+function stabilizeArtboardPosition() {
   editor?.centerArtboard({ horizontal: false, vertical: true })
+  editor?.panArtboard(0, 0)
+}
+
+/** @param {TouchEvent} event 触摸开始事件。 @returns {void} */
+function handleTouchStart(event) {
+  if (!canPanArtboard() || event.touches.length !== 1) {
+    resetArtboardPan()
+    return
+  }
+
+  artboardPanTouchId = event.touches[0].identifier
+  artboardPanClientX = event.touches[0].clientX
+  artboardPanClientY = event.touches[0].clientY
+}
+
+/** @param {TouchEvent} event 触摸移动事件。 @returns {void} */
+function handleTouchMove(event) {
+  if (artboardPanTouchId === null || event.touches.length !== 1) {
+    resetArtboardPan()
+    return
+  }
+
+  const touch = findTouch(event.touches, artboardPanTouchId)
+  if (!touch || artboardPanClientX === null || artboardPanClientY === null) {
+    resetArtboardPan()
+    return
+  }
+
+  const deltaX = touch.clientX - artboardPanClientX
+  const deltaY = touch.clientY - artboardPanClientY
+  artboardPanClientX = touch.clientX
+  artboardPanClientY = touch.clientY
+  editor?.panArtboard(deltaX, deltaY)
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+/** @param {TouchEvent} event 触摸结束事件。 @returns {void} */
+function handleTouchEnd(event) {
+  resetArtboardPan()
+  if (canPanArtboard() && event.touches.length === 1) {
+    artboardPanTouchId = event.touches[0].identifier
+    artboardPanClientX = event.touches[0].clientX
+    artboardPanClientY = event.touches[0].clientY
+  }
+}
+
+/** @returns {boolean} 当前是否已放大到可移动画板。 */
+function canPanArtboard() {
+  if (!editor || props.zoomLimits === false) {
+    return false
+  }
+
+  return Number(editor.state.zoom) > Number(editor.state.zoomOptions.min) + 0.0001
+}
+
+/** @param {TouchList} touches 触点列表。 @param {number} identifier 触点 ID。 @returns {Touch | null} */
+function findTouch(touches, identifier) {
+  for (let index = 0; index < touches.length; index += 1) {
+    if (touches[index].identifier === identifier) {
+      return touches[index]
+    }
+  }
+
+  return null
+}
+
+/** @returns {void} 清理单指移动状态。 */
+function resetArtboardPan() {
+  artboardPanTouchId = null
+  artboardPanClientX = null
+  artboardPanClientY = null
 }
 
 watch(

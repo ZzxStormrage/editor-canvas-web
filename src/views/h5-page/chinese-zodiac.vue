@@ -56,8 +56,8 @@
         <div class="date-inputs">
           <label>
             <input
+              type="text"
               :value="year"
-              inputmode="numeric"
               placeholder="1990"
               @compositionstart="handleYearCompositionStart"
               @compositionend="handleYearCompositionEnd"
@@ -116,7 +116,7 @@ const h5CanvasFitOptions = Object.freeze({
   expandZoomRange: true
 })
 const h5CanvasLoadOptions = Object.freeze({ interactive: false })
-const h5CanvasZoomLimits = Object.freeze({ minRatio: 1, maxRatio: 1 })
+const h5CanvasZoomLimits = Object.freeze({ minRatio: 1, maxRatio: 4 })
 const textInputController = createH5TextInputController()
 const animalList = [
   { type: 1, name: '鼠', icon: 'https://xiaoxiang.ele007.com/file/image/animal1.png' },

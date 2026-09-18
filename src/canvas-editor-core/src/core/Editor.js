@@ -660,6 +660,18 @@ export class Editor {
     return this
   }
 
+  /**
+   * 平移画板，并限制画板在可视区域边界内。
+   *
+   * @param {number} deltaX 水平移动距离。
+   * @param {number} deltaY 垂直移动距离。
+   * @returns {Editor} 当前编辑器实例。
+   */
+  panArtboard(deltaX, deltaY) {
+    this.#viewport.panArtboard(deltaX, deltaY)
+    return this
+  }
+
   // ═══════════════════ 历史与显式命令 ═══════════════════
 
   /** @returns {import('../commands/CommandManager.js').CommandManager} */

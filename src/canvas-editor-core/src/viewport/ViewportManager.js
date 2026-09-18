@@ -73,31 +73,45 @@ export class ViewportManager {
    * @param {number} params.scale — 缩放因子（>1 放大，<1 缩小）
    * @param {number} [params.anchorX] — 缩放锚点 X（画布坐标系）
    * @param {number} [params.anchorY] — 缩放锚点 Y（画布坐标系）
+   * @param {number} [params.previousAnchorX] — 上一帧缩放锚点 X。
+   * @param {number} [params.previousAnchorY] — 上一帧缩放锚点 Y。
    * @param {ZoomSource} [params.source='api'] — 缩放来源
    */
-  zoom({ scale, anchorX, anchorY, source = 'api' }) {
+  zoom({ scale, anchorX, anchorY, previousAnchorX, previousAnchorY, source = 'api' }) {
     const curZoom = this.#state.zoom;
     const newZoom = MathHelper.within(
       curZoom * scale,
       this.#state.zoomOptions.min,
       this.#state.zoomOptions.max
     );
-
-    if (newZoom === curZoom) return;
-
     const ratio = newZoom / curZoom;
+    const hasAnchor = [anchorX, anchorY].every(Number.isFinite);
+    const fromAnchorX = Number.isFinite(previousAnchorX) ? previousAnchorX : anchorX;
+    const fromAnchorY = Number.isFinite(previousAnchorY) ? previousAnchorY : anchorY;
+    const hasAnchorMovement = hasAnchor && (
+      fromAnchorX !== anchorX || fromAnchorY !== anchorY
+    );
 
-    // 锚点缩放：调整 stage 位移，让锚点在视觉上不移动
-    if (anchorX !== null && anchorX !== undefined && anchorY !== null && anchorY !== undefined) {
+    if (newZoom === curZoom && !hasAnchorMovement) return;
+
+    const previousStageX = this.#stage.x;
+    const previousStageY = this.#stage.y;
+
+    // 从上一帧锚点连续变换到当前锚点，同时保留双指平移。
+    if (hasAnchor) {
       const sx = this.#stage.x;
       const sy = this.#stage.y;
-      this.#stage.x = anchorX - (anchorX - sx) * ratio;
-      this.#stage.y = anchorY - (anchorY - sy) * ratio;
+      this.#stage.x = anchorX - (fromAnchorX - sx) * ratio;
+      this.#stage.y = anchorY - (fromAnchorY - sy) * ratio;
     }
 
     this.#stage.scale = newZoom;
-    this.#state.zoom = newZoom;   // 触发 Proxy → 自动 emit 事件
-    this.#bus.emit('viewport:zoom-source', { source, zoom: newZoom });
+    if (newZoom !== curZoom) {
+      this.#state.zoom = newZoom;   // 触发 Proxy → 自动 emit 事件
+      this.#bus.emit('viewport:zoom-source', { source, zoom: newZoom });
+    } else {
+      this.#emitPanChanged(previousStageX, previousStageY);
+    }
   }
 
   // ═══════════════════ API 缩放 ═══════════════════
@@ -190,6 +204,49 @@ export class ViewportManager {
   }
 
   /**
+   * 平移画板，并限制在当前可视区域边界内。
+   *
+   * 当画板某个方向小于视口时，该方向保持居中；大于视口时则限制在两侧边界内。
+   *
+   * @param {number} deltaX 水平移动距离。
+   * @param {number} deltaY 垂直移动距离。
+   * @returns {void}
+   */
+  panArtboard(deltaX, deltaY) {
+    const x = Number(deltaX);
+    const y = Number(deltaY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return;
+    }
+
+    const previousX = this.#stage.x;
+    const previousY = this.#stage.y;
+    const viewport = this.#getViewportBounds();
+    const artboard = this.#getArtboardBounds();
+    const zoom = this.#state.zoom;
+    const scaledWidth = artboard.width * zoom;
+    const scaledHeight = artboard.height * zoom;
+
+    if (scaledWidth <= viewport.width) {
+      this.#stage.x = viewport.width / 2 - (artboard.x + artboard.width / 2) * zoom;
+    } else {
+      const minX = viewport.width - (artboard.x + artboard.width) * zoom;
+      const maxX = -artboard.x * zoom;
+      this.#stage.x = MathHelper.within(previousX + x, minX, maxX);
+    }
+
+    if (scaledHeight <= viewport.height) {
+      this.#stage.y = viewport.height / 2 - (artboard.y + artboard.height / 2) * zoom;
+    } else {
+      const minY = viewport.height - (artboard.y + artboard.height) * zoom;
+      const maxY = -artboard.y * zoom;
+      this.#stage.y = MathHelper.within(previousY + y, minY, maxY);
+    }
+
+    this.#emitPanChanged(previousX, previousY);
+  }
+
+  /**
    * 缩放并让白色画板中心对齐可视区域中心。
    *
    * @param {number} nextZoom 目标缩放倍数。
@@ -234,6 +291,29 @@ export class ViewportManager {
     if (shouldCenterVertically) {
       this.#stage.y = viewportCenter.y - artboardCenter.y * zoom;
     }
+  }
+
+  /**
+   * 位置变化时发布平移事件。
+   *
+   * @param {number} previousX 上一个水平位置。
+   * @param {number} previousY 上一个垂直位置。
+   * @returns {void}
+   */
+  #emitPanChanged(previousX, previousY) {
+    const deltaX = this.#stage.x - previousX;
+    const deltaY = this.#stage.y - previousY;
+
+    if (deltaX === 0 && deltaY === 0) {
+      return;
+    }
+
+    this.#bus.emit('viewport:pan-changed', {
+      x: this.#stage.x,
+      y: this.#stage.y,
+      deltaX,
+      deltaY
+    });
   }
 
   /**

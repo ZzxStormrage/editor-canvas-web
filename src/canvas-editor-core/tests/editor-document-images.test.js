@@ -40,6 +40,21 @@ test('deferred document nodes do not expose hidden image resources to Leafer', (
   assert.equal(nodes[2].children[0].url, undefined);
 });
 
+test('non-interactive document nodes cannot display editor selection controls', () => {
+  const nodes = createLeaferDocumentNodes(
+    DOCUMENT_IMAGES,
+    { x: 0, y: 0 },
+    { interactive: false }
+  );
+
+  assert.equal(nodes[0].draggable, false);
+  assert.equal(nodes[0].editable, false);
+  assert.equal(nodes[0].hittable, false);
+  assert.equal(nodes[2].children[0].draggable, false);
+  assert.equal(nodes[2].children[0].editable, false);
+  assert.equal(nodes[2].children[0].hittable, false);
+});
+
 test('document pair traversal reports effective visibility', () => {
   const runtimeNodes = [
     {},
