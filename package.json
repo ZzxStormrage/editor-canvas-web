@@ -1,7 +1,7 @@
 {
   "name": "editor-main-zzx",
   "private": true,
-  "version": "2.6.5",
+  "version": "2.6.8",
   "packageManager": "pnpm@11.9.0",
   "type": "module",
   "scripts": {
@@ -12,6 +12,7 @@
     "build": "npm run prebuild && vite build --mode production",
     "build:pro": "npm run prebuild && vite build --mode production",
     "build:zhwy": "npm run prebuild && vite build --mode production-zhwy",
+    "build:jxly": "npm run prebuild && vite build --mode production-jxly",
     "build:test": "npm run prebuild && vite build --mode staging",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.ts,.jsx,.tsx",
