@@ -31,6 +31,7 @@ export function useMaterialGroupControls(getEditor, notify = null) {
   const materialHasMore = ref(false)
   const materialError = ref('')
   const addingMaterialId = ref(null)
+  const customizableMaterialIds = ref(new Set())
   let partnerId = null
   let selectionVersion = 0
 
@@ -126,6 +127,9 @@ export function useMaterialGroupControls(getEditor, notify = null) {
     addingMaterialId.value = materialId
     try {
       const image = await editor.image.add(materialUrl)
+      if (customizableMaterialIds.value.has(materialId)) {
+        editor.elementData?.set?.(image, { customization: { enabled: true } })
+      }
       notify?.('素材已添加', 'success')
       return image
     } catch (error) {
@@ -135,6 +139,20 @@ export function useMaterialGroupControls(getEditor, notify = null) {
     } finally {
       addingMaterialId.value = null
     }
+  }
+
+  /** @param {string | number} materialId 素材 ID。 @returns {void} */
+  function toggleMaterialCustomization(materialId) {
+    const key = String(materialId)
+    const next = new Set(customizableMaterialIds.value)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    customizableMaterialIds.value = next
+  }
+
+  /** @param {string | number} materialId 素材 ID。 @returns {boolean} 是否开放定制。 */
+  function isMaterialCustomizationEnabled(materialId) {
+    return customizableMaterialIds.value.has(String(materialId))
   }
 
   /**
@@ -221,6 +239,9 @@ export function useMaterialGroupControls(getEditor, notify = null) {
     materialHasMore,
     materialError,
     addingMaterialId,
+    customizableMaterialIds,
+    toggleMaterialCustomization,
+    isMaterialCustomizationEnabled,
     setMaterialGroups,
     selectMaterialGroup,
     loadMoreMaterials,

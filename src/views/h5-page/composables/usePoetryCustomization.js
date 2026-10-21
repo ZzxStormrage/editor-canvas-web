@@ -1,4 +1,5 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
+import { createImageCustomizationEntries, getDocumentCanvases } from '../../../services/image-replacement-groups.js'
 import { useRoute } from 'vue-router'
 
 import {
@@ -87,6 +88,8 @@ export function usePoetryCustomization(options = {}) {
   const imageFit = ref('contain')
   const showAdvancedSettings = ref(false)
   const imageTargets = ref([])
+  const imageEntries = ref([])
+  const activeImageEntryId = ref('')
   const backgroundTargets = ref([])
   const aiThemeOptions = ref([])
   const materialOptions = ref([])
@@ -94,6 +97,7 @@ export function usePoetryCustomization(options = {}) {
   const materialOptionsError = ref('')
   const materialReplacing = ref(false)
   const boundMaterialGroupIds = ref([])
+  const boundAiSubjectIds = ref([])
   const materialTargets = ref([])
   const backgroundOptions = ref([])
   const selectedAiThemeId = ref('')
@@ -127,8 +131,8 @@ export function usePoetryCustomization(options = {}) {
   })
 
   const canvasFrameStyle = computed(() => {
-    const width = Number(documentData.value?.canvas?.width)
-    const height = Number(documentData.value?.canvas?.height)
+    const width = Number(getDocumentCanvases(documentData.value)[0]?.document?.canvas?.width)
+    const height = Number(getDocumentCanvases(documentData.value)[0]?.document?.canvas?.height)
 
     if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
       return { aspectRatio: '1 / 1' }
@@ -163,7 +167,9 @@ export function usePoetryCustomization(options = {}) {
       materialReplacing: materialReplacing.value,
       materialOptionCount: materialOptions.value.length,
       materialTargetCount: materialTargets.value.length,
-      requiresAiTheme: materialGroupMode && Boolean(readRouteValue(route.query.aiSubjectIds)),
+      requiresAiTheme: materialGroupMode && Boolean(
+        readRouteValue(route.query.aiSubjectIds) || boundAiSubjectIds.value.length
+      ),
       hasAiTheme: Boolean(selectedAiThemeId.value && aiThemeOptions.value.length)
     })
   )
@@ -218,6 +224,7 @@ export function usePoetryCustomization(options = {}) {
     boundMaterialGroupIds.value = materialGroupMode
       ? resolveTemplateMaterialGroupIds(templateResult?.document)
       : []
+    boundAiSubjectIds.value = resolveTemplateAiSubjectIds(templateResult?.document)
     await loadMaterialOptions(currentRequestId)
   }
 
@@ -231,6 +238,8 @@ export function usePoetryCustomization(options = {}) {
     imageFit.value = 'contain'
     showAdvancedSettings.value = false
     imageTargets.value = []
+    imageEntries.value = []
+    activeImageEntryId.value = ''
     backgroundTargets.value = []
     materialTargets.value = []
     aiThemeOptions.value = []
@@ -238,6 +247,7 @@ export function usePoetryCustomization(options = {}) {
     materialOptionsLoading.value = false
     materialOptionsError.value = ''
     boundMaterialGroupIds.value = []
+    boundAiSubjectIds.value = []
     backgroundOptions.value = []
     selectedAiThemeId.value = ''
     selectedMaterialId.value = ''
@@ -290,7 +300,10 @@ export function usePoetryCustomization(options = {}) {
     if (materialGroupMode) {
       boundMaterialGroupIds.value = resolveTemplateMaterialGroupIds(documentData.value)
     }
-    imageTargets.value = resolveImageTargets(payload.editor, imageTargetDescriptions)
+    boundAiSubjectIds.value = resolveTemplateAiSubjectIds(documentData.value)
+    imageEntries.value = createImageCustomizationEntries(payload.editor)
+    activeImageEntryId.value = imageEntries.value[0]?.id || ''
+    imageTargets.value = imageEntries.value[0]?.targets ?? resolveImageTargets(payload.editor, imageTargetDescriptions)
     backgroundTargets.value = resolveBackgroundTargets(payload.editor, backgroundRole)
     materialTargets.value = materialGroupMode
       ? resolveMaterialTargetGroups(payload.editor, boundMaterialGroupIds.value)
@@ -335,7 +348,11 @@ export function usePoetryCustomization(options = {}) {
 
   /** @param {Object} option 素材选项。 @param {Object | null} [editor] 画布实例。 @returns {Promise<void>} */
   async function selectMaterial(option, editor = getEditor()) {
-    const targets = resolveMaterialTargetsForGroup(materialTargets.value, option?.groupId)
+    const groupTargets = resolveMaterialTargetsForGroup(materialTargets.value, option?.groupId)
+    const selected = imageEntries.value.find((entry) => entry.id === activeImageEntryId.value)
+    const targets = selected
+      ? selected.targets.filter((node) => groupTargets.includes(toRaw(node)))
+      : groupTargets
     if (!option?.url || !editor || materialReplacing.value || targets.length === 0) return
     materialReplacing.value = true
     operationStatus.value = { type: 'success', text: '' }
@@ -454,7 +471,7 @@ export function usePoetryCustomization(options = {}) {
     const currentBackgroundUrl = getImageSource(editor, backgroundTargets.value[0])
     const tasks = []
     if (themeOption && imageTargets.value.length > 0 && themeOption.url !== currentThemeUrl) {
-      tasks.push(() => replaceImages(editor, themeOption.url))
+      tasks.push(() => replaceImages(editor, themeOption.url, themeOption))
     }
     if (backgroundOption && backgroundTargets.value.length > 0 && backgroundOption.url !== currentBackgroundUrl) {
       tasks.push(() => replaceImageTargets(editor, backgroundOption.url, backgroundTargets.value, BACKGROUND_IMAGE_FIT))
@@ -490,7 +507,7 @@ export function usePoetryCustomization(options = {}) {
     imageReplacing.value = true
     operationStatus.value = { type: 'success', text: '' }
     try {
-      await withTimeout(replaceImages(editor, option.url), IMAGE_REPLACEMENT_TIMEOUT)
+      await withTimeout(replaceImages(editor, option.url, option), IMAGE_REPLACEMENT_TIMEOUT)
       selectedAiThemeId.value = option.id
       imagePreviewUrl.value = option.url
       backgroundOptions.value = cloneBackgroundOptions(option.backgrounds)
@@ -609,8 +626,27 @@ export function usePoetryCustomization(options = {}) {
    * @param {string} imageUrl 新图片地址。
    * @returns {Promise<void>} 全部图片替换完成。
    */
-  function replaceImages(editor, imageUrl) {
-    return replaceImageTargets(editor, imageUrl, imageTargets.value, imageFit.value)
+  function replaceImages(editor, imageUrl, themeOption = null) {
+    const boundTargets = resolveAiSubjectTargets(editor, themeOption?.subjectId)
+    const selected = imageEntries.value.find((entry) => entry.id === activeImageEntryId.value)
+    const targets = selected
+      ? (boundTargets ? selected.targets.filter((node) => boundTargets.includes(toRaw(node))) : selected.targets)
+      : (boundTargets ?? imageTargets.value)
+    return replaceImageTargets(editor, imageUrl, targets, imageFit.value)
+  }
+
+  function selectImageNode(node) {
+    const entry = imageEntries.value.find((item) => item.targets.some((target) => toRaw(target) === node))
+    if (entry) selectImageEntry(entry.id)
+  }
+
+  function selectImageEntry(id) {
+    if (imageReplacing.value || materialReplacing.value || saving.value) return
+    const entry = imageEntries.value.find((item) => item.id === id)
+    if (!entry) return
+    activeImageEntryId.value = id
+    imageTargets.value = entry.targets
+    imagePreviewUrl.value = getImageSource(getEditor(), entry.targets[0])
   }
 
   /**
@@ -630,7 +666,10 @@ export function usePoetryCustomization(options = {}) {
 
     const nextValue = applyTextInputRules(value, field.rules)
     field.value = nextValue
-    editor.getElementsByAttribute('text.description', field.description).forEach((element) => {
+    const targets = field.elementId
+      ? editor.getElementsByType('text').filter((node) => editor.elementData.getId(node) === field.elementId)
+      : editor.getElementsByAttribute('text.description', field.description)
+    targets.forEach((element) => {
       if (String(element.text ?? '') !== nextValue) {
         editor.replaceTextWithRules(element, nextValue)
       }
@@ -685,7 +724,12 @@ export function usePoetryCustomization(options = {}) {
 
   return {
     activeTab,
+    imageEntries,
+    activeImageEntryId,
+    selectImageEntry,
+    selectImageNode,
     addGeneratedTheme,
+    boundAiSubjectIds,
     aiThemeOptions,
     loadMaterialOptions,
     materialOptions,
@@ -806,7 +850,7 @@ export function resolveMaterialOptions(responses, groupIds) {
  * @returns {Array<string | number>} 去重后的素材组 ID。
  */
 export function resolveTemplateMaterialGroupIds(document) {
-  const ids = flattenDocumentElements(document?.elements).reduce((result, element) => {
+  const ids = getDocumentCanvases(document).flatMap((canvas) => flattenDocumentElements(canvas.document?.elements)).reduce((result, element) => {
     if (String(element?.tag ?? '').toLowerCase() !== 'image') return result
 
     const groupId = element?.attributes?.image?.materialGroupId
@@ -815,6 +859,41 @@ export function resolveTemplateMaterialGroupIds(document) {
   }, [])
 
   return normalizeMaterialGroupIds(ids)
+}
+
+/** @param {Object | null | undefined} document 统一模板文档。 @returns {Array<string | number>} AI 主题 ID。 */
+export function resolveTemplateAiSubjectIds(document) {
+  const ids = getDocumentCanvases(document).flatMap((canvas) => flattenDocumentElements(canvas.document?.elements)).flatMap((element) => {
+    if (String(element?.tag ?? '').toLowerCase() !== 'image') return []
+    const image = element?.attributes?.image ?? {}
+    return normalizeTemplateSubjectIds(image.aiSubjectIds ?? image.aiSubjectId)
+  })
+  return [...new Map(ids.map((id) => [String(id), id])).values()]
+}
+
+/** @param {Object} editor 编辑器实例。 @param {string | number} subjectId AI 主题 ID。 @returns {Object[] | null} 匹配图片或未配置绑定时的 null。 */
+export function resolveAiSubjectTargets(editor, subjectId) {
+  if (!editor?.getElementsByType || !editor?.elementData?.get) return null
+  if (subjectId === undefined || subjectId === null || subjectId === '') return null
+  const images = editor.getElementsByType('image')
+  const readIds = (element) => {
+    const image = editor.elementData.get(element)?.image ?? {}
+    return normalizeTemplateSubjectIds(image.aiSubjectIds ?? image.aiSubjectId)
+  }
+  if (!images.some((element) => readIds(element).length)) return null
+  return images.filter((element) => readIds(element).some((id) => String(id) === String(subjectId)))
+}
+
+function normalizeTemplateSubjectIds(value) {
+  const values = Array.isArray(value) ? value : [value]
+  return values.flatMap((item) => String(item ?? '').split(','))
+    .map((item) => {
+      const text = item.trim()
+      if (!text) return null
+      const number = Number(text)
+      return Number.isSafeInteger(number) && number > 0 ? number : text
+    })
+    .filter((id) => id !== null && String(id) !== '0')
 }
 
 /**
@@ -899,21 +978,24 @@ function createTextFields(editor, labels) {
   const fields = new Map()
   const document = editor.exportDocument?.()
 
-  flattenDocumentElements(document?.elements).forEach((element) => {
+  getDocumentCanvases(document).flatMap((canvas) => flattenDocumentElements(canvas.document?.elements)).forEach((element) => {
     if (String(element.tag).toLowerCase() !== 'text') {
       return
     }
 
     const description = normalizeDescription(element.attributes?.text?.description)
-    if (!description || fields.has(description)) {
+    const name = element.attributes?.customization?.name?.trim()
+    const key = name ? element.elementId : description
+    if (element.attributes?.customization?.enabled === false || (!description && !name) || fields.has(key)) {
       return
     }
 
     const rules = normalizeTextInputRules(element.attributes?.textInput)
-    fields.set(description, {
+    fields.set(key, {
+      elementId: name ? element.elementId : null,
       id: String(element.elementId ?? description),
       description,
-      label: resolveTextLabel(description, labels),
+      label: name || resolveTextLabel(description, labels),
       value: extractTextInputValue(element),
       multiline: resolveMultilineField(description, rules),
       rules

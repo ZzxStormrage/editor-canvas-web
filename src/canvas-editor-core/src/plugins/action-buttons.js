@@ -2,7 +2,8 @@ import { Group, Image as LeaferImage, Rect, Text, PointerEvent, DragEvent, MoveE
 import { EditorEvent, EditorMoveEvent, EditorRotateEvent, EditorScaleEvent } from '@leafer-in/editor'
 
 import rotateIconSvg from '../assets/icons/rotate.svg?raw'
-import { cloneElementData } from '../utils/element-data.js'
+import { cloneElementData, getElementDataContainer } from '../utils/element-data.js'
+import { isProductionFileAreaLabel } from '../utils/production-area.js'
 import { isTextElement } from '../utils/text.js'
 
 /**
@@ -718,7 +719,9 @@ export class EditorActionButtons {
     const visible = selected.length > 0 && Boolean(bounds)
     const isImageSelection = selected.length === 1 && selected[0] instanceof LeaferImage
     const canEditAttributes = selected.length === 1
-      && (isImageSelection || isTextElement(selected[0]))
+      && (isImageSelection || isTextElement(selected[0])
+        || getElementDataContainer(selected[0])?.attributes?.productionArea !== undefined
+        || isProductionFileAreaLabel(selected[0]?.customType ?? selected[0]?.name))
     const canGroup = this.#canGroupSelection(selected)
     const canUngroup = selected.length === 1 && this.#isEditorGroup(selected[0]) && !locked
 

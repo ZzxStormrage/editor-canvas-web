@@ -66,7 +66,7 @@ export function useCanvasPan(getEditor) {
 
   /** @param {KeyboardEvent} event 键盘事件。 @returns {void} */
   function handleKeyDown(event) {
-    if (!isSpaceEvent(event) || hasDisallowedModifier(event) || isEditableTarget(event.target)) {
+    if (!isSpaceEvent(event) || hasDisallowedModifier(event) || isInteractiveTarget(event.target)) {
       return
     }
 
@@ -154,10 +154,10 @@ function hasDisallowedModifier(event) {
   return event.altKey || event.ctrlKey || event.metaKey
 }
 
-/** @param {EventTarget | null} target 事件目标。 @returns {boolean} 是否正在输入内容。 */
-function isEditableTarget(target) {
+/** @param {EventTarget | null} target 事件目标。 @returns {boolean} 是否由控件处理键盘事件。 */
+function isInteractiveTarget(target) {
   return target instanceof HTMLElement
-    && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+    && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName))
 }
 
 /** @param {PointerEvent} event 指针事件。 @returns {void} 阻止元素选择和拖动接管当前手势。 */

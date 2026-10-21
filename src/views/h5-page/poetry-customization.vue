@@ -7,7 +7,9 @@
         <CanvasDocumentViewport
           ref="canvasViewportRef"
           :document="documentData"
+          :busy="imageReplacing || materialReplacing || saving || redirecting"
           @loaded="handleDocumentLoaded"
+          @image-click="selectImageNode"
           @error="handleCanvasError"
         />
         <div v-if="!canvasLoaded" class="canvas-state" role="status" aria-live="polite">
@@ -50,6 +52,12 @@
         </button>
       </div>
 
+      <ImageCustomizationPicker
+        :model-value="activeImageEntryId"
+        :entries="imageEntries"
+        :disabled="!canvasLoaded || imageReplacing || materialReplacing || saving || redirecting"
+        @update:model-value="selectImageEntry"
+      />
       <div class="sheet-content">
         <div v-if="activeTab === 'image'" class="image-customization" role="tabpanel">
           <section class="theme-section">
@@ -261,7 +269,7 @@
             <div class="ai-dialog-content">
               <AiTopic
                 ref="aiTopicRef"
-                :ai-subject-ids="aiSubjectIds"
+                :ai-subject-ids="boundAiSubjectQuery"
                 :auto-open-single-topic="shouldOpenInitialAiTopicDialog"
                 :disabled="imageReplacing || aiGenerating"
                 @error="handleAiTopicError"
@@ -284,6 +292,7 @@ import { useRoute } from 'vue-router'
 
 import AiTopic from './components/ai-topic.vue'
 import CanvasDocumentViewport from './components/CanvasDocumentViewport.vue'
+import ImageCustomizationPicker from './components/ImageCustomizationPicker.vue'
 import { usePoetryCustomization } from './composables/usePoetryCustomization.js'
 import { readRouteValue } from './services/route-navigation.js'
 import { createH5TextInputController } from './services/text-input-rules.js'
@@ -336,7 +345,12 @@ const aiSubjectIds = computed(() => readRouteValue(route.query.aiSubjectIds))
 
 const {
   activeTab,
+  imageEntries,
+  activeImageEntryId,
+  selectImageEntry,
+  selectImageNode,
   addGeneratedTheme,
+  boundAiSubjectIds,
   aiThemeOptions,
   loadMaterialOptions,
   materialOptions,
@@ -382,6 +396,15 @@ const {
   imageTargetDescriptions: props.imageTargetDescriptions,
   replacementTextLabel: props.replacementTextLabel,
   titleTextLabel: props.titleTextLabel
+})
+
+// 主题绑定来自模板图层时，合并到 AI 主题选择组件的查询参数中。
+const boundAiSubjectQuery = computed(() => {
+  const ids = [aiSubjectIds.value, ...boundAiSubjectIds.value]
+    .flatMap((value) => String(value ?? '').split(','))
+    .map((value) => value.trim())
+    .filter(Boolean)
+  return [...new Set(ids)].join(',')
 })
 
 const submitHint = ref('')

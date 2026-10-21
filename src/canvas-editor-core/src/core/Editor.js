@@ -488,6 +488,40 @@ export class Editor {
     return this.production?.getPrintAreaProperties?.() ?? null
   }
 
+  /** @returns {Array<Object>} 当前所有生产区域。 */
+  getProductionAreas() {
+    return this.production?.getProductionAreas?.() ?? []
+  }
+
+  /** @param {Object} options 新区域属性。 @returns {Editor} 当前编辑器实例。 */
+  createProductionArea(options = {}) {
+    this.production?.createProductionArea?.(options)
+    return this
+  }
+
+  /** @param {string} id 区域 ID。 @param {Object} properties 区域属性。 @returns {Editor} 当前编辑器实例。 */
+  updateProductionArea(id, properties) {
+    this.production?.updateProductionArea?.(id, properties)
+    return this
+  }
+
+  /** @param {string} id 区域 ID。 @returns {Editor} 当前编辑器实例。 */
+  selectProductionArea(id) {
+    this.production?.selectProductionArea?.(id)
+    return this
+  }
+
+  /** @param {string} id 区域 ID。 @returns {Editor} 当前编辑器实例。 */
+  removeProductionArea(id) {
+    this.production?.removeProductionArea?.(id)
+    return this
+  }
+
+  /** @param {string} sourceId 源区域 ID。 @param {string} targetId 目标区域 ID。 @returns {number} 复制的元素数量。 */
+  copyProductionAreaContents(sourceId, targetId) {
+    return this.production?.copyProductionAreaContents?.(sourceId, targetId) ?? 0
+  }
+
   /**
    * 更新打印区域位置和尺寸。
    *

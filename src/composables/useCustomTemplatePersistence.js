@@ -5,6 +5,7 @@ import {
   normalizeMaterialGroupIds,
   resolveMaterialGroupMessageConfig
 } from './canvas-editor/material-group-data.js'
+import { resolveAiSubjectMessageConfig } from './canvas-editor/ai-subject-data.js'
 import {
   MESSAGE_TYPES,
   postBridgeMessage,
@@ -25,6 +26,7 @@ const TOKEN_QUERY_KEYS = ['token', 'authorization', 'Authorization']
  */
 export function useCustomTemplatePersistence(options) {
   const { editor, route, router } = options
+  const components = options.components ?? null
   const notify = typeof options.onMessage === 'function' ? options.onMessage : null
   const loading = ref(false)
   const saving = ref(false)
@@ -82,6 +84,7 @@ export function useCustomTemplatePersistence(options) {
       }
 
       coreEditor.clearDocument?.()
+      components?.reset?.()
       if (!hasReceivedTemplateLoad) {
         loading.value = false
         postLifecycleMessage(
@@ -118,6 +121,7 @@ export function useCustomTemplatePersistence(options) {
       const incomingTemplate = isPlainObject(payload.template) ? payload.template : {}
       const document = payload.document ?? payload.content ?? incomingTemplate.content ?? null
       const materialGroupConfig = resolveMaterialGroupMessageConfig(payload)
+      editor.setAiSubjects(resolveAiSubjectMessageConfig(payload))
       resetTemplateState(template)
       applyTemplateRecord(template, incomingTemplate)
       if (materialGroupConfig.hasMaterialGroupConfig) {
@@ -134,7 +138,9 @@ export function useCustomTemplatePersistence(options) {
       }
 
       coreEditor.clearDocument?.()
-      const loadedDocument = await loadTemplateContent(editor, document)
+      const loadedDocument = components
+        ? await components.load(document)
+        : await loadTemplateContent(editor, document)
       if (loadedDocument) {
         editor.fitArtboardToView()
       }
@@ -174,6 +180,7 @@ export function useCustomTemplatePersistence(options) {
    */
   async function handleEditorConfigMessage({ payload = {} }) {
     const materialGroupConfig = resolveMaterialGroupMessageConfig(payload)
+    editor.setAiSubjects(resolveAiSubjectMessageConfig(payload))
     if (!materialGroupConfig.hasMaterialGroupConfig) {
       return null
     }
@@ -227,7 +234,7 @@ export function useCustomTemplatePersistence(options) {
     try {
       await editor.whenReady()
 
-      const document = editor.exportDocument()
+      const document = components?.exportDocument?.() ?? editor.exportDocument()
 
       if (!document) {
         throw new Error('编辑器尚未初始化，无法导出保存数据。')

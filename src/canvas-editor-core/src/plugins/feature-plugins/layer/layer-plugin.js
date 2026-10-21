@@ -2,6 +2,7 @@ import { ChildEvent, PropertyEvent } from 'leafer-ui'
 import { EditorEvent } from '@leafer-in/editor'
 import { EditorError } from '../../../errors/editor-error.js'
 import { getElementDataContainer } from '../../../utils/element-data.js'
+import { isProductionFileAreaLabel } from '../../../utils/production-area.js'
 import { normalizeTextLayout } from '../../../utils/text-layout.js'
 
 const LAYER_EVENT = 'layers:changed'
@@ -514,12 +515,16 @@ export class LayerPlugin {
   _toLayerItem(node, index, selected) {
     const elementData = getElementDataContainer(node, true)
     const customAttributeCount = this._getConfiguredAttributeCount(elementData.attributes)
-    const type = this._getNodeType(node)
+    const customizationEnabled = this._isCustomizationEnabled(elementData.attributes, customAttributeCount)
+    const productionArea = elementData.attributes.productionArea
+    const isProductionArea = productionArea !== undefined
+      || isProductionFileAreaLabel(node.customType ?? node.name)
+    const type = isProductionArea ? 'production-area' : this._getNodeType(node)
 
     return {
       id: this._getNodeId(node),
       elementId: elementData.elementId,
-      name: this._getNodeName(node),
+      name: productionArea?.name ?? (isProductionArea ? `生产文件 ${index + 1}` : this._getNodeName(node)),
       type,
       previewText: type === 'text' ? this._getTextPreview(node) : '',
       thumbnailSource: type === 'image' ? this._getImageThumbnailSource(node) : null,
@@ -527,6 +532,7 @@ export class LayerPlugin {
       imageRole: type === 'image' ? this._getImageRole(elementData.attributes) : null,
       textLayoutMode: type === 'text' ? this._getTextLayoutMode(elementData.attributes) : null,
       customAttributeCount,
+      customizationEnabled,
       locked: Boolean(node.locked),
       visible: node.visible !== false,
       pointerThrough: type === 'image' && this._isPointerThrough(node),
@@ -565,6 +571,15 @@ export class LayerPlugin {
     }
 
     return count
+  }
+
+  /** @private @param {Object} attributes 元素业务属性。 @param {number} count 已配置属性数量。 @returns {boolean} 是否开放定制。 */
+  _isCustomizationEnabled(attributes = {}, count = 0) {
+    if (attributes.customization?.enabled === false) {
+      return false
+    }
+
+    return attributes.customization?.enabled === true || count > 0
   }
 
   /**

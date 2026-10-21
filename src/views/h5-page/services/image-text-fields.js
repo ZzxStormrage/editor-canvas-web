@@ -1,4 +1,5 @@
 import { normalizeTextInputRules } from './text-input-rules.js'
+import { getDocumentCanvases } from '../../../services/image-replacement-groups.js'
 
 /**
  * 根据模板文档和运行时目标生成图片文字定制页的输入项。
@@ -17,10 +18,12 @@ export function createImageTextFields(document, targets, options) {
 
   const pageId = normalizeTextOption(options?.pageId, 'image-text')
   const textDescription = normalizeTextOption(options?.textDescription, '文本替换')
-  const documentTargets = flattenElements(document?.elements).filter((element) => {
-    return element.attributes?.text?.description === textDescription
+  const documentTargets = getDocumentCanvases(document).flatMap((canvas) => flattenElements(canvas.document?.elements)).filter((element) => {
+    return String(element.tag).toLowerCase() === 'text' && element.attributes?.customization?.enabled !== false
+      && (element.attributes?.text?.description === textDescription || element.attributes?.customization?.name)
   })
-  const shouldSeparate = options?.separate === true && targets.length > 1
+  const shouldSeparate = (options?.separate === true && targets.length > 1)
+    || documentTargets.some((element) => element.attributes?.customization?.name)
   const groups = shouldSeparate
     ? targets.map((target, index) => ({ targets: [target], indexes: [index] }))
     : [{ targets, indexes: targets.map((_target, index) => index) }]
@@ -50,7 +53,7 @@ function createTextField(group, index, pageId, documentTargets, shouldSeparate) 
   return {
     key: String(target?.elementId ?? `text-${index + 1}`),
     inputId: `${pageId}-text-${index + 1}`,
-    label: shouldSeparate ? `文本${index + 1}` : '',
+    label: documentTarget?.attributes?.customization?.name || (shouldSeparate ? `文本${index + 1}` : ''),
     value: String(documentTarget?.text ?? target?.text ?? ''),
     rules: normalizeTextInputRules(documentTarget?.attributes?.textInput),
     targetIndexes: group.indexes

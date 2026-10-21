@@ -10,6 +10,20 @@
       </button>
     </div>
 
+    <label v-if="editor.enableCustomization" class="layer-attribute-field">
+      <span>定制名称</span>
+      <v-text-field
+        v-model="customizationName"
+        aria-label="定制名称"
+        class="editor-attribute-control"
+        placeholder="例如：可替换瓶身图案"
+        maxlength="60"
+        density="compact"
+        hide-details
+        variant="outlined"
+      />
+    </label>
+
     <template v-if="layerType === 'image'">
       <div v-if="showImageSectionTitle" class="layer-attribute-section-title">业务属性</div>
       <p class="layer-attribute-help">配置图片用途和描述，仅写入业务属性，不会改变图层顺序。</p>
@@ -42,10 +56,23 @@
           variant="outlined"
         />
       </label>
+      <ImageReplacementGroupBinding
+        v-if="editor.enableCustomization"
+        v-model="imageDraft.replacementGroupId"
+        v-model:group-name="imageDraft.replacementGroupName"
+        :editor="editor"
+        :element-id="elementId"
+      />
       <ImageMaterialGroupBinding
         v-model="imageDraft.materialGroupId"
         :editor="editor"
         :saved-group-name="savedMaterialGroupBinding?.name"
+      />
+      <ImageAiSubjectBinding
+        v-if="editor.enableCustomization"
+        v-model="imageDraft.aiSubjectIds"
+        :editor="editor"
+        :saved-names="savedAiSubjectBinding.names"
       />
     </template>
 
@@ -177,6 +204,12 @@ import {
   applyImageMaterialGroupBinding,
   readImageMaterialGroupBinding
 } from '../../../composables/canvas-editor/image-material-group-binding.js'
+import {
+  applyImageAiSubjectBinding,
+  readImageAiSubjectBinding
+} from '../../../composables/canvas-editor/image-ai-subject-binding.js'
+import ImageAiSubjectBinding from '../images/ImageAiSubjectBinding.vue'
+import ImageReplacementGroupBinding from '../images/ImageReplacementGroupBinding.vue'
 import ImageMaterialGroupBinding from '../images/ImageMaterialGroupBinding.vue'
 import CompactNumberField from './CompactNumberField.vue'
 const IMAGE_ROLE_OPTIONS = Object.freeze([
@@ -201,9 +234,15 @@ const emit = defineEmits(['close', 'saved'])
 
 // 属性抽屉以 elementId 为 key 重新挂载，因此这里只读取一次初始快照，不需要额外 watch。
 const initialAttributes = props.editor.getElementAttributesById(props.elementId) ?? {}
+const customizationName = ref(initialAttributes.customization?.name ?? '')
 const savedMaterialGroupBinding = readImageMaterialGroupBinding(initialAttributes)
+const savedAiSubjectBinding = readImageAiSubjectBinding(initialAttributes)
 const attributeError = ref('')
-const imageDraft = reactive(createImageDraft(initialAttributes, savedMaterialGroupBinding))
+const imageDraft = reactive(createImageDraft(
+  initialAttributes,
+  savedMaterialGroupBinding,
+  savedAiSubjectBinding
+))
 const textDescription = ref(readTextDescription(initialAttributes))
 const textDraft = reactive(createTextDraft(initialAttributes))
 
@@ -280,6 +319,13 @@ function saveAttributes() {
   attributeError.value = ''
   const currentAttributes = props.editor.getElementAttributesById(props.elementId) ?? {}
   const nextAttributes = { ...currentAttributes }
+  if (props.editor.enableCustomization) {
+    const customization = { ...currentAttributes.customization }
+    const name = customizationName.value.trim()
+    if (name) customization.name = name
+    else delete customization.name
+    nextAttributes.customization = customization
+  }
 
   if (props.layerType === 'image') {
     const description = imageDraft.description.trim()
@@ -297,6 +343,21 @@ function saveAttributes() {
       props.editor.materialGroups.value,
       savedMaterialGroupBinding
     )
+    if (props.editor.enableCustomization) {
+      if (imageDraft.replacementGroupId) {
+        imageAttributes.replacementGroupId = imageDraft.replacementGroupId
+        imageAttributes.replacementGroupName = imageDraft.replacementGroupName
+      } else {
+        delete imageAttributes.replacementGroupId
+        delete imageAttributes.replacementGroupName
+      }
+      imageAttributes = applyImageAiSubjectBinding(
+        imageAttributes,
+        imageDraft.aiSubjectIds,
+        props.editor.aiSubjects?.value ?? [],
+        savedAiSubjectBinding
+      )
+    }
 
     if (Object.keys(imageAttributes).length) nextAttributes.image = imageAttributes
     else delete nextAttributes.image
@@ -396,15 +457,20 @@ function isPlainObject(value) {
  *
  * @param {Object} attributes 元素业务属性。
  * @param {{ id?: string | number } | null} materialGroupBinding 已保存的素材组绑定。
- * @returns {{ description: string, role: string, materialGroupId: string | number | null }} 图片草稿。
+ * @param {{ ids?: Array<string | number> }} aiSubjectBinding 已保存的 AI 主题绑定。
+ * @returns {{ description: string, role: string, materialGroupId: string | number | null,
+ * aiSubjectIds: Array<string | number> }} 图片草稿。
  */
-function createImageDraft(attributes, materialGroupBinding) {
+function createImageDraft(attributes, materialGroupBinding, aiSubjectBinding) {
   const imageAttributes = isPlainObject(attributes.image) ? attributes.image : {}
 
   return {
     description: typeof imageAttributes.description === 'string' ? imageAttributes.description : '',
     role: IMAGE_ROLE_VALUES.has(imageAttributes.role) ? imageAttributes.role : '',
-    materialGroupId: materialGroupBinding?.id ?? null
+    materialGroupId: materialGroupBinding?.id ?? null,
+    aiSubjectIds: aiSubjectBinding?.ids ?? [],
+    replacementGroupId: String(imageAttributes.replacementGroupId ?? ''),
+    replacementGroupName: String(imageAttributes.replacementGroupName ?? '')
   }
 }
 

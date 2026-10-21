@@ -1,4 +1,4 @@
-import { parseEditorDocument } from '../../../canvas-editor-core/src/utils/editor-document.js'
+import { parseCustomizationDocument } from './customization-document.js'
 import { customerTemplateApi } from '../api/customer-template.js'
 
 /**
@@ -21,7 +21,7 @@ export async function loadH5TemplateDocument(templateId, options = {}) {
 
   return {
     record,
-    document: parseEditorDocument(record.content)
+    document: parseCustomizationDocument(record.content)
   }
 }
 

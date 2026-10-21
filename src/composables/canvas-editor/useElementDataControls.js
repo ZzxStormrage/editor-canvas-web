@@ -75,6 +75,22 @@ export function useElementDataControls(getEditor) {
   }
 
   /**
+   * 开启或关闭元素的定制入口，保留已有业务属性以便再次开启时继续使用。
+   * @param {string} elementId 元素业务 ID。
+   * @param {boolean} enabled 是否开放定制。
+   * @returns {Object | null} 更新后的业务属性。
+   */
+  function setElementCustomizationById(elementId, enabled) {
+    const editor = getEditor()
+    const current = editor?.elementData?.getById(elementId)
+    if (!editor || !current) return null
+
+    return editor.elementData.setById(elementId, {
+      customization: { enabled: Boolean(enabled) }
+    })
+  }
+
+  /**
    * 删除指定元素的业务字段。
    *
    * @param {string} elementId 元素业务 ID。
@@ -125,6 +141,7 @@ export function useElementDataControls(getEditor) {
     exportElementAttributes,
     getElementAttributesById,
     setElementAttributesById,
+    setElementCustomizationById,
     removeElementAttributesById,
     getElementsByAttribute,
     setElementsVisibilityByAttribute

@@ -37,11 +37,21 @@ export function useArtboardControls(getEditor, notify = null) {
   const printAreaY = ref(234)
   const printAreaWidth = ref(300)
   const printAreaHeight = ref(200)
+  const productionAreaX = ref(0)
+  const productionAreaY = ref(0)
+  const productionAreaWidth = ref(300)
+  const productionAreaHeight = ref(200)
   let isSyncingPrintArea = false
+  let isSyncingProductionArea = false
   let roleImageReplacement = null
 
   const artboardMillimeterSize = computed(() => formatMillimeterSize(artboardWidth.value, artboardHeight.value))
   const printAreaMillimeterSize = computed(() => formatMillimeterSize(printAreaWidth.value, printAreaHeight.value))
+  const productionAreaMillimeterSize = computed(() => formatMillimeterSize(
+    productionAreaWidth.value,
+    productionAreaHeight.value
+  ))
+  const activeProductionAreaId = ref(null)
 
   /** @returns {{ x: number, y: number, width: number, height: number }} */
   function getArtboardBounds() {
@@ -505,9 +515,40 @@ export function useArtboardControls(getEditor, notify = null) {
     isSyncingPrintArea = false
   }
 
+  /** @param {Object | null} area 当前多区域属性。 @returns {void} */
+  function syncProductionAreaControls(area) {
+    activeProductionAreaId.value = area?.id ?? null
+    if (!area) return
+    isSyncingProductionArea = true
+    productionAreaX.value = normalizeFiniteForUI(area.x, 0)
+    productionAreaY.value = normalizeFiniteForUI(area.y, 0)
+    productionAreaWidth.value = normalizePixelForUI(area.width, 1)
+    productionAreaHeight.value = normalizePixelForUI(area.height, 1)
+    isSyncingProductionArea = false
+  }
+
+  /** @returns {void} 更新当前多生产区域的位置和尺寸。 */
+  function updateActiveProductionArea() {
+    const id = activeProductionAreaId.value
+    const editor = getEditor()
+    if (!id || !editor || isSyncingProductionArea) return
+    editor.updateProductionArea(id, {
+      x: normalizeFiniteForUI(productionAreaX.value, 0),
+      y: normalizeFiniteForUI(productionAreaY.value, 0),
+      width: normalizePixelForUI(productionAreaWidth.value, 1),
+      height: normalizePixelForUI(productionAreaHeight.value, 1)
+    })
+  }
+
   watch(
     [printAreaX, printAreaY, printAreaWidth, printAreaHeight],
     updatePrintArea,
+    { flush: 'sync' }
+  )
+
+  watch(
+    [productionAreaX, productionAreaY, productionAreaWidth, productionAreaHeight],
+    updateActiveProductionArea,
     { flush: 'sync' }
   )
 
@@ -527,6 +568,12 @@ export function useArtboardControls(getEditor, notify = null) {
     printAreaHeight,
     artboardMillimeterSize,
     printAreaMillimeterSize,
+    productionAreaX,
+    productionAreaY,
+    productionAreaWidth,
+    productionAreaHeight,
+    productionAreaMillimeterSize,
+    syncProductionAreaControls,
     getArtboardBounds,
     syncArtboardControls,
     updateArtboardSize,

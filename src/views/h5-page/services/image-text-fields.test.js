@@ -71,3 +71,13 @@ test('a single music text target keeps one unnumbered input', () => {
   assert.equal(fields[0].value, '单个文本')
   assert.deepEqual(fields[0].targetIndexes, [0])
 })
+
+test('customization names become H5 text labels across canvases without picking named images', () => {
+  const fields = createImageTextFields({ version: 2, canvases: [
+    { document: { elements: [{ tag: 'Image', attributes: { customization: { name: '图片名称' } } }] } },
+    { document: { elements: [{ tag: 'Text', elementId: 'name', text: '小象', attributes: { customization: { name: '姓名' } } }] } }
+  ] }, [{ elementId: 'name', text: '小象' }], { pageId: 'original-customization' })
+  assert.equal(fields.length, 1)
+  assert.equal(fields[0].label, '姓名')
+  assert.equal(fields[0].value, '小象')
+})

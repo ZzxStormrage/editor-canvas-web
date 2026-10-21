@@ -49,15 +49,18 @@
       </div>
 
       <div v-else-if="editor.materials.value.length" class="material-grid">
-        <button
+        <div
           v-for="material in editor.materials.value"
           :key="material.id"
           type="button"
           class="material-card"
-          :disabled="Boolean(editor.addingMaterialId.value)"
+          role="button"
+          tabindex="0"
           :aria-label="`添加素材：${material.materialName}`"
           :title="material.materialName"
           @click="editor.addMaterialToCanvas(material)"
+          @keydown.enter.prevent="editor.addMaterialToCanvas(material)"
+          @keydown.space.prevent="editor.addMaterialToCanvas(material)"
         >
           <span class="material-card__preview">
             <img
@@ -77,7 +80,24 @@
             </span>
           </span>
           <span class="material-card__name">{{ material.materialName }}</span>
-        </button>
+          <button
+            v-if="editor.enableCustomization"
+            type="button"
+            class="material-card__customize"
+            :class="{ 'material-card__customize--active': editor.isMaterialCustomizationEnabled(material.id) }"
+            :aria-pressed="editor.isMaterialCustomizationEnabled(material.id)"
+            :aria-label="editor.isMaterialCustomizationEnabled(material.id) ? '关闭开放定制' : '开放定制'"
+            @pointerdown.stop
+            @keydown.stop
+            @click.stop="editor.toggleMaterialCustomization(material.id)"
+          >
+            <v-icon
+              :icon="editor.isMaterialCustomizationEnabled(material.id) ? 'mdi-toggle-switch' : 'mdi-toggle-switch-off-outline'"
+              size="17"
+            />
+            <span>{{ editor.isMaterialCustomizationEnabled(material.id) ? '已开放定制' : '开放定制' }}</span>
+          </button>
+        </div>
       </div>
 
       <div
@@ -217,3 +237,58 @@ function markMaterialFailed(materialId) {
   ]);
 }
 </script>
+
+<style scoped>
+.material-card {
+  position: relative;
+  min-height: 182px;
+  justify-content: flex-start;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 180ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.material-card:hover,
+.material-card:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 18px rgba(var(--v-theme-shadow), 0.16);
+}
+
+.material-card__customize {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 4px;
+  margin: 0 7px 7px;
+  padding: 0 7px;
+  border: 1px solid rgba(var(--v-theme-outline), 0.2);
+  border-radius: 5px;
+  color: var(--editor-muted);
+  background: rgba(var(--v-theme-control), 0.45);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.material-card__customize:hover,
+.material-card__customize:focus-visible,
+.material-card__customize--active {
+  border-color: rgba(var(--v-theme-primary), 0.28);
+  color: var(--editor-primary);
+  background: rgba(var(--v-theme-primary), 0.1);
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .material-card {
+    transition: none;
+  }
+}
+</style>

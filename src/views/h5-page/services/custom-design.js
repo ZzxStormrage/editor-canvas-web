@@ -33,6 +33,19 @@ export async function saveH5CustomDesign(editor, options = {}) {
   const productImgUrl = printAreaBounds
     ? await captureProductImage(editor, productPixelRatio)
     : null
+  // 多部件设计保留各部件文档及其预览/生产文件；顶层地址继续供现有订单页使用。
+  if (editorJson.version === 2 && editor.getCanvasEditors) {
+    const canvases = editor.getCanvasEditors()
+    for (const canvas of editorJson.canvases) {
+      const instance = canvases.find((item) => item.id === canvas.id)?.editor
+      if (!instance) throw new Error('部件画布尚未加载完成。')
+      const bounds = instance.getPrintAreaProperties()
+      canvas.previewImgUrl = await capturePreviewImage(instance, resolveCapturePixelRatio(instance.artboard?.getContentBounds?.()))
+      canvas.productImgUrl = bounds
+        ? await captureProductImage(instance, resolveCapturePixelRatio(bounds))
+        : null
+    }
+  }
   const skuId = readRouteValue(options.skuId)
   const dto = {
     content: JSON.stringify(editorJson),

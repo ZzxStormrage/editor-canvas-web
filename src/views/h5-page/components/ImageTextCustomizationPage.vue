@@ -7,7 +7,9 @@
         <CanvasDocumentViewport
           ref="canvasViewportRef"
           :document="documentData"
+          :busy="imageReplacing || saving || redirecting"
           @loaded="handleDocumentLoaded"
+          @image-click="selectImageNode"
           @error="handleCanvasError"
         />
         <div v-if="!canvasLoaded" class="state-layer" role="status" aria-live="polite">
@@ -27,6 +29,12 @@
     </section>
 
     <section class="form-section">
+      <ImageCustomizationPicker
+        :model-value="activeImageEntryId"
+        :entries="imageEntries"
+        :disabled="!canPickImage"
+        @update:model-value="selectImageEntry"
+      />
       <div class="field-group">
         <div class="field-heading">
           <span class="field-marker" aria-hidden="true"></span>
@@ -67,7 +75,7 @@
         </div>
       </div>
 
-      <div v-if="separateTextInputs && textFields.length" class="field-group">
+      <div v-if="textFields.length" class="field-group">
         <div class="field-heading">
           <span class="field-marker" aria-hidden="true"></span>
           <h2>输入文字</h2>
@@ -173,12 +181,14 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { IMAGE_FILE_ACCEPT } from '../../../config/image-upload.js'
 import CanvasDocumentViewport from './CanvasDocumentViewport.vue'
 import ImageCropDialog from './ImageCropDialog.vue'
+import ImageCustomizationPicker from './ImageCustomizationPicker.vue'
+import { createImageCustomizationEntries, getDocumentCanvases } from '../../../services/image-replacement-groups.js'
 import { customerPictureApi } from '../api/customer-picture.js'
 import { useH5PageSave } from '../composables/useH5PageSave.js'
 import { useH5TemplateDocument } from '../composables/useH5TemplateDocument.js'
@@ -223,6 +233,8 @@ const cameraInputRef = ref(null)
 const canvasLoaded = ref(false)
 const imageReplacing = ref(false)
 const imagePreviewUrl = ref('')
+const imageEntries = ref([])
+const activeImageEntryId = ref('')
 const hasUploadedImage = ref(false)
 const showImagePickerSheet = ref(false)
 const showImageCropDialog = ref(false)
@@ -257,8 +269,8 @@ const {
 })
 
 const canvasFrameStyle = computed(() => {
-  const width = Number(documentData.value?.canvas?.width)
-  const height = Number(documentData.value?.canvas?.height)
+  const width = Number(getDocumentCanvases(documentData.value)[0]?.document?.canvas?.width)
+  const height = Number(getDocumentCanvases(documentData.value)[0]?.document?.canvas?.height)
 
   if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
     return { aspectRatio: '1 / 1' }
@@ -304,6 +316,8 @@ function resetPageState() {
   showImagePickerSheet.value = false
   resetImageCropState()
   textFields.value = []
+  imageEntries.value = []
+  activeImageEntryId.value = ''
   hasImageTarget.value = false
   hasTextTarget.value = false
   operationStatus.value = { type: 'success', text: '' }
@@ -316,6 +330,8 @@ function resetPageState() {
  */
 function handleDocumentLoaded(payload) {
   const editor = payload.editor
+  imageEntries.value = createImageCustomizationEntries(editor)
+  activeImageEntryId.value = imageEntries.value[0]?.id || ''
   const imageTargets = getImageTargets(editor)
   const textTargets = getTextTargets(editor)
 
@@ -323,7 +339,7 @@ function handleDocumentLoaded(payload) {
   hasTextTarget.value = textTargets.length > 0
   imagePreviewUrl.value = String(editor.image?.getSource?.(imageTargets[0]) ?? '')
   cropAspectRatio.value = resolveCropAspectRatio(imageTargets[0])
-  textFields.value = props.separateTextInputs
+  textFields.value = props.separateTextInputs || textTargets.some((target) => editor.elementData.get(target)?.customization?.name)
     ? createImageTextFields(payload.document, textTargets, {
       pageId: props.pageId,
       separate: true,
@@ -595,12 +611,31 @@ async function onSubmit() {
 
 /** @param {Object} editor 核心编辑器实例。 @returns {Object[]} 图片替换节点。 */
 function getImageTargets(editor) {
+  if (imageEntries.value.length) return imageEntries.value.find((entry) => entry.id === activeImageEntryId.value)?.targets ?? []
   return editor.getElementsByAttribute('image.description', props.imageDescription)
+}
+
+function selectImageNode(node) {
+  const entry = imageEntries.value.find((item) => item.targets.some((target) => toRaw(target) === node))
+  if (entry) selectImageEntry(entry.id)
+}
+
+function selectImageEntry(id) {
+  if (!canPickImage.value) return
+  activeImageEntryId.value = id
+  const editor = getCanvasEditor()
+  const target = getImageTargets(editor)[0]
+  imagePreviewUrl.value = editor.image.getSource(target) || ''
+  cropAspectRatio.value = resolveCropAspectRatio(target)
 }
 
 /** @param {Object} editor 核心编辑器实例。 @returns {Object[]} 文本替换节点。 */
 function getTextTargets(editor) {
-  return editor.getElementsByAttribute('text.description', props.textDescription)
+  return editor.getElementsByType('text').filter((node) => {
+    const attributes = editor.elementData.get(node)
+    return attributes.customization?.enabled !== false
+      && (attributes.text?.description === props.textDescription || attributes.customization?.name)
+  })
 }
 
 /** @returns {string} 缺少模板标记时的提示。 */

@@ -2,7 +2,7 @@ import { Group, Rect } from 'leafer-ui';
 import { EditorEvent, EditorMoveEvent, EditorScaleEvent } from '@leafer-in/editor';
 
 import { EditorError } from '../../../errors/editor-error.js';
-import { getElementDataContainer } from '../../../utils/element-data.js';
+import { cloneElementData, getElementDataContainer } from '../../../utils/element-data.js';
 import { detectTransparentBounds } from '../../../utils/image-alpha.js';
 import {
   isProductionFileAreaLabel,
@@ -19,6 +19,7 @@ const PRINT_AREA_KEY = '__canvasEditorPrintArea';
 const MASK_LABEL = '遮罩图';
 const BACKGROUND_LABEL = '背景图';
 const DEFAULT_PRINT_AREA = { width: 300, height: 200 };
+let nextProductionAreaId = 1;
 
 /**
  * 生产辅助插件。
@@ -241,6 +242,167 @@ export class ProductionPlugin {
       width: this._round(bounds.width),
       height: this._round(bounds.height)
     };
+  }
+
+  /**
+   * 获取画布中的生产区域列表。
+   *
+   * @returns {Array<{ id: string, elementId: string, name: string, x: number, y: number, width: number, height: number, selected: boolean }>}
+   * 生产区域。
+   */
+  getProductionAreas() {
+    const artboard = this._getArtboardBounds();
+    const selected = new Set(this._context?.innerEditor?.list ?? []);
+
+    return this._getPrintAreas().map((area, index) => {
+      const container = getElementDataContainer(area, true);
+      const metadata = container.attributes.productionArea ?? {};
+      const bounds = this._getNodeBoundsInContent(area);
+
+      return {
+        id: String(metadata.id ?? container.elementId),
+        elementId: String(container.elementId),
+        name: String(metadata.name ?? `生产文件 ${index + 1}`),
+        x: this._round(bounds.x - artboard.x),
+        y: this._round(bounds.y - artboard.y),
+        width: this._round(bounds.width),
+        height: this._round(bounds.height),
+        selected: selected.has(area)
+      };
+    });
+  }
+
+  /**
+   * 新增一个可独立编辑的生产区域。
+   *
+   * @param {{ id?: string, name?: string, x?: number, y?: number, width?: number, height?: number }} [options={}] 区域属性。
+   * @returns {Object} 新建的生产区域节点。
+   */
+  createProductionArea(options = {}) {
+    this._assertReady();
+    const artboard = this._getArtboardBounds();
+    const width = this._positive(options.width, Math.min(DEFAULT_PRINT_AREA.width, artboard.width));
+    const height = this._positive(options.height, Math.min(DEFAULT_PRINT_AREA.height, artboard.height));
+    const offset = this._getPrintAreas().length * 18;
+    const x = this._finite(options.x, Math.max(0, (artboard.width - width) / 2 + offset));
+    const y = this._finite(options.y, Math.max(0, (artboard.height - height) / 2 + offset));
+    const id = String(options.id ?? `production-area-${Date.now()}-${nextProductionAreaId++}`);
+    const name = String(options.name ?? `生产文件 ${this._getPrintAreas().length + 1}`);
+    const area = this._createProductionAreaNode({ id, name, x, y, width, height, artboard });
+
+    this._context.contentLayer.add(area);
+    this._context.innerEditor?.select(area);
+    this._context.artboard?.syncAllElements?.();
+    this._emitPrintAreaChanged();
+    return area;
+  }
+
+  /**
+   * 更新指定生产区域的位置和尺寸。
+   *
+   * @param {string} id 区域 ID。
+   * @param {{ x?: number, y?: number, width?: number, height?: number }} properties 新属性。
+   * @returns {Object | null} 更新后的区域节点。
+   */
+  updateProductionArea(id, properties = {}) {
+    this._assertReady();
+    const area = this._findProductionArea(id);
+
+    if (!area) {
+      return null;
+    }
+
+    const artboard = this._getArtboardBounds();
+    const patch = { rotation: 0 };
+    if (properties.x !== undefined) patch.x = artboard.x + this._number(properties.x, 'x');
+    if (properties.y !== undefined) patch.y = artboard.y + this._number(properties.y, 'y');
+    if (properties.width !== undefined) {
+      patch.width = this._positiveNumber(properties.width, 'width');
+      patch.scaleX = 1;
+    }
+    if (properties.height !== undefined) {
+      patch.height = this._positiveNumber(properties.height, 'height');
+      patch.scaleY = 1;
+    }
+
+    area.set?.(patch);
+    area.forceUpdate?.();
+    area.updateLayout?.();
+    this._context.innerEditor?.update?.();
+    this._context.innerEditor?.updateEditBox?.();
+    this._context.artboard?.syncAllElements?.();
+    this._emitPrintAreaChanged();
+    return area;
+  }
+
+  /** @param {string} id 区域 ID。 @returns {boolean} 是否选中区域。 */
+  selectProductionArea(id) {
+    const area = this._findProductionArea(id);
+    if (!area) return false;
+    this._context.innerEditor?.select(area);
+    this._emitPrintAreaChanged();
+    return true;
+  }
+
+  /** @param {string} id 区域 ID。 @returns {boolean} 是否删除区域。 */
+  removeProductionArea(id) {
+    const area = this._findProductionArea(id);
+    if (!area) return false;
+    if (this._context.innerEditor?.hasItem?.(area)) this._context.innerEditor.cancel();
+    area.remove();
+    this._context.artboard?.syncAllElements?.();
+    this._emitPrintAreaChanged();
+    return true;
+  }
+
+  /**
+   * 将源区域内的元素复制到目标区域，并保持各元素相对位置。
+   *
+   * @param {string} sourceId 源区域 ID。
+   * @param {string} targetId 目标区域 ID。
+   * @returns {number} 已复制的元素数。
+   */
+  copyProductionAreaContents(sourceId, targetId) {
+    this._assertReady();
+    const source = this._findProductionArea(sourceId);
+    const target = this._findProductionArea(targetId);
+    if (!source || !target || source === target) return 0;
+
+    const sourceBounds = this._getNodeBoundsInContent(source);
+    const targetBounds = this._getNodeBoundsInContent(target);
+    const areaNodes = new Set(this._getPrintAreas());
+    const content = (this._context.contentLayer.children ?? []).filter((node) => {
+      const role = getElementDataContainer(node)?.attributes?.image?.role;
+      if (areaNodes.has(node) || node.visible === false || role === 'background' || role === 'mask') {
+        return false;
+      }
+      const bounds = this._getNodeBoundsInContent(node);
+      const centerX = bounds.x + bounds.width / 2;
+      const centerY = bounds.y + bounds.height / 2;
+      return centerX >= sourceBounds.x && centerX <= sourceBounds.x + sourceBounds.width
+        && centerY >= sourceBounds.y && centerY <= sourceBounds.y + sourceBounds.height;
+    });
+
+    const copies = content.map((node) => {
+      const clone = node.clone();
+      clone.set({
+        x: node.x + targetBounds.x - sourceBounds.x,
+        y: node.y + targetBounds.y - sourceBounds.y,
+        editable: true,
+        draggable: true,
+        locked: false
+      });
+      cloneElementData(node, clone);
+      return clone;
+    });
+
+    if (!copies.length) return 0;
+
+    this._context.contentLayer.addMany(...copies);
+    this._context.artboard?.syncAllElements?.();
+    this._context.innerEditor?.select(copies.length === 1 ? copies[0] : copies);
+    this._emitPrintAreaChanged();
+    return copies.length;
   }
 
   /**
@@ -500,6 +662,52 @@ export class ProductionPlugin {
     }) ?? null;
   }
 
+  /** @private @returns {Object[]} */
+  _getPrintAreas() {
+    return (this._context?.contentLayer?.children ?? []).filter((element) => {
+      const label = element?.customType ?? element?.name;
+      return element?.[PRINT_AREA_KEY] === true || isProductionFileAreaLabel(label);
+    });
+  }
+
+  /** @private @param {string} id 区域 ID。 @returns {Object | null} */
+  _findProductionArea(id) {
+    return this._getPrintAreas().find((area) => {
+      const container = getElementDataContainer(area, true);
+      return String(container.attributes.productionArea?.id ?? container.elementId) === String(id);
+    }) ?? null;
+  }
+
+  /**
+   * @private
+   * @param {{ id: string, name: string, x: number, y: number, width: number, height: number, artboard: Object }} options 区域节点属性。
+   * @returns {Rect} 区域节点。
+   */
+  _createProductionAreaNode(options) {
+    const area = new Rect({
+      x: options.artboard.x + options.x,
+      y: options.artboard.y + options.y,
+      width: options.width,
+      height: options.height,
+      fill: 'rgba(124, 58, 237, 0.14)',
+      stroke: '#7c3aed',
+      strokeWidth: 2,
+      editable: true,
+      draggable: true,
+      lockRatio: false,
+      editConfig: { editSize: 'size', lockRatio: false, rotateable: false, skewable: false }
+    });
+
+    area[PRINT_AREA_KEY] = true;
+    area.customType = PRODUCTION_FILE_AREA_LABEL;
+    area.name = PRODUCTION_FILE_AREA_LABEL;
+    getElementDataContainer(area, true).attributes.productionArea = {
+      id: options.id,
+      name: options.name
+    };
+    return area;
+  }
+
   /** @private @returns {Object} 当前严格单选的图片或文字节点。 */
   _getAlignableSelection() {
     const selected = this._context?.innerEditor?.list ?? [];
@@ -684,9 +892,18 @@ export class ProductionPlugin {
   /** @private @returns {void} */
   _emitPrintAreaChanged() {
     this._syncProductionAreaPreview();
+    const selected = this._context?.innerEditor?.list ?? [];
+    const activeArea = this._getPrintAreas().find((area) => selected.includes(area));
     this._context?.eventBus.emit('production:print-area-changed', {
       printArea: this._getPrintArea(),
       properties: this.getPrintAreaProperties()
+    });
+    this._context?.eventBus.emit('production:areas-changed', {
+      areas: this.getProductionAreas(),
+      activeAreaId: activeArea ? String(
+        getElementDataContainer(activeArea, true).attributes.productionArea?.id
+        ?? getElementDataContainer(activeArea, true).elementId
+      ) : null
     });
   }
 

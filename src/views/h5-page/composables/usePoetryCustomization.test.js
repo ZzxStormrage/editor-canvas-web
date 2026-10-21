@@ -4,8 +4,10 @@ import test from 'node:test'
 import {
   resolvePoetrySubmitBlockedMessage,
   resolveMaterialOptions,
+  resolveAiSubjectTargets,
   resolveMaterialTargetGroups,
   resolveMaterialTargetsForGroup,
+  resolveTemplateAiSubjectIds,
   resolveTemplateMaterialGroupIds
 } from './usePoetryCustomization.js'
 
@@ -129,6 +131,36 @@ test('template material groups are collected recursively from image layers', () 
   })
 
   assert.deepEqual(groupIds, [12, 18])
+})
+
+test('AI subject bindings target only matching image layers', () => {
+  const document = {
+    elements: [
+      { tag: 'Image', attributes: { image: { aiSubjectIds: [12, '18'] } } },
+      { tag: 'Group', children: [{ tag: 'image', attributes: { image: { aiSubjectId: 18 } } }] }
+    ]
+  }
+  const first = { id: 'first' }
+  const second = { id: 'second' }
+  const editor = {
+    getElementsByType: () => [first, second],
+    elementData: {
+      get: (element) => element === first
+        ? { image: { aiSubjectIds: [12, 18] } }
+        : { image: { aiSubjectId: 18 } }
+    }
+  }
+  assert.deepEqual(resolveTemplateAiSubjectIds(document), [12, 18])
+  assert.deepEqual(resolveAiSubjectTargets(editor, 12), [first])
+  assert.deepEqual(resolveAiSubjectTargets(editor, 18), [first, second])
+})
+
+test('AI subject targets return null when no image has a binding', () => {
+  const editor = {
+    getElementsByType: () => [{ id: 'image' }],
+    elementData: { get: () => ({ image: {} }) }
+  }
+  assert.equal(resolveAiSubjectTargets(editor, 12), null)
 })
 
 test('material targets are grouped by binding and resolved for the selected material', () => {

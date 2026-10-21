@@ -70,6 +70,18 @@ export function useLayerControls(getEditor) {
     getEditor()?.layer?.togglePointerThrough(id)
   }
 
+  /** @param {string} id 图层 ID。 */
+  function toggleLayerCustomization(id) {
+    const editor = getEditor()
+    const targetLayer = layers.value.find((layer) => layer.id === id)
+    if (!editor || !targetLayer || !['text', 'image'].includes(targetLayer.type)) return
+
+    editor.elementData?.setById(targetLayer.elementId, {
+      customization: { enabled: !targetLayer.customizationEnabled }
+    })
+    refreshLayers()
+  }
+
   /**
    * 将图层移动到面板顺序中的指定位置，并一次性提交给 LayerPlugin。
    *
@@ -155,6 +167,7 @@ export function useLayerControls(getEditor) {
     toggleLayerLock,
     toggleLayerVisibility,
     toggleLayerPointerThrough,
+    toggleLayerCustomization,
     moveLayerUp,
     moveLayerDown,
     moveLayerToFront,
