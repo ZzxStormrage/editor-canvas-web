@@ -2,15 +2,13 @@
   <Transition name="editor-attribute-drawer">
     <aside v-if="activeLayer" ref="drawerRef" class="editor-attribute-drawer" :aria-label="`${activeLayer.name}属性`">
       <div class="layer-attribute-header editor-attribute-drawer__header">
-        <div class="editor-attribute-drawer__close-row">
+        <div class="editor-attribute-drawer__heading">
+          <strong>{{ activeLayer.type === 'image' ? '图片属性' : '文字属性' }}</strong>
           <button type="button" class="layer-attribute-close" aria-label="关闭属性编辑" @click="editor.closeElementAttributes">
             <v-icon icon="mdi-close" size="17" />
           </button>
         </div>
-        <div class="editor-attribute-drawer__heading">
-          <strong>{{ activeLayer.type === 'image' ? '图片属性' : '文字属性' }}</strong>
-          <span class="editor-attribute-drawer__element-name">{{ activeLayer.name }}</span>
-        </div>
+        <span class="editor-attribute-drawer__element-name">{{ activeLayer.name }}</span>
       </div>
       <div class="editor-attribute-drawer__content">
         <ImagePropertiesEditor v-if="activeLayer.type === 'image'" :editor="editor" />

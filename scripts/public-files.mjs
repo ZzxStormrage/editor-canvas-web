@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 export const PUBLIC_ENTRIES = [
   'src', 'tests', 'examples', 'scripts', '.github',
+  '.agents/skills/canvas-editor-frontend/SKILL.md',
   'index.html', 'package.json', 'package-lock.json', 'README.md', 'LICENSE',
   'CONTRIBUTING.md', 'THIRD_PARTY_NOTICES.md',
   '.gitignore', '.editorconfig', '.eslintrc.cjs', '.prettierrc.cjs', 'vite.config.js'
