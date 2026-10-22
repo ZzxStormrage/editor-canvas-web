@@ -182,6 +182,7 @@ export class EditorBuilder {
         imageOptions: this.#options.image,
         textOptions: this.#options.text,
         artboard: this.#artboard.options,
+        workspace: this.#artboard.getContentBounds(),
         editor: this.#options.editor,
         background: this.#options.background,
         showGrid: this.#options.showGrid,

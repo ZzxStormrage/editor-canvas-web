@@ -2,6 +2,7 @@ import { Frame, Group, Rect } from 'leafer-ui'
 import { EditorEvent, EditorMoveEvent, EditorRotateEvent, EditorScaleEvent, InnerEditorEvent } from '@leafer-in/editor'
 
 import { EditorError } from './errors/editor-error.js'
+import { getElementDataContainer } from './utils/element-data.js'
 import {
   areContentPreviewBoundsEqual,
   resolveContentLayerOpacity
@@ -10,6 +11,10 @@ import {
 const ARTBOARD_NODE_KEY = '__canvasEditorArtboard'
 const ARTBOARD_OVERFLOW_KEY = '__canvasEditorArtboardOverflow'
 const CONTENT_OVERLAY_SYNC_DELAY = 32
+const WORKSPACE_PADDING = 240
+const WORKSPACE_MIN_WIDTH = 1600
+const WORKSPACE_MIN_HEIGHT = 1200
+const WORKSPACE_VIEWPORT_PADDING = 480
 
 /**
  * 归一化画板配置。
@@ -26,6 +31,7 @@ export function normalizeArtboardOptions(artboard = {}, baseArtboard = {}) {
 
   return {
     enabled: normalizeOptionalBoolean(merged.enabled, 'artboard.enabled') ?? true,
+    visible: normalizeOptionalBoolean(merged.visible, 'artboard.visible') ?? true,
     x: normalizeOptionalNumber(merged.x, 'artboard.x'),
     y: normalizeOptionalNumber(merged.y, 'artboard.y'),
     width: normalizePositiveNumber(merged.width, 'artboard.width'),
@@ -59,6 +65,8 @@ export class ArtboardManager {
   #contentPreviewBounds = null
   #eventIds = []
   #unsubscribers = []
+  #editorChangeFrameId = null
+  #overlayRefreshTimeoutId = null
 
   /**
    * @param {Object} options 归一化后的画板配置。
@@ -173,6 +181,7 @@ export class ArtboardManager {
     this.#state = context.state
     this.#eventBus = context.eventBus
     this.#syncState()
+    this.syncWorkspaceBounds()
     this.#syncOverflowViews()
     this.#bindEditorEvents()
     this.#bindElementEvents()
@@ -192,15 +201,80 @@ export class ArtboardManager {
 
     this.#options.width = nextWidth
     this.#options.height = nextHeight
+    this.#options.visible = true
     this.#node.width = nextWidth
     this.#node.height = nextHeight
+    this.#node.visible = true
     this.#node.x = current.x + (current.width - nextWidth) / 2
     this.#node.y = current.y + (current.height - nextHeight) / 2
 
     this.#syncState()
+    this.syncWorkspaceBounds()
     this.syncAllElements()
     this.#innerEditor?.updateEditBox?.()
     this.#eventBus?.emit('artboard:resized', { artboard: this.options })
+  }
+
+  /**
+   * 根据点阵工作区和元素范围同步可滚动边界，不改变白色画板尺寸。
+   * @returns {void}
+   */
+  syncWorkspaceBounds() {
+    if (!this.#state) {
+      return
+    }
+
+    const artboard = this.getContentBounds()
+    const bounds = (this.#contentLayer.children ?? [])
+      .filter((node) => getElementDataContainer(node)?.attributes?.role !== 'background')
+      .map((node) => node?.getBounds?.('render', 'local'))
+      .filter(isValidBounds)
+    const contentLeft = bounds.length
+      ? Math.min(...bounds.map((item) => item.x - WORKSPACE_PADDING))
+      : artboard.x - WORKSPACE_PADDING
+    const contentTop = bounds.length
+      ? Math.min(...bounds.map((item) => item.y - WORKSPACE_PADDING))
+      : artboard.y - WORKSPACE_PADDING
+    const contentRight = bounds.length
+      ? Math.max(...bounds.map((item) => item.x + item.width + WORKSPACE_PADDING))
+      : artboard.x + artboard.width + WORKSPACE_PADDING
+    const contentBottom = bounds.length
+      ? Math.max(...bounds.map((item) => item.y + item.height + WORKSPACE_PADDING))
+      : artboard.y + artboard.height + WORKSPACE_PADDING
+    const zoom = Math.max(Number(this.#state.zoom) || 1, 0.01)
+    const viewport = this.#state.view?.getBoundingClientRect?.()
+    const centerX = (artboard.x + artboard.width / 2)
+    const centerY = (artboard.y + artboard.height / 2)
+    const width = Math.max(
+      WORKSPACE_MIN_WIDTH,
+      (viewport?.width ?? this.#state.width) / zoom + WORKSPACE_VIEWPORT_PADDING,
+      contentRight - contentLeft
+    )
+    const height = Math.max(
+      WORKSPACE_MIN_HEIGHT,
+      (viewport?.height ?? this.#state.height) / zoom + WORKSPACE_VIEWPORT_PADDING,
+      contentBottom - contentTop
+    )
+    const baseLeft = centerX - width / 2
+    const baseTop = centerY - height / 2
+    const left = Math.min(contentLeft, baseLeft)
+    const top = Math.min(contentTop, baseTop)
+    const right = Math.max(contentRight, baseLeft + width)
+    const bottom = Math.max(contentBottom, baseTop + height)
+
+    const workspace = {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top
+    }
+
+    if (areWorkspaceBoundsEqual(this.#state.workspace, workspace)) {
+      return
+    }
+
+    this.#state.workspace = workspace
+    this.#eventBus?.emit('workspace:bounds-changed', { workspace })
   }
 
   /**
@@ -242,6 +316,16 @@ export class ArtboardManager {
    * @returns {void}
    */
   destroy() {
+    if (this.#editorChangeFrameId !== null) {
+      if (typeof globalThis.cancelAnimationFrame === 'function') {
+        globalThis.cancelAnimationFrame(this.#editorChangeFrameId)
+      } else {
+        clearTimeout(this.#editorChangeFrameId)
+      }
+    }
+    clearTimeout(this.#overlayRefreshTimeoutId)
+    this.#editorChangeFrameId = null
+    this.#overlayRefreshTimeoutId = null
     this.#innerEditor?.off_(this.#eventIds)
     this.#unsubscribers.forEach((unsubscribe) => unsubscribe())
     this.#eventIds = []
@@ -273,6 +357,7 @@ export class ArtboardManager {
       height,
       fill: this.#options.fill,
       shadow: this.#options.shadow,
+      visible: this.#options.visible,
       hittable: false,
       hitChildren: false,
       editable: false,
@@ -292,6 +377,7 @@ export class ArtboardManager {
     const frame = new Frame({
       fill: 'rgba(255, 255, 255, 0)',
       overflow: 'hide',
+      visible: this.#options.visible,
       hittable: false,
       hitChildren: false,
       editable: false,
@@ -354,15 +440,33 @@ export class ArtboardManager {
     }
 
     this.#unsubscribers = [
-      this.#eventBus.on('image:added', ({ image }) => this.syncElement(image)),
-      this.#eventBus.on('text:added', ({ text }) => this.syncElement(text)),
-      this.#eventBus.on('text:updated', ({ text }) => this.syncElement(text)),
+      this.#eventBus.on('image:added', ({ image }) => {
+        this.#showArtboard()
+        this.syncWorkspaceBounds()
+        this.syncElement(image)
+      }),
+      this.#eventBus.on('text:added', ({ text }) => {
+        this.#showArtboard()
+        this.syncWorkspaceBounds()
+        this.syncElement(text)
+      }),
+      this.#eventBus.on('text:updated', ({ text }) => {
+        this.#showArtboard()
+        this.syncWorkspaceBounds()
+        this.syncElement(text)
+      }),
       this.#eventBus.on('selection:deleted', () => this.syncAllElements()),
       this.#eventBus.on('selection:layer-changed', () => this.syncAllElements()),
       this.#eventBus.on('selection:group-changed', () => this.syncAllElements()),
       this.#eventBus.on('text:selected', () => this.syncAllElements()),
-      this.#eventBus.on('viewport:zoom-changed', () => this.syncAllElements()),
-      this.#eventBus.on('canvas:resized', () => this.syncAllElements())
+      this.#eventBus.on('viewport:zoom-changed', () => {
+        this.syncWorkspaceBounds()
+        this.syncAllElements()
+      }),
+      this.#eventBus.on('canvas:resized', () => {
+        this.syncWorkspaceBounds()
+        this.syncAllElements()
+      })
     ]
   }
 
@@ -372,7 +476,27 @@ export class ArtboardManager {
    * @returns {void}
    */
   #handleEditorChange() {
-    this.syncAllElements()
+    if (this.#editorChangeFrameId !== null) {
+      return
+    }
+
+    const scheduleFrame = globalThis.requestAnimationFrame ?? ((callback) => setTimeout(callback, 16))
+    this.#editorChangeFrameId = scheduleFrame(() => {
+      this.#editorChangeFrameId = null
+      this.syncWorkspaceBounds()
+      this.syncAllElements()
+    })
+  }
+
+  /** 显示用户开始使用后的画板。 @returns {void} */
+  #showArtboard() {
+    if (this.#options.visible) {
+      return
+    }
+
+    this.#options.visible = true
+    this.#node.visible = true
+    this.#syncOverflowViews()
   }
 
   /**
@@ -402,10 +526,9 @@ export class ArtboardManager {
       return
     }
 
-    this.#contentLayer.opacity = resolveContentLayerOpacity(
-      this.#contentPreviewBounds,
-      this.#options.overflowOpacity
-    )
+    this.#contentLayer.opacity = this.#options.visible
+      ? resolveContentLayerOpacity(this.#contentPreviewBounds, this.#options.overflowOpacity)
+      : 1
   }
 
   /**
@@ -416,6 +539,7 @@ export class ArtboardManager {
   #syncClipFrame() {
     const artboardBounds = this.#contentPreviewBounds ?? this.getContentBounds()
 
+    this.#clipFrame.visible = this.#options.visible
     this.#setBox(this.#clipFrame, artboardBounds)
     this.#contentOverlayGroup.x = -artboardBounds.x
     this.#contentOverlayGroup.y = -artboardBounds.y
@@ -427,6 +551,10 @@ export class ArtboardManager {
    * @returns {void}
    */
   #syncContentOverlayView() {
+    if (!this.#options.visible) {
+      return
+    }
+
     this.#syncOverlayClones(this.#getContentCloneSources())
     this.#stage?.add?.(this.#clipFrame, 2)
   }
@@ -450,7 +578,12 @@ export class ArtboardManager {
         this.#contentOverlayGroup.add(clone)
       }
     })
-    setTimeout(() => {
+    if (this.#overlayRefreshTimeoutId !== null) {
+      return
+    }
+
+    this.#overlayRefreshTimeoutId = setTimeout(() => {
+      this.#overlayRefreshTimeoutId = null
       this.#refreshOverlayGroup()
     }, CONTENT_OVERLAY_SYNC_DELAY)
   }
@@ -594,6 +727,30 @@ function normalizeContentPreviewBounds(bounds) {
     width: normalizePositiveNumber(bounds?.width, 'contentPreviewBounds.width'),
     height: normalizePositiveNumber(bounds?.height, 'contentPreviewBounds.height')
   }
+}
+
+/**
+ * 判断 Leafer 返回的局部渲染边界是否完整有效。
+ * @param {Object} bounds 候选边界。
+ * @returns {boolean} 边界是否可用于画板范围计算。
+ */
+function isValidBounds(bounds) {
+  return [bounds?.x, bounds?.y, bounds?.width, bounds?.height].every(Number.isFinite)
+    && bounds.width >= 0
+    && bounds.height >= 0
+}
+
+/**
+ * 判断工作区边界是否有可见变化。
+ * @param {Object | undefined} current 当前工作区边界。
+ * @param {Object} next 新工作区边界。
+ * @returns {boolean} 四个边界值是否一致。
+ */
+function areWorkspaceBoundsEqual(current, next) {
+  return current?.x === next.x
+    && current?.y === next.y
+    && current?.width === next.width
+    && current?.height === next.height
 }
 
 /**

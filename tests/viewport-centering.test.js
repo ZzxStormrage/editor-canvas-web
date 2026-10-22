@@ -38,20 +38,40 @@ function createViewport(options = {}) {
     ...options.state
   };
   const events = [];
-  const viewport = new ViewportManager(
-    { interaction: null },
-    {
-      getBoundingClientRect: () => ({
-        width: options.viewportWidth ?? 300,
-        height: options.viewportHeight ?? 500
-      })
+  const interaction = options.interaction ?? null;
+  const listeners = new Map();
+  const view = {
+    style: { touchAction: 'pan-x', overscrollBehavior: 'auto' },
+    addEventListener: (type, listener, eventOptions) => {
+      listeners.set(type, { listener, eventOptions });
     },
+    removeEventListener: (type) => listeners.delete(type),
+    dispatch: (type, properties = {}) => {
+      const event = {
+        type,
+        defaultPrevented: false,
+        preventDefault() {
+          this.defaultPrevented = true;
+        },
+        ...properties
+      };
+      listeners.get(type)?.listener(event);
+      return event;
+    },
+    getBoundingClientRect: () => ({
+      width: options.viewportWidth ?? 300,
+      height: options.viewportHeight ?? 500
+    })
+  };
+  const viewport = new ViewportManager(
+    { interaction },
+    view,
     stage,
     state,
     { emit: (eventName, payload) => events.push({ eventName, payload }) }
   );
 
-  return { events, stage, state, viewport };
+  return { events, listeners, stage, state, view, viewport };
 }
 
 test('centerArtboard can keep horizontal pinch position while centering vertically', () => {
@@ -110,29 +130,108 @@ test('pinch center movement remains active at the zoom boundary', () => {
   assert.equal(events.at(-1)?.eventName, 'viewport:pan-changed');
 });
 
-test('artboard pan is clamped to every visible edge', () => {
+test('two-finger horizontal movement pans the canvas without changing zoom', () => {
+  const interaction = { config: { wheel: {} } };
+  const { listeners, stage, state, view, viewport } = createViewport({ interaction });
+
+  viewport.setupInteraction();
+  interaction.multiTouch(null, [
+    { from: { x: 100, y: 200 }, to: { x: 116, y: 200 } },
+    { from: { x: 200, y: 200 }, to: { x: 216, y: 200 } }
+  ]);
+
+  assert.equal(stage.x, 41);
+  assert.equal(stage.y, 40);
+  assert.equal(stage.scale, 2);
+  assert.equal(state.zoom, 2);
+  assert.equal(view.style.touchAction, 'none');
+  assert.equal(view.style.overscrollBehavior, 'none');
+  assert.equal(view.dispatch('wheel', { ctrlKey: true }).defaultPrevented, true);
+  assert.equal(view.dispatch('wheel').defaultPrevented, true);
+  assert.equal(view.dispatch('gesturechange').defaultPrevented, true);
+
+  viewport.destroy();
+  assert.equal(view.style.touchAction, 'pan-x');
+  assert.equal(view.style.overscrollBehavior, 'auto');
+  assert.equal(listeners.size, 0);
+});
+
+test('wheel scrolling pans while modified wheel input zooms the canvas', () => {
+  const interaction = { config: { wheel: {} } };
+  const { stage, state, viewport } = createViewport({
+    interaction,
+    stage: { x: -25, y: -40 },
+    state: {
+      artboard: { x: 0, y: 0, width: 200, height: 300 }
+    }
+  });
+
+  viewport.setupInteraction();
+  interaction.wheel({ deltaX: -24, deltaY: 12, ctrlKey: false, metaKey: false });
+
+  assert.ok(Math.abs(stage.x + 9.4) < 1e-9);
+  assert.ok(Math.abs(stage.y + 47.8) < 1e-9);
+  assert.equal(state.zoom, 2);
+
+  interaction.wheel({
+    deltaX: 0,
+    deltaY: -8,
+    x: 140,
+    y: 220,
+    ctrlKey: true,
+    metaKey: false
+  });
+
+  assert.ok(state.zoom > 2);
+  assert.equal(stage.scale, state.zoom);
+  viewport.destroy();
+});
+
+test('workspace pan continues beyond the calculated workspace edges', () => {
   const { stage, viewport } = createViewport({
     stage: { x: -50, y: -50 },
-    state: { artboard: { x: 0, y: 0, width: 200, height: 300 } }
+    state: {
+      artboard: { x: 0, y: 0, width: 200, height: 300 },
+      workspace: { x: -100, y: -100, width: 200, height: 300 }
+    }
   });
 
   viewport.panArtboard(200, 300);
-  assert.equal(Math.abs(stage.x), 0);
-  assert.equal(Math.abs(stage.y), 0);
+  assert.equal(stage.x, 150);
+  assert.equal(stage.y, 250);
 
   viewport.panArtboard(-500, -700);
-  assert.equal(stage.x, -100);
-  assert.equal(stage.y, -100);
+  assert.equal(stage.x, -350);
+  assert.equal(stage.y, -450);
 });
 
-test('artboard pan centers an axis when its scaled size is smaller than the viewport', () => {
+test('canvas pan uses the dotted workspace bounds instead of the white artboard', () => {
   const { stage, viewport } = createViewport({
-    stage: { x: 25, y: 40 },
-    state: { zoom: 1, artboard: { x: 10, y: 20, width: 100, height: 200 } }
+    stage: { x: 0, y: 0 },
+    state: {
+      artboard: { x: 100, y: 100, width: 80, height: 120 },
+      workspace: { x: -600, y: -400, width: 1400, height: 1100 }
+    }
   });
 
-  viewport.panArtboard(80, -120);
+  viewport.panArtboard(-500, -300);
 
-  assert.equal(stage.x, 90);
-  assert.equal(stage.y, 130);
+  assert.equal(stage.x, -500);
+  assert.equal(stage.y, -300);
+});
+
+test('canvas remains movable after zooming out below viewport size', () => {
+  const { stage, state, viewport } = createViewport({
+    stage: { x: 150, y: 200 },
+    state: {
+      zoom: 0.1,
+      workspace: { x: -2000, y: -3000, width: 4000, height: 6000 }
+    }
+  });
+
+  viewport.panArtboard(-40, 45);
+
+  assert.equal(stage.x, 110);
+  assert.equal(stage.y, 245);
+  assert.equal(state.zoom, 0.1);
 });

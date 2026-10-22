@@ -22,6 +22,7 @@ import { PinchZoomStrategy } from './strategies/PinchZoomStrategy.js';
 /**
  * @typedef {'wheel' | 'pinch' | 'api' | 'button' | 'fit'} ZoomSource
  */
+const WHEEL_PAN_SPEED = 0.65;
 
 export class ViewportManager {
   /** @type {import('leafer-ui').Leafer} */
@@ -204,46 +205,14 @@ export class ViewportManager {
   }
 
   /**
-   * 平移画板，并限制在当前可视区域边界内。
-   *
-   * 当画板某个方向小于视口时，该方向保持居中；大于视口时则限制在两侧边界内。
+   * 平移点阵工作区。背景为无边界画布，因此不对平移位置做钳制。
    *
    * @param {number} deltaX 水平移动距离。
    * @param {number} deltaY 垂直移动距离。
    * @returns {void}
    */
   panArtboard(deltaX, deltaY) {
-    const x = Number(deltaX);
-    const y = Number(deltaY);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      return;
-    }
-
-    const previousX = this.#stage.x;
-    const previousY = this.#stage.y;
-    const viewport = this.#getViewportBounds();
-    const artboard = this.#getArtboardBounds();
-    const zoom = this.#state.zoom;
-    const scaledWidth = artboard.width * zoom;
-    const scaledHeight = artboard.height * zoom;
-
-    if (scaledWidth <= viewport.width) {
-      this.#stage.x = viewport.width / 2 - (artboard.x + artboard.width / 2) * zoom;
-    } else {
-      const minX = viewport.width - (artboard.x + artboard.width) * zoom;
-      const maxX = -artboard.x * zoom;
-      this.#stage.x = MathHelper.within(previousX + x, minX, maxX);
-    }
-
-    if (scaledHeight <= viewport.height) {
-      this.#stage.y = viewport.height / 2 - (artboard.y + artboard.height / 2) * zoom;
-    } else {
-      const minY = viewport.height - (artboard.y + artboard.height) * zoom;
-      const maxY = -artboard.y * zoom;
-      this.#stage.y = MathHelper.within(previousY + y, minY, maxY);
-    }
-
-    this.#emitPanChanged(previousX, previousY);
+    this.panBy(deltaX, deltaY);
   }
 
   /**
@@ -387,13 +356,23 @@ export class ViewportManager {
    * 不再直接修改 interaction 对象，而是通过 adapter 函数桥接。
    */
   setupInteraction() {
+    this.#disableNativeBrowserZoom();
+
     const interaction = this.#leafer.interaction;
     if (!interaction) return;
 
     // ── 滚轮策略 ──
     interaction.wheel = (data) => {
-      const result = this.#strategies.wheel.handle(data, interaction.config.wheel);
-      if (result) this.zoom({ ...result, source: 'wheel' });
+      if (data.ctrlKey || data.metaKey) {
+        const result = this.#strategies.wheel.handle(data, interaction.config.wheel);
+        if (result) this.zoom({ ...result, source: 'wheel' });
+        return;
+      }
+
+      this.panArtboard(
+        -Number(data.deltaX || 0) * WHEEL_PAN_SPEED,
+        -Number(data.deltaY || 0) * WHEEL_PAN_SPEED
+      );
     };
 
     // ── 双指捏合策略 ──
@@ -417,6 +396,36 @@ export class ViewportManager {
     interaction.transformEnd = () => {
       this.#bus.emit('viewport:transform-end', { zoom: this.#state.zoom });
     };
+  }
+
+  /**
+   * 将画布上的缩放手势交由编辑器处理，并在销毁时恢复原样式。
+   * @returns {void}
+   */
+  #disableNativeBrowserZoom() {
+    const previousTouchAction = this.#view.style.touchAction;
+    const previousOverscrollBehavior = this.#view.style.overscrollBehavior;
+    /** @param {WheelEvent | Event} event 原生缩放手势事件。 @returns {void} */
+    const preventBrowserZoom = (event) => event.preventDefault();
+    const gestureOptions = { capture: true, passive: false };
+    const gestureEvents = ['wheel', 'gesturestart', 'gesturechange', 'gestureend'];
+
+    this.#view.style.touchAction = 'none';
+    this.#view.style.overscrollBehavior = 'none';
+    gestureEvents.forEach((type) => {
+      this.#view.addEventListener(type, preventBrowserZoom, gestureOptions);
+    });
+    this.#cleanups.push(() => {
+      gestureEvents.forEach((type) => {
+        this.#view.removeEventListener(type, preventBrowserZoom, true);
+      });
+      if (this.#view.style.touchAction === 'none') {
+        this.#view.style.touchAction = previousTouchAction;
+      }
+      if (this.#view.style.overscrollBehavior === 'none') {
+        this.#view.style.overscrollBehavior = previousOverscrollBehavior;
+      }
+    });
   }
 
   // ═══════════════════ 销毁 ═══════════════════

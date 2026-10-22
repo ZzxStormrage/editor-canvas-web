@@ -130,10 +130,11 @@
     </div>
 
     <div class="workspace-stage">
-      <div class="canvas-host">
+      <div ref="canvasHost" class="canvas-host">
         <div
           :ref="setCanvasRef"
           class="canvas-view"
+          id="canvas-viewport"
           :class="{
             'canvas-view--pan-ready': editor.canvasPanReady.value,
             'canvas-view--panning': editor.canvasPanning.value
@@ -148,14 +149,33 @@
           :menu="editor.layerMenu.value"
           @action="editor.runLayerAction"
         />
-        <div v-if="editor.ready.value && editor.layers.value.length === 0" class="first-run">
+        <CanvasScrollbars :editor="editor" :host="canvasHost" />
+        <div
+          v-if="editor.ready.value && editor.layers.value.length === 0 && !firstRunDismissed"
+          class="first-run"
+        >
+          <svg class="first-run__filter-defs" aria-hidden="true" focusable="false">
+            <filter id="first-run-lens-filter" x="-25%" y="-35%" width="150%" height="170%">
+              <feComponentTransfer in="SourceAlpha" result="alpha">
+                <feFuncA type="identity" />
+              </feComponentTransfer>
+              <feGaussianBlur in="alpha" stdDeviation="50" result="blur" />
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="blur"
+                scale="50"
+                xChannelSelector="A"
+                yChannelSelector="A"
+              />
+            </filter>
+          </svg>
           <div class="first-run__mark"><v-icon icon="mdi-sparkles" size="22" /></div>
           <h1>从一张空白画布开始</h1>
           <p>添加文字或导入图片，完成后可保存项目并导出作品。</p>
           <div class="first-run__actions">
-            <v-btn color="primary" prepend-icon="mdi-format-textbox" @click="editor.addText">添加文字</v-btn>
+            <v-btn color="primary" prepend-icon="mdi-format-textbox" @click="runFirstRunAction(addTextAction)">添加文字</v-btn>
             <v-btn variant="outlined" prepend-icon="mdi-image-plus-outline" @click="openImage">导入图片</v-btn>
-            <v-btn variant="outlined" prepend-icon="mdi-sparkles" @click="emit('create-example')">试用示例</v-btn>
+            <v-btn variant="outlined" prepend-icon="mdi-sparkles" @click="runFirstRunAction(createExampleAction)">试用示例</v-btn>
             <v-btn variant="text" prepend-icon="mdi-folder-open-outline" @click="emit('open-document')">打开项目</v-btn>
           </div>
           <div class="first-run__hint">⌘ / Ctrl + Z 撤销 <span>·</span> 空格 + 拖动画布</div>
@@ -168,6 +188,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 
+import CanvasScrollbars from './CanvasScrollbars.vue';
 import SelectionActionToolbar from './SelectionActionToolbar.vue';
 import SelectionLayerMenu from './SelectionLayerMenu.vue';
 
@@ -180,6 +201,7 @@ const workspaceShortcuts = Object.freeze([
   { label: '移动画布', keys: ['空格', '拖拽'] }
 ]);
 const shortcutsMenuOpen = ref(false);
+const canvasHost = ref(null);
 
 const props = defineProps({
   editor: {
@@ -197,10 +219,22 @@ const props = defineProps({
   fitOptions: {
     type: [Object, Number, Boolean],
     default: false
+  },
+  createExampleAction: {
+    type: Function,
+    required: true
+  },
+  addTextAction: {
+    type: Function,
+    required: true
+  },
+  firstRunDismissed: {
+    type: Boolean,
+    default: false
   }
 });
 
-const emit = defineEmits(['document-loaded', 'document-error', 'open-document', 'create-example']);
+const emit = defineEmits(['document-loaded', 'document-error', 'open-document', 'first-run-complete']);
 
 watch(
   [() => props.editor?.ready?.value, () => props.document],
@@ -237,5 +271,15 @@ function setCanvasRef(element) {
 /** @returns {void} Open the local image picker. */
 function openImage() {
   props.editor.openImagePicker();
+}
+
+/** @param {() => Promise<boolean>} action First-run action. @returns {Promise<void>} */
+async function runFirstRunAction(action) {
+  try {
+    const completed = await action();
+    if (completed !== false) emit('first-run-complete');
+  } catch (error) {
+    console.error('First-run action failed.', error);
+  }
 }
 </script>

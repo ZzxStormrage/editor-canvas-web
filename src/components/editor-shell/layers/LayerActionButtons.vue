@@ -34,21 +34,6 @@
     </button>
 
     <button
-      v-if="layer.type === 'image'"
-      type="button"
-      class="layer-action-button"
-      :class="{ 'layer-action-button--active': layer.pointerThrough }"
-      :aria-label="layer.pointerThrough ? '取消图片点击穿透' : '启用图片点击穿透'"
-      @pointerdown.stop
-      @click.stop="emit('toggle-pointer-through')"
-    >
-      <v-icon :icon="layer.pointerThrough ? 'mdi-mouse-off' : 'mdi-cursor-default-click-outline'" size="17" />
-      <v-tooltip activator="parent" location="top" open-delay="350">
-        {{ layer.pointerThrough ? '取消穿透' : '穿透' }}
-      </v-tooltip>
-    </button>
-
-    <button
       type="button"
       class="layer-action-button"
       aria-label="置顶图层"
@@ -56,7 +41,7 @@
       @pointerdown.stop
       @click.stop="emit('move-to-front')"
     >
-      <v-icon icon="mdi-chevron-double-up" size="17" />
+      <v-icon icon="mdi-arrange-bring-to-front" size="17" />
       <v-tooltip activator="parent" location="top" open-delay="350">置顶</v-tooltip>
     </button>
 
@@ -144,7 +129,6 @@ const props = defineProps({
 const emit = defineEmits([
   'toggle-visibility',
   'edit-attributes',
-  'toggle-pointer-through',
   'move-to-front',
   'move-up',
   'move-down',

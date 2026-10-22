@@ -66,7 +66,6 @@
                 always-visible
                 @edit-attributes="editor.openLayerElementAttributes(element.id)"
                 @toggle-visibility="editor.toggleLayerVisibility(element.id)"
-                @toggle-pointer-through="editor.toggleLayerPointerThrough(element.id)"
                 @move-to-front="editor.moveLayerToFront(element.id)"
                 @move-up="editor.moveLayerUp(element.id)"
                 @move-down="editor.moveLayerDown(element.id)"
@@ -106,27 +105,28 @@ function getLayerMetaText(layer) {
 
 <style scoped>
 .layer-item {
-  transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(var(--v-theme-shadow), 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 5px rgba(var(--v-theme-shadow), 0.09);
   transition:
     background-color 160ms ease,
     border-color 160ms ease,
-    box-shadow 180ms ease,
-    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 160ms ease,
     opacity 160ms ease;
 }
 
 .layer-item:hover,
 .layer-item:focus-visible {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 18px rgba(var(--v-theme-shadow), 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 3px 7px rgba(var(--v-theme-shadow), 0.13);
 }
 
 .layer-item--selected {
-  transform: translateY(-2px);
   box-shadow:
-    0 8px 18px rgba(var(--v-theme-shadow), 0.14),
-    0 0 0 1px rgba(var(--v-theme-primary), 0.08);
+    inset 0 0 0 1px rgba(var(--v-theme-primary), 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 3px 8px rgba(var(--v-theme-primary), 0.18);
 }
 
 @media (prefers-reduced-motion: reduce) {

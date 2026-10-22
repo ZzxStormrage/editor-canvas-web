@@ -155,6 +155,7 @@ export class DocumentPlugin {
       );
     });
 
+    artboard?.syncWorkspaceBounds?.();
     artboard?.syncAllElements?.();
     innerEditor?.update?.();
   }

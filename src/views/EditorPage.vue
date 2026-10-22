@@ -14,7 +14,14 @@
     <div class="editor-workbench">
       <EditorRail :model-value="activePanel" @update:model-value="selectPanel" />
       <EditorSidePanel :active-panel="activePanel" :editor="editor" />
-      <CanvasWorkspace :editor="editor" @open-document="projectInput?.click()" @create-example="createExample" />
+      <CanvasWorkspace
+        :editor="editor"
+        :create-example-action="createExample"
+        :add-text-action="addStarterText"
+        :first-run-dismissed="firstRunDismissed"
+        @first-run-complete="firstRunDismissed = true"
+        @open-document="projectInput?.click()"
+      />
       <EditorAttributeDrawer :editor="editor" />
       <v-overlay class="align-center justify-center" contained persistent :model-value="loading">
         <div class="editor-loading"><v-progress-circular color="primary" indeterminate size="28" />正在打开项目…</div>
@@ -53,6 +60,7 @@ import {
 import '../assets/scss/editor-workbench.scss';
 
 const activePanel = ref('artboard');
+const firstRunDismissed = ref(false);
 const projectInput = ref(null);
 const loading = ref(false);
 const saving = ref(false);
@@ -191,12 +199,27 @@ async function createExample() {
     editor.fitArtboardToView();
     projectName.value = 'Canvas Study 01';
     showMessage('示例已打开。文字、图片和图层都可以继续编辑。', 'success');
+    return true;
   } catch (error) {
     showMessage(error.message || '示例无法打开。', 'error');
+    return false;
   } finally {
     suppressDraftWrites = false;
     loading.value = false;
     scheduleDraftSave();
+  }
+}
+
+/** @returns {Promise<void>} Add the first text layer and report the result. */
+async function addStarterText() {
+  try {
+    await editor.whenReady();
+    await editor.addText();
+    showMessage('文字框已添加，可以直接在画布中编辑。', 'success');
+    return true;
+  } catch (error) {
+    showMessage(error.message || '文字框添加失败。', 'error');
+    return false;
   }
 }
 

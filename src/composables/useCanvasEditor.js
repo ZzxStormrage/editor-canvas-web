@@ -136,7 +136,8 @@ export function useCanvasEditor(options = {}) {
     try {
       editor = createEditor({
         view: canvasRef.value,
-        autoResize: true
+        autoResize: true,
+        artboard: { visible: false }
       })
 
       unsubscribeEvents = [

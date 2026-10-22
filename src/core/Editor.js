@@ -518,7 +518,7 @@ export class Editor {
   }
 
   /**
-   * 平移画板，并限制画板在可视区域边界内。
+   * 平移无边界点阵工作区。
    *
    * @param {number} deltaX 水平移动距离。
    * @param {number} deltaY 垂直移动距离。
