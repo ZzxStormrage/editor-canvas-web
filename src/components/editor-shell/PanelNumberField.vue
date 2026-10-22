@@ -79,7 +79,7 @@ function handleUpdate(value) {
 
 .panel-number-field__input :deep(.v-field) {
   min-height: 34px;
-  border-radius: 6px;
+  border-radius: var(--editor-radius-field, 6px);
   background: rgba(var(--v-theme-control), 0.56);
 }
 
@@ -117,7 +117,7 @@ function handleUpdate(value) {
 }
 
 .panel-number-field--compact .panel-number-field__label {
-  font-size: 8px;
+  font-size: var(--editor-font-micro);
 }
 
 .panel-number-field--compact .panel-number-field__input {
@@ -132,7 +132,7 @@ function handleUpdate(value) {
 }
 
 .panel-number-field--compact .panel-number-field__input :deep(.v-field) {
-  border-radius: 5px;
+  border-radius: var(--editor-radius-field, 6px);
 }
 
 .panel-number-field--compact .panel-number-field__input :deep(.v-field__input) {
@@ -142,7 +142,7 @@ function handleUpdate(value) {
 
 .panel-number-field--compact .panel-number-field__unit {
   right: 7px;
-  font-size: 9px;
+  font-size: var(--editor-font-micro);
 }
 
 .panel-number-field--compact .panel-number-field__input--with-unit :deep(.v-field__input) {

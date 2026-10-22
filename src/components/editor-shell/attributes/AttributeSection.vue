@@ -46,7 +46,7 @@ const contentId = `attribute-section-${++sectionSequence}`;
   flex: 0 0 auto;
   overflow: hidden;
   border: 1px solid rgba(var(--v-theme-outline), 0.16);
-  border-radius: 8px;
+  border-radius: var(--editor-radius-card, 8px);
   background: rgb(var(--v-theme-surface));
   transition:
     border-color 160ms ease,
@@ -101,7 +101,7 @@ const contentId = `attribute-section-${++sectionSequence}`;
 .attribute-section__summary small {
   overflow: hidden;
   color: var(--editor-muted);
-  font-size: 9px;
+  font-size: var(--editor-font-micro);
   font-weight: 550;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -114,7 +114,7 @@ const contentId = `attribute-section-${++sectionSequence}`;
   flex: 0 0 26px;
   width: 26px;
   height: 26px;
-  border-radius: 6px;
+  border-radius: var(--editor-radius-field, 6px);
   color: var(--editor-primary);
   background: rgba(var(--v-theme-primary), 0.1);
 }

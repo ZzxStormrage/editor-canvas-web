@@ -58,7 +58,7 @@ function handleInput(event) {
   height: 30px;
   padding: 0 8px;
   border: 1px solid rgba(var(--v-theme-outline), 0.28);
-  border-radius: 5px;
+  border-radius: var(--editor-radius-field, 6px);
   outline: none;
   color: var(--editor-text);
   background: rgba(var(--v-theme-control), 0.56);

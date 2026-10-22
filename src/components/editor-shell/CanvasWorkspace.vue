@@ -7,9 +7,8 @@
       <div class="zoom-cluster" aria-label="画布操作">
         <v-btn
           class="editor-icon-button"
-          color="primary"
           size="small"
-          variant="tonal"
+          variant="text"
           aria-label="上一步"
           :disabled="!editor.canUndo.value || editor.historyBusy.value"
           @click="editor.undo"
@@ -19,9 +18,8 @@
         </v-btn>
         <v-btn
           class="editor-icon-button"
-          color="primary"
           size="small"
-          variant="tonal"
+          variant="text"
           aria-label="下一步"
           :disabled="!editor.canRedo.value || editor.historyBusy.value"
           @click="editor.redo"
@@ -32,9 +30,8 @@
         <span class="workspace-toolbar-divider" aria-hidden="true"></span>
         <v-btn
           class="editor-icon-button"
-          color="primary"
           size="small"
-          variant="tonal"
+          variant="text"
           aria-label="缩小"
           @click="editor.zoomOut"
         >
@@ -49,9 +46,8 @@
         <span>{{ editor.zoomPercent.value }}%</span>
         <v-btn
           class="editor-icon-button"
-          color="primary"
           size="small"
-          variant="tonal"
+          variant="text"
           aria-label="放大"
           @click="editor.zoomIn"
         >
@@ -65,9 +61,8 @@
         </v-btn>
         <v-btn
           class="editor-icon-button"
-          color="primary"
           size="small"
-          variant="tonal"
+          variant="text"
           aria-label="重置缩放"
           @click="editor.resetZoom"
         >
@@ -81,9 +76,8 @@
         </v-btn>
         <v-btn
           class="editor-icon-button"
-          color="primary"
           size="small"
-          variant="tonal"
+          variant="text"
           aria-label="垂直居中"
           @click="editor.centerArtboard"
         >
@@ -101,9 +95,8 @@
             <v-btn
               v-bind="menuProps"
               class="editor-icon-button"
-              color="primary"
               size="small"
-              variant="tonal"
+              variant="text"
               aria-label="键盘快捷键"
             >
               <v-icon icon="mdi-keyboard-outline" size="18" />
@@ -155,6 +148,18 @@
           :menu="editor.layerMenu.value"
           @action="editor.runLayerAction"
         />
+        <div v-if="editor.ready.value && editor.layers.value.length === 0" class="first-run">
+          <div class="first-run__mark"><v-icon icon="mdi-sparkles" size="22" /></div>
+          <h1>从一张空白画布开始</h1>
+          <p>添加文字或导入图片，完成后可保存项目并导出作品。</p>
+          <div class="first-run__actions">
+            <v-btn color="primary" prepend-icon="mdi-format-textbox" @click="editor.addText">添加文字</v-btn>
+            <v-btn variant="outlined" prepend-icon="mdi-image-plus-outline" @click="openImage">导入图片</v-btn>
+            <v-btn variant="outlined" prepend-icon="mdi-sparkles" @click="emit('create-example')">试用示例</v-btn>
+            <v-btn variant="text" prepend-icon="mdi-folder-open-outline" @click="emit('open-document')">打开项目</v-btn>
+          </div>
+          <div class="first-run__hint">⌘ / Ctrl + Z 撤销 <span>·</span> 空格 + 拖动画布</div>
+        </div>
       </div>
     </div>
   </main>
@@ -195,7 +200,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['document-loaded', 'document-error']);
+const emit = defineEmits(['document-loaded', 'document-error', 'open-document', 'create-example']);
 
 watch(
   [() => props.editor?.ready?.value, () => props.document],
@@ -227,5 +232,10 @@ function setCanvasRef(element) {
   if (props.editor?.canvasRef) {
     props.editor.canvasRef.value = element;
   }
+}
+
+/** @returns {void} Open the local image picker. */
+function openImage() {
+  props.editor.openImagePicker();
 }
 </script>

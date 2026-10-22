@@ -140,6 +140,14 @@ export function useCanvasEditor(options = {}) {
       })
 
       unsubscribeEvents = [
+        ...[
+          'artboard:fill-changed', 'artboard:resized', 'element-data:changed',
+          'image:added', 'image:replaced', 'image:updated', 'layers:changed',
+          'selection:deleted', 'selection:group-changed', 'selection:layer-changed',
+          'text:added', 'text:replaced', 'text:updated'
+        ].map((eventName) => editor.eventBus.on(eventName, () => {
+          options.onDocumentChange?.()
+        })),
         editor.eventBus.on('text:selected', ({ options }) => {
           if (!assetControls.isAddingWatermark()) {
             textControls.applyTextOptionsToUI(options)

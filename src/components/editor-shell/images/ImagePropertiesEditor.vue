@@ -220,7 +220,7 @@ function formatDimension(value) {
   justify-content: space-between;
   gap: 6px;
   color: var(--editor-muted);
-  font-size: 9px;
+  font-size: var(--editor-font-micro);
   font-weight: 800;
 }
 
@@ -241,7 +241,7 @@ function formatDimension(value) {
   align-items: center;
   gap: 6px;
   padding: 3px 5px;
-  border-radius: 6px;
+  border-radius: var(--editor-radius-field, 6px);
   background: rgba(var(--v-theme-control), 0.46);
   color: var(--editor-muted);
 }
@@ -255,7 +255,7 @@ function formatDimension(value) {
 }
 
 .image-original-size span {
-  font-size: 9px;
+  font-size: var(--editor-font-micro);
   font-weight: 700;
 }
 
@@ -281,11 +281,11 @@ function formatDimension(value) {
   gap: 3px;
   padding: 2px 5px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--editor-radius-field, 6px);
   color: var(--editor-muted);
   background: rgba(var(--v-theme-control), 0.5);
   font: inherit;
-  font-size: 8px;
+  font-size: var(--editor-font-micro);
   font-weight: 700;
   line-height: 1;
   cursor: pointer;

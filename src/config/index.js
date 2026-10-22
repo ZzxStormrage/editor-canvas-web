@@ -195,17 +195,17 @@ export const DEFAULT_CANVAS_CONFIG = {
   grid: {
     /** 小网格尺寸。 */
     size: 24,
-    /** 小网格线颜色。 */
-    color: '#eef1f5',
+    /** 网格点颜色。 */
+    color: '#c9cbd1',
     /** 大网格尺寸。 */
     majorSize: 120,
-    /** 大网格线颜色。 */
-    majorColor: '#dce2ea',
+    /** 保留兼容配置；点阵不再绘制大网格线。 */
+    majorColor: '#c9cbd1',
     /** 网格区域底色，通常跟随画布背景色。 */
-    backgroundColor: '#f7f8fa',
+    backgroundColor: '#fbfbfc',
     /** CSS 背景声明，供 DOM 场景或调试视图复用。 */
     background:
-      'linear-gradient(#eef1f5 1px, transparent 1px), linear-gradient(90deg, #eef1f5 1px, transparent 1px), #f7f8fa',
+      'radial-gradient(circle, #d0d1d6 1.25px, transparent 1.45px), #fbfbfc',
     /** CSS 背景尺寸，需与小网格尺寸保持一致。 */
     backgroundSize: '24px 24px'
   },

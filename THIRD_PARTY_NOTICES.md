@@ -18,7 +18,7 @@
 | Vue 3.x | MIT | https://github.com/vuejs/core |
 | Vuetify 4.x | MIT | https://github.com/vuetifyjs/vuetify |
 | vuedraggable 4.x | MIT | https://github.com/SortableJS/vue.draggable.next |
-| @mdi/font 7.x | Icons/Fonts: Apache-2.0; Code: MIT | https://github.com/Templarian/MaterialDesign-Webfont |
+| lucide-vue-next 0.x | ISC | https://github.com/lucide-icons/lucide |
 
 完整许可文本见各依赖包的 LICENSE。开发工具和间接依赖仍适用各自的许可证。
 

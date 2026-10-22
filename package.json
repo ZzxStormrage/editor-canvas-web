@@ -20,7 +20,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mdi/font": "^7.4.47",
+    "@lucide/vue": "^1.61.0",
     "nanoid": "^5.1.16",
     "vue": "^3.5.0",
     "vuedraggable": "^4.1.0",

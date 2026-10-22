@@ -102,7 +102,7 @@ function handleSelect(value) {
   min-height: 38px;
   padding: 3px;
   border: 1px solid rgba(var(--v-theme-outline), 0.12);
-  border-radius: 8px;
+  border-radius: var(--editor-radius-control, 8px);
   background: rgba(var(--v-theme-control), 0.78);
 }
 
@@ -117,7 +117,7 @@ function handleSelect(value) {
   padding: 0 8px;
   overflow: hidden;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--editor-radius-field, 6px);
   background: transparent;
   color: var(--editor-muted);
   cursor: pointer;

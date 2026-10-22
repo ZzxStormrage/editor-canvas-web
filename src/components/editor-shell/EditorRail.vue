@@ -36,7 +36,7 @@ const railItems = [
   { label: '文字', value: 'text', icon: 'mdi-format-text' },
   { label: '图层', value: 'layers', icon: 'mdi-layers-outline' },
   { label: '画布', value: 'artboard', icon: 'mdi-artboard' },
-  { label: '工具', value: 'tools', icon: 'mdi-tools' }
+  { label: '水印', value: 'tools', icon: 'mdi-water-percent' }
 ];
 
 /**

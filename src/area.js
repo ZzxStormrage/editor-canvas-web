@@ -22,8 +22,8 @@ export function createArea(size, options) {
     editable: false,
     draggable: false
   });
-  const minorGrid = createGridPathNode(options.grid.color);
-  const majorGrid = createGridPathNode(options.grid.majorColor);
+  const minorGrid = createGridDotsNode(options.grid.color);
+  const majorGrid = createGridDotsNode(options.grid.majorColor);
   const area = new Group({
     x: 0,
     y: 0,
@@ -66,29 +66,29 @@ export function updateArea(area, size, options) {
 
   const showGrid = options.showGrid ?? options.areaType === 'grid';
   minorGrid.visible = showGrid;
-  majorGrid.visible = showGrid;
+  // Freeform-style canvas surfaces use one quiet dot rhythm instead of
+  // competing minor and major line grids.
+  majorGrid.visible = false;
 
   if (!showGrid) {
     return;
   }
 
-  minorGrid.stroke = options.grid.color;
-  minorGrid.path = createGridPath(size, options.grid.size, options.grid.majorSize);
-  majorGrid.stroke = options.grid.majorColor;
-  majorGrid.path = createGridPath(size, options.grid.majorSize);
+  minorGrid.fill = options.grid.color;
+  minorGrid.path = createDotPath(size, options.grid.size, 1.35);
 }
 
 /**
- * 创建网格线节点。
+ * 创建网格点节点。
  *
- * @param {string} stroke 线条颜色。
+ * @param {string} color 点颜色。
  * @returns {Path} 网格线节点。
  */
-function createGridPathNode(stroke) {
+function createGridDotsNode(color) {
   return new Path({
     path: '',
-    stroke,
-    strokeWidth: 1,
+    fill: color,
+    strokeWidth: 0,
     hittable: false,
     editable: false,
     draggable: false
@@ -103,36 +103,18 @@ function createGridPathNode(stroke) {
  * @param {number} [skipStep] 跳过的主网格间距。
  * @returns {string} Path 字符串。
  */
-function createGridPath(size, step, skipStep) {
+function createDotPath(size, step, radius) {
   const paths = [];
   const bounds = new Bounds(0, 0, size.width, size.height);
 
   for (let x = bounds.minX; x <= bounds.maxX; x += step) {
-    if (shouldSkipLine(x, skipStep)) {
-      continue;
+    for (let y = bounds.minY; y <= bounds.maxY; y += step) {
+      paths.push(
+        `M ${x - radius} ${y} A ${radius} ${radius} 0 1 0 ${x + radius} ${y} `
+        + `A ${radius} ${radius} 0 1 0 ${x - radius} ${y}`
+      );
     }
-
-    paths.push(`M ${x} ${bounds.minY} V ${bounds.maxY}`);
-  }
-
-  for (let y = bounds.minY; y <= bounds.maxY; y += step) {
-    if (shouldSkipLine(y, skipStep)) {
-      continue;
-    }
-
-    paths.push(`M ${bounds.minX} ${y} H ${bounds.maxX}`);
   }
 
   return paths.join(' ');
-}
-
-/**
- * 判断当前网格线是否应该跳过。
- *
- * @param {number} position 线条位置。
- * @param {number} [skipStep] 跳过间距。
- * @returns {boolean} 是否跳过。
- */
-function shouldSkipLine(position, skipStep) {
-  return skipStep ? position % skipStep === 0 : false;
 }

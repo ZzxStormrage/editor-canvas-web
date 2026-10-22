@@ -4,7 +4,7 @@
  *
  * @type {string}
  */
-export const EDITOR_THEME_NAME = 'eleLight';
+export const EDITOR_THEME_NAME = 'canvasLight';
 
 /**
  * 编辑器主题色配置。
@@ -14,15 +14,15 @@ export const EDITOR_THEME_NAME = 'eleLight';
  * @type {Record<string, string>}
  */
 export const EDITOR_THEME_COLORS = {
-  background: '#f5f7fb',
-  'on-background': '#172033',
+  background: '#f5f5f7',
+  'on-background': '#1d1d1f',
   surface: '#ffffff',
-  'on-surface': '#172033',
-  primary: '#7c3aed',
+  'on-surface': '#1d1d1f',
+  primary: '#007aff',
   'on-primary': '#ffffff',
-  secondary: '#12b8c4',
+  secondary: '#5856d6',
   'on-secondary': '#ffffff',
-  accent: '#8b5cf6',
+  accent: '#5ac8fa',
   error: '#ef4444',
   'on-error': '#ffffff',
   info: '#2563eb',
@@ -31,18 +31,18 @@ export const EDITOR_THEME_COLORS = {
   'on-success': '#ffffff',
   warning: '#f59e0b',
   'on-warning': '#172033',
-  'primary-soft': '#f3edff',
+  'primary-soft': '#e8f2ff',
   panel: '#ffffff',
-  workspace: '#eef2f7',
-  canvas: '#f7f9fd',
-  grid: '#d7deeb',
-  text: '#172033',
-  muted: '#596276',
-  subtle: '#7b8496',
-  line: '#e7ebf2',
-  outline: '#9aa4b7',
-  control: '#f4f6fa',
-  shadow: '#172033'
+  workspace: '#ececf0',
+  canvas: '#f2f2f5',
+  grid: '#d9d9df',
+  text: '#1d1d1f',
+  muted: '#636366',
+  subtle: '#8e8e93',
+  line: '#e3e3e8',
+  outline: '#aeaeb2',
+  control: '#f5f5f7',
+  shadow: '#1d1d1f'
 };
 
 /**
@@ -100,7 +100,7 @@ export const EDITOR_COMPONENT_DEFAULTS = {
     swatchesMaxHeight: 92,
     swatches: [
       ['#111827', '#374151', '#6b7280', '#ffffff'],
-      ['#7c3aed', '#8b5cf6', '#12b8c4', '#2563eb'],
+      ['#007aff', '#5ac8fa', '#5856d6', '#34c759'],
       ['#ef4444', '#f59e0b', '#16a34a', '#ec4899']
     ]
   },
@@ -116,7 +116,11 @@ export const EDITOR_COMPONENT_DEFAULTS = {
     color: 'primary',
     hideDetails: true,
     flat: true,
-    rounded: 'md'
+    rounded: 0,
+    VBtn: {
+      rounded: 0,
+      variant: 'text'
+    }
   },
   VSelect: {
     density: 'compact',

@@ -13,14 +13,22 @@ export function readLocalImage(file) {
   });
 }
 
-/** @param {Object} document 编辑器文档。 @returns {void} 下载本地文件。 */
-export function downloadDocument(document) {
+/** @param {Object} document 编辑器文档。 @param {string} name 项目名称。 @returns {void} 下载项目。 */
+export function downloadDocument(document, name = 'canvas-project') {
   const url = URL.createObjectURL(new Blob([JSON.stringify(document, null, 2)], {
     type: 'application/json'
   }));
   const link = window.document.createElement('a');
   link.href = url;
-  link.download = 'canvas-document.json';
+  link.download = `${getProjectFileStem(name)}.json`;
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** @param {string} text Project name. @returns {string} Safe file stem. */
+export function getProjectFileStem(text) {
+  const stem = Array.from(String(text ?? '').replace(/\.json$/i, '').trim(), (character) =>
+    character.charCodeAt(0) < 32 ? '-' : character)
+    .join('').replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '-');
+  return stem.slice(0, 80) || 'canvas-project';
 }
