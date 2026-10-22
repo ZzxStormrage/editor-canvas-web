@@ -16,33 +16,12 @@
     </button>
 
     <button
-      v-if="supportsElementProperties && showCustomizationToggle"
-      type="button"
-      class="layer-action-button layer-customization-button"
-      :class="{
-        'layer-action-button--active': layer.customizationEnabled,
-        'layer-customization-button--closed': !layer.customizationEnabled
-      }"
-      :aria-label="layer.customizationEnabled ? '关闭开放定制' : '开放定制'"
-      :aria-pressed="Boolean(layer.customizationEnabled)"
-      @pointerdown.stop
-      @keydown.stop
-      @click.stop="emit('toggle-customization')"
-    >
-      <v-icon :icon="layer.customizationEnabled ? 'mdi-toggle-switch' : 'mdi-toggle-switch-off-outline'" size="18" />
-      <v-tooltip activator="parent" location="top" open-delay="350">
-        {{ layer.customizationEnabled ? '关闭定制' : '开放定制' }}
-      </v-tooltip>
-    </button>
-
-    <button
-      v-if="supportsElementProperties && (!showCustomizationToggle || layer.customizationEnabled)"
+      v-if="supportsElementProperties"
       type="button"
       class="layer-action-button layer-attribute-button"
       data-editor-attribute-trigger
       :class="{
-        'layer-action-button--active': attributesActive,
-        'layer-attribute-button--configured': layer.customAttributeCount > 0
+        'layer-action-button--active': attributesActive
       }"
       :aria-label="attributeAriaLabel"
       :aria-expanded="attributesActive"
@@ -51,9 +30,6 @@
       @click.stop="emit('edit-attributes')"
     >
       <v-icon icon="mdi-tune-variant" size="17" />
-      <span v-if="layer.customAttributeCount > 0" class="layer-attribute-count">
-        {{ formattedAttributeCount }}
-      </span>
       <v-tooltip activator="parent" location="top" open-delay="350">属性</v-tooltip>
     </button>
 
@@ -147,10 +123,6 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
-  showCustomizationToggle: {
-    type: Boolean,
-    default: false
-  },
   alwaysVisible: {
     type: Boolean,
     default: false
@@ -172,7 +144,6 @@ const props = defineProps({
 const emit = defineEmits([
   'toggle-visibility',
   'edit-attributes',
-  'toggle-customization',
   'toggle-pointer-through',
   'move-to-front',
   'move-up',
@@ -182,25 +153,5 @@ const emit = defineEmits([
 ]);
 
 const supportsElementProperties = computed(() => props.layer.type === 'text' || props.layer.type === 'image');
-const formattedAttributeCount = computed(() => {
-  const count = Number(props.layer.customAttributeCount) || 0;
-  return count > 9 ? '9+' : String(count);
-});
-const attributeAriaLabel = computed(() => {
-  const typeLabel = props.layer.type === 'image' ? '图片属性' : 'H5 文本规则';
-  const count = Number(props.layer.customAttributeCount) || 0;
-  return count > 0 ? `编辑${typeLabel}，已配置 ${count} 项` : `设置${typeLabel}`;
-});
+const attributeAriaLabel = computed(() => props.layer.type === 'image' ? '设置图片属性' : '设置文字属性');
 </script>
-
-<style scoped>
-.layer-customization-button.layer-action-button--active:not(:disabled) {
-  color: rgb(var(--v-theme-on-primary));
-  background: rgb(var(--v-theme-primary));
-}
-
-.layer-customization-button:focus-visible {
-  outline: 2px solid var(--editor-primary);
-  outline-offset: 2px;
-}
-</style>

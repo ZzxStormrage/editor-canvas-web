@@ -52,19 +52,6 @@
               <div class="layer-info">
                 <div class="layer-info__title-row">
                   <strong class="layer-info__name" :title="element.name">{{ element.name }}</strong>
-                  <v-icon
-                    v-if="editor.enableCustomization && getReplacementGroupName(element)"
-                    icon="mdi-link-variant"
-                    size="14"
-                    :title="`联动替换组：${getReplacementGroupName(element)}`"
-                    :aria-label="`联动替换组：${getReplacementGroupName(element)}`"
-                  />
-                  <span v-if="element.imageRole" class="layer-status-badge">
-                    {{ getImageRoleLabel(element.imageRole) }}
-                  </span>
-                  <span v-else-if="element.textLayoutMode" class="layer-status-badge">
-                    {{ getTextLayoutLabel(element.textLayoutMode) }}
-                  </span>
                 </div>
                 <span class="layer-info__meta">{{ getLayerMetaText(element) }}</span>
               </div>
@@ -73,7 +60,6 @@
               <LayerActionButtons
                 :layer="element"
                 :attributes-active="editor.activeAttributeElementId.value === element.elementId"
-                :show-customization-toggle="editor.enableCustomization"
                 :can-move-up="index > 0"
                 :can-move-down="index < editor.layers.value.length - 1"
                 :can-move-to-front="index > 0"
@@ -81,7 +67,6 @@
                 @edit-attributes="editor.openLayerElementAttributes(element.id)"
                 @toggle-visibility="editor.toggleLayerVisibility(element.id)"
                 @toggle-pointer-through="editor.toggleLayerPointerThrough(element.id)"
-                @toggle-customization="editor.toggleLayerCustomization(element.id)"
                 @move-to-front="editor.moveLayerToFront(element.id)"
                 @move-up="editor.moveLayerUp(element.id)"
                 @move-down="editor.moveLayerDown(element.id)"
@@ -100,34 +85,9 @@
 import draggable from 'vuedraggable';
 import LayerActionButtons from '../layers/LayerActionButtons.vue';
 import LayerPreview from '../layers/LayerPreview.vue';
-import { getImageRoleLabel, getLayerTypeLabel } from '../layers/layerDisplay.js';
+import { getLayerTypeLabel } from '../layers/layerDisplay.js';
 
-const TEXT_LAYOUT_LABELS = Object.freeze({
-  'single-line': '单行适配',
-  vertical: '竖行'
-});
-
-const props = defineProps({
-  editor: {
-    type: Object,
-    required: true
-  }
-});
-
-function getReplacementGroupName(layer) {
-  const image = props.editor.getElementAttributesById(layer.elementId)?.image
-  return image?.replacementGroupId ? image.replacementGroupName || '未命名联动组' : ''
-}
-
-/**
- * 获取文字显示策略的图层标记。
- *
- * @param {string} mode 文字显示策略。
- * @returns {string} 图层标记文字。
- */
-function getTextLayoutLabel(mode) {
-  return TEXT_LAYOUT_LABELS[mode] ?? '';
-}
+defineProps({ editor: { type: Object, required: true } });
 
 /**
  * 组合图层类型与关键状态，帮助运维快速识别当前图层。

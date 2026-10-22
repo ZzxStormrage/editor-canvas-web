@@ -5,7 +5,7 @@ import { ref } from 'vue'
  *
  * Vue 层只保存可渲染 DTO；实际排序、锁定、删除和 hover 均委托给 LayerPlugin。
  *
- * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor 获取编辑器实例。
+ * @param {() => import('../../core/Editor.js').Editor | null} getEditor 获取编辑器实例。
  * @returns {Object} 图层列表状态与操作。
  */
 export function useLayerControls(getEditor) {
@@ -68,18 +68,6 @@ export function useLayerControls(getEditor) {
   /** @param {string} id 图片图层 ID。 */
   function toggleLayerPointerThrough(id) {
     getEditor()?.layer?.togglePointerThrough(id)
-  }
-
-  /** @param {string} id 图层 ID。 */
-  function toggleLayerCustomization(id) {
-    const editor = getEditor()
-    const targetLayer = layers.value.find((layer) => layer.id === id)
-    if (!editor || !targetLayer || !['text', 'image'].includes(targetLayer.type)) return
-
-    editor.elementData?.setById(targetLayer.elementId, {
-      customization: { enabled: !targetLayer.customizationEnabled }
-    })
-    refreshLayers()
   }
 
   /**
@@ -167,7 +155,6 @@ export function useLayerControls(getEditor) {
     toggleLayerLock,
     toggleLayerVisibility,
     toggleLayerPointerThrough,
-    toggleLayerCustomization,
     moveLayerUp,
     moveLayerDown,
     moveLayerToFront,

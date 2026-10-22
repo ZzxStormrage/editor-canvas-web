@@ -7,7 +7,7 @@ const SPACE_CODE = 'Space'
  *
  * 键盘和指针状态保留在 Vue 调用层，实际视口位移统一委托给 Editor 外观 API。
  *
- * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor 获取编辑器实例。
+ * @param {() => import('../../core/Editor.js').Editor | null} getEditor 获取编辑器实例。
  * @returns {Object} 抓手状态与生命周期方法。
  */
 export function useCanvasPan(getEditor) {

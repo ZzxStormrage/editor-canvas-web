@@ -8,7 +8,7 @@ const MENU_GAP = 8
 /**
  * 管理 Vue 层级菜单，并将层级命令委托给 Editor 外观 API。
  *
- * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor 获取编辑器实例。
+ * @param {() => import('../../core/Editor.js').Editor | null} getEditor 获取编辑器实例。
  * @param {import('vue').Ref<HTMLElement | null>} canvasRef 画布宿主元素。
  * @returns {Object} 菜单状态和操作。
  */

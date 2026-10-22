@@ -1,13 +1,13 @@
 import { ref } from 'vue'
 
-import { pictureApi } from '../../api/index.js'
+import { readLocalImage } from './local-files.js'
 
-const WATERMARK_NODE_KEY = '__eleEditorWatermark'
+const WATERMARK_NODE_KEY = '__editorWatermark'
 
 /**
  * 管理普通图片和水印等素材业务。
  *
- * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor 获取编辑器实例。
+ * @param {() => import('../../core/Editor.js').Editor | null} getEditor 获取编辑器实例。
  * @param {() => { x: number, y: number, width: number, height: number }} getArtboardBounds 获取画板边界。
  * @param {import('vue').Ref<string>} fontFamily 当前字体。
  * @param {((message: string, type: 'success' | 'error') => void) | null} notify 消息通知方法。
@@ -51,12 +51,12 @@ export function useAssetControls(getEditor, getArtboardBounds, fontFamily, notif
     imageUploading.value = true
 
     try {
-      const imageUrl = await pictureApi.upload(file)
+      const imageUrl = await readLocalImage(file)
       await editor.image.add(imageUrl)
-      notify?.('图片上传成功', 'success')
+      notify?.('图片导入成功', 'success')
     } catch (error) {
       console.error('Image upload failed.', error)
-      notify?.(error.message || '图片上传失败。', 'error')
+      notify?.(error.message || '图片导入失败。', 'error')
     } finally {
       imageUploading.value = false
     }
@@ -80,7 +80,7 @@ export function useAssetControls(getEditor, getArtboardBounds, fontFamily, notif
   }
 
   /**
-   * 上传图片并替换打开选择器时选中的图片节点。
+   * 导入图片并替换打开选择器时选中的图片节点。
    *
    * @param {Event} event 文件选择事件。
    * @returns {Promise<void>}
@@ -100,7 +100,7 @@ export function useAssetControls(getEditor, getArtboardBounds, fontFamily, notif
     imageReplacing.value = true
 
     try {
-      const imageUrl = await pictureApi.upload(file)
+      const imageUrl = await readLocalImage(file)
       await editor.replaceImage(target, imageUrl, {
         fit: 'contain',
         preserveFrame: false

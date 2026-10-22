@@ -25,18 +25,16 @@
           :loading="editor.imageUploading.value"
           @click="editor.openImagePicker"
         >
-          上传图片
+          导入图片
         </v-btn>
       </div>
     </PanelGroup>
 
-    <MaterialGroupBrowser :editor="editor" />
   </section>
 </template>
 
 <script setup>
 import { IMAGE_FILE_ACCEPT } from '../../../config/image-upload.js';
-import MaterialGroupBrowser from '../assets/MaterialGroupBrowser.vue';
 import PanelGroup from '../PanelGroup.vue';
 
 const props = defineProps({

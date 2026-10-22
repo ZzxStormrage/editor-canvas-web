@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canvas Editor Core</title>
+  <style>
+    body { margin: 0; font: 16px system-ui; }
+    nav { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; }
+    button, label { cursor: pointer; }
+    #canvas { height: 75vh; min-height: 320px; }
+    #message { padding: 0 12px; }
+  </style>
+  <nav aria-label="编辑操作">
+    <button id="add-text">添加文字</button>
+    <label>添加图片 <input id="image" type="file" accept="image/*"></label>
+    <button id="undo">撤销</button>
+    <button id="redo">重做</button>
+    <button id="fit">适应画板</button>
+    <button id="save">下载 JSON</button>
+    <label>打开 JSON <input id="document" type="file" accept="application/json,.json"></label>
+  </nav>
+  <p id="message" role="status" aria-live="polite"></p>
+  <div id="canvas" aria-label="编辑画布"></div>
+  <script type="module" src="./main.js"></script>
+</html>

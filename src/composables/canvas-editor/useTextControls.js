@@ -1,7 +1,6 @@
 import { nextTick, reactive, ref, watch } from 'vue'
 
-import { customFontApi } from '../../api/modules/custom-font.js'
-import { loadFontFace } from '../../canvas-editor-core/src/index.js'
+import { loadFontFace } from '../../index.js'
 import {
   getDefaultLineHeight,
   normalizeFontWeightForUI,
@@ -19,12 +18,12 @@ const DEFAULT_RENDER_FONT_FAMILY = 'PingFang SC'
  * 应用层只依赖 Editor 外观 API，不直接操作 TextPlugin 实例，符合核心层的
  * 单向依赖约束。
  *
- * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor 获取编辑器实例。
+ * @param {() => import('../../core/Editor.js').Editor | null} getEditor 获取编辑器实例。
  * @returns {Object} 文字状态和业务操作。
  */
 export function useTextControls(getEditor) {
   const textValue = ref(DEFAULT_TEXT)
-  const fontFamily = ref('')
+  const fontFamily = ref('Arial')
   const fontSize = ref(36)
   const fontWeight = ref('400')
   const textColor = ref('#1f2937')
@@ -36,127 +35,12 @@ export function useTextControls(getEditor) {
   const lineThrough = ref(false)
   const writingMode = ref('x')
   const fontListLoading = ref(false)
-  const fontOptions = reactive([])
+  const fontOptions = reactive(['Arial', 'PingFang SC', 'Microsoft YaHei', 'sans-serif', 'serif', 'monospace'].map(fontName => ({ fontName })))
   const remoteFonts = new Map()
   let isSyncingControls = false
-  let fontListRequest = null
-  let fontListResponse = null
-  let isFontListLoaded = false
-
-  /**
-   * 请求并应用字体列表接口数据。
-   *
-   * 同一次请求未结束时复用 Promise，防止下拉框重复触发并发请求。
-   *
-   * @returns {Promise<*>} 服务端原始响应；请求失败时返回错误响应数据或 null。
-   */
-  function loadFontList() {
-    if (isFontListLoaded) {
-      return Promise.resolve(fontListResponse)
-    }
-
-    if (!fontListRequest) {
-      fontListRequest = requestFontList().finally(() => {
-        fontListRequest = null
-      })
-    }
-
-    return fontListRequest
-  }
-
-  /**
-   * 执行字体列表请求。
-   *
-   * @private
-   * @returns {Promise<*>} 服务端原始响应或错误响应数据。
-   */
-  async function requestFontList() {
-    fontListLoading.value = true
-
-    try {
-      const response = await customFontApi.list()
-      fontListResponse = response
-      isFontListLoaded = true
-      applyFontResponse(response)
-      return response
-    } catch (error) {
-      const errorResponse = error?.data ?? null
-      console.error('[customFontApi.list] request failed:', error)
-      return errorResponse
-    } finally {
-      fontListLoading.value = false
-    }
-  }
-
-  /**
-   * 将字体接口返回的数据合并到下拉选项，并记录远程字体地址。
-   *
-   * @param {*} response 字体接口响应。
-   * @returns {void}
-   */
-  function applyFontResponse(response) {
-    resolveFontRecords(response).forEach((font) => {
-      const fontName = typeof font.fontName === 'string' ? font.fontName.trim() : ''
-      const fontUrl = typeof font.fontUrl === 'string' ? font.fontUrl.trim() : ''
-      const imageUrl = typeof font.imageUrl === 'string' ? font.imageUrl.trim() : ''
-
-      if (!fontName) {
-        return
-      }
-
-      const option = {
-        id: font.id,
-        fontName,
-        fontUrl,
-        imageUrl
-      }
-      const existingOption = fontOptions.find((item) => item.fontName === fontName)
-
-      if (existingOption) {
-        Object.assign(existingOption, option)
-      } else {
-        fontOptions.push(option)
-      }
-
-      if (fontUrl) {
-        remoteFonts.set(fontName, option)
-      }
-
-      if (!fontFamily.value) {
-        fontFamily.value = fontName
-      }
-    })
-  }
-
-  /**
-   * 从接口常见包装中提取字体记录数组。
-   *
-   * @param {*} value 接口响应。
-   * @param {number} [depth=0] 当前解包深度。
-   * @returns {Object[]} 字体记录数组。
-   */
-  function resolveFontRecords(value, depth = 0) {
-    if (depth > 4) {
-      return []
-    }
-
-    if (Array.isArray(value)) {
-      return value.filter((item) => item && typeof item === 'object')
-    }
-
-    if (!value || typeof value !== 'object') {
-      return []
-    }
-
-    for (const key of ['data', 'result', 'body', 'list', 'content', 'records']) {
-      const records = resolveFontRecords(value[key], depth + 1)
-
-      if (records.length) {
-        return records
-      }
-    }
-
-    return []
+  /** @returns {Promise<Object[]>} 当前系统字体选项，无网络请求。 */
+  async function loadFontList() {
+    return fontOptions
   }
 
   /**
@@ -227,7 +111,7 @@ export function useTextControls(getEditor) {
   }
 
   /**
-   * 记录文档携带的字体地址，保证字体列表尚未请求时仍能继续编辑并导出。
+   * 记录文档携带的字体地址，保证字体面板尚未打开时仍能继续编辑并导出。
    *
    * @param {string | undefined} fontName 字体名称。
    * @param {string | undefined} fontUrl 字体地址。

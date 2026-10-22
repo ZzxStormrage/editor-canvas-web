@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { resolveContainedImagePlacement } from './artboard-image-placement.js'
 
-test('wide mask is contained without changing its aspect ratio', () => {
+test('wide image is contained without changing its aspect ratio', () => {
   assert.deepEqual(
     resolveContainedImagePlacement(
       { width: 2000, height: 1000 },
@@ -13,7 +13,7 @@ test('wide mask is contained without changing its aspect ratio', () => {
   )
 })
 
-test('tall mask is centered inside an offset artboard', () => {
+test('tall image is centered inside an offset artboard', () => {
   assert.deepEqual(
     resolveContainedImagePlacement(
       { width: 600, height: 1200 },

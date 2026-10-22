@@ -3,7 +3,7 @@ import { ref } from 'vue'
 /**
  * 管理图片属性面板状态，并通过 Editor 外观 API 与核心层双向同步。
  *
- * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor
+ * @param {() => import('../../core/Editor.js').Editor | null} getEditor
  * 获取编辑器实例。
  * @returns {Object} 图片属性状态和操作方法。
  */

@@ -1,3 +1,6 @@
 <template>
-  <router-view />
+  <EditorPage />
 </template>
+<script setup>
+import EditorPage from './views/EditorPage.vue';
+</script>

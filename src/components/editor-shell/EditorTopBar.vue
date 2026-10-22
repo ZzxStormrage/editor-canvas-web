@@ -3,38 +3,16 @@
     <div class="top-bar-content">
       <div class="top-bar-left">
         <v-icon icon="mdi-vector-square" size="20" />
-        <strong>ELE Editor</strong>
+        <strong>Canvas Editor</strong>
       </div>
 
       <div class="top-bar-title">图形画布编辑器</div>
 
       <div class="top-bar-actions">
         <span class="top-bar-status">{{ status }}</span>
-        <v-btn
-          class="top-bar-docs-button"
-          color="surface"
-          density="compact"
-          prepend-icon="mdi-book-open-page-variant-outline"
-          size="small"
-          target="_blank"
-          to="/docs"
-          variant="text"
-          rel="noopener noreferrer"
-        >
-          API 文档
-        </v-btn>
-        <v-btn
-          class="top-bar-docs-button"
-          color="surface"
-          density="compact"
-          prepend-icon="mdi-clipboard-text-outline"
-          size="small"
-          target="_blank"
-          to="/h5-docs"
-          variant="text"
-          rel="noopener noreferrer"
-        >
-          H5 模板规则
+        <v-btn class="top-bar-docs-button" color="surface" density="compact"
+          prepend-icon="mdi-folder-open-outline" size="small" variant="text" :disabled="saving || disabled" @click="emit('open')">
+          打开 JSON
         </v-btn>
         <v-btn
           class="top-bar-save-button"
@@ -47,7 +25,7 @@
           :disabled="saving || disabled"
           @click="emit('save')"
         >
-          立即保存
+          导出 JSON
         </v-btn>
       </div>
     </div>
@@ -66,9 +44,9 @@ defineProps({
   },
   status: {
     type: String,
-    default: '新建模板'
+    default: '本地文档'
   }
 })
 
-const emit = defineEmits(['save'])
+const emit = defineEmits(['save', 'open'])
 </script>

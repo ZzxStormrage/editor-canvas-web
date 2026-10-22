@@ -1,32 +1,27 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { createEditor } from '../canvas-editor-core/src/index.js'
+import { createEditor } from '../index.js'
 import { useArtboardControls } from './canvas-editor/useArtboardControls.js'
 import { useAssetControls } from './canvas-editor/useAssetControls.js'
 import { useCanvasPan } from './canvas-editor/useCanvasPan.js'
-import { useElementDataControls } from './canvas-editor/useElementDataControls.js'
 import { useImageControls } from './canvas-editor/useImageControls.js'
 import { useLayerMenu } from './canvas-editor/useLayerMenu.js'
 import { useLayerControls } from './canvas-editor/useLayerControls.js'
-import { useMaterialGroupControls } from './canvas-editor/useMaterialGroupControls.js'
 import { useSelectionToolbar } from './canvas-editor/useSelectionToolbar.js'
 import { useTextControls } from './canvas-editor/useTextControls.js'
 
 /**
  * 组合应用层编辑器能力。
  *
- * 本模块只负责三件事：创建 Editor 外观实例、连接 EventBus、组合各业务
- * composable。文字、素材、画板等具体业务不再堆积在生命周期控制器中。
+ * 本模块只负责三件事：创建 Editor 外观实例、连接 EventBus、组合各编辑
+ * composable。文字、图片、画板等操作分别维护。
  *
  * @param {Object} [options={}] 应用层配置。
  * @param {((message: string, type: 'success' | 'error') => void) | null} [options.onMessage]
  * 消息通知方法。
- * @param {boolean} [options.enableCustomization=false] 是否显示元素定制开关。
  * @returns {Object} 编辑器状态、DOM 引用和操作方法。
  */
 export function useCanvasEditor(options = {}) {
-  const enableProductionAreas = options.enableProductionAreas === true
-  const enableCustomization = options.enableCustomization === true
   const canvasRef = ref(null)
   const ready = ref(false)
   const initializationError = ref(null)
@@ -40,7 +35,7 @@ export function useCanvasEditor(options = {}) {
   let unsubscribeEvents = []
   const readyWaiters = new Set()
 
-  /** @returns {import('../canvas-editor-core/src/core/Editor.js').Editor | null} */
+  /** @returns {import('../core/Editor.js').Editor | null} */
   function getEditor() {
     return editor
   }
@@ -63,19 +58,9 @@ export function useCanvasEditor(options = {}) {
   const textControls = useTextControls(getEditor)
   const artboardControls = useArtboardControls(getEditor, notify)
   const assetControls = useAssetControls(getEditor, artboardControls.getArtboardBounds, textControls.fontFamily, notify)
-  const materialGroupControls = useMaterialGroupControls(getEditor, notify)
-  const aiSubjects = ref([])
-  const aiSubjectLoading = ref(false)
-  const aiSubjectLoadingMore = ref(false)
-  const aiSubjectHasMore = ref(true)
-  const aiSubjectError = ref('')
-  function setAiSubjects(subjects) {
-    aiSubjects.value = Array.isArray(subjects) ? subjects : []
-  }
   const layerMenuControls = useLayerMenu(getEditor, canvasRef)
   const selectionToolbarControls = useSelectionToolbar(getEditor, canvasRef)
   const layerControls = useLayerControls(getEditor)
-  const elementDataControls = useElementDataControls(getEditor)
   const imageControls = useImageControls(getEditor)
   const canvasPanControls = useCanvasPan(getEditor)
 
@@ -99,15 +84,8 @@ export function useCanvasEditor(options = {}) {
    * @returns {boolean} 是否已处理属性操作。
    */
   function openElementAttributes(layer, toggle = true) {
-    if (!layer || !['text', 'image', 'production-area'].includes(layer.type)) {
+    if (!layer || !['text', 'image'].includes(layer.type)) {
       return false
-    }
-
-    if (layer.type === 'production-area') {
-      const area = editor?.getProductionAreas?.().find((item) => item.elementId === layer.elementId)
-      artboardControls.syncProductionAreaControls(area ?? null)
-    } else {
-      artboardControls.syncProductionAreaControls(null)
     }
 
     if (toggle && activeAttributeElementId.value === layer.elementId) {
@@ -136,43 +114,10 @@ export function useCanvasEditor(options = {}) {
     return openElementAttributes(layer, toggle ? wasActive : false)
   }
 
-  /** @param {string} layerId 图层 ID。 @returns {void} 开关定制并在开启时打开属性面板。 */
-  function toggleLayerCustomization(layerId) {
-    const targetLayer = layerControls.layers.value.find((item) => item.id === String(layerId))
-    if (!targetLayer || !['text', 'image'].includes(targetLayer.type)) return
-
-    const enabling = !targetLayer.customizationEnabled
-    layerControls.toggleLayerCustomization(layerId)
-    if (enabling) openLayerElementAttributes(layerId, false)
-  }
-
   /** @returns {void} 关闭右侧属性抽屉。 */
   function closeElementAttributes() {
     activeAttributeElementId.value = null
-    artboardControls.syncProductionAreaControls(null)
-  }
 
-  /** @returns {void} 删除当前选中的生产区域。 */
-  function deleteSelectedProductionArea() {
-    const layer = layerControls.layers.value.find(
-      (item) => item.selected && item.type === 'production-area'
-    )
-    const area = layer && editor?.getProductionAreas?.().find((item) => item.elementId === layer.elementId)
-    if (area) {
-      editor.removeProductionArea(area.id)
-      closeElementAttributes()
-    }
-  }
-
-  /** @returns {void} 区域框选中时同步打开属性抽屉。 */
-  function openSelectedProductionAreaAttributes() {
-    layerControls.refreshLayers()
-    const areaLayer = layerControls.layers.value.find(
-      (layer) => layer.selected && layer.type === 'production-area'
-    )
-    if (areaLayer && activeAttributeElementId.value !== areaLayer.elementId) {
-      openSelectedElementAttributes()
-    }
   }
 
   /**
@@ -211,23 +156,6 @@ export function useCanvasEditor(options = {}) {
           imageControls.syncImageProperties(properties)
           selectionToolbarControls.syncSelectionToolbar()
         }),
-        editor.eventBus.on('production:print-area-changed', ({ properties }) => {
-          artboardControls.syncPrintAreaControls(properties)
-        }),
-        editor.eventBus.on('production:areas-changed', ({ areas, activeAreaId }) => {
-          const activeArea = areas?.find((area) => area.id === activeAreaId)
-          if (activeArea) artboardControls.syncProductionAreaControls(activeArea)
-          else if (!activeAttributeElementId.value) artboardControls.syncProductionAreaControls(null)
-          if (enableProductionAreas) openSelectedProductionAreaAttributes()
-        }),
-        editor.eventBus.on('production:area-preview-changed', ({ enabled }) => {
-          artboardControls.syncProductionAreaPreview(enabled)
-        }),
-        editor.eventBus.on('production:selection-aligned', () => {
-          imageControls.syncImageProperties()
-          selectionToolbarControls.syncSelectionToolbar()
-          layerControls.refreshLayers()
-        }),
         editor.eventBus.on('viewport:zoom-changed', ({ zoom: nextZoom }) => {
           zoom.value = nextZoom
           selectionToolbarControls.syncSelectionToolbar()
@@ -244,7 +172,7 @@ export function useCanvasEditor(options = {}) {
         }),
         editor.eventBus.on('artboard:resized', () => {
           artboardControls.syncArtboardControls()
-          artboardControls.syncPrintAreaControls()
+
           imageControls.syncImageProperties()
         }),
         editor.eventBus.on('layers:changed', ({ layers }) => {
@@ -257,8 +185,7 @@ export function useCanvasEditor(options = {}) {
       selectionToolbarControls.startSelectionToolbar()
       syncZoom()
       artboardControls.syncArtboardControls()
-      artboardControls.syncPrintAreaControls()
-      artboardControls.syncProductionAreaPreview()
+
       layerControls.refreshLayers()
       imageControls.syncImageProperties()
       ready.value = true
@@ -279,10 +206,10 @@ export function useCanvasEditor(options = {}) {
   }
 
   /**
-   * 等待核心编辑器完成初始化，供 iframe 消息和模板持久化流程消除挂载竞态。
+   * 等待核心编辑器完成初始化，供本地文件导入消除挂载竞态。
    *
    * @param {number} [timeout=8000] 最长等待时间，单位毫秒。
-   * @returns {Promise<import('../canvas-editor-core/src/core/Editor.js').Editor>}
+   * @returns {Promise<import('../core/Editor.js').Editor>}
    */
   function whenReady(timeout = 8000) {
     const instance = initCanvas()
@@ -298,7 +225,7 @@ export function useCanvasEditor(options = {}) {
       const waiter = { resolve, reject, timer: 0 }
       waiter.timer = window.setTimeout(() => {
         readyWaiters.delete(waiter)
-        reject(new Error('编辑器初始化超时，请确认 iframe 已显示并刷新后重试。'))
+        reject(new Error('编辑器初始化超时，请确认页面已显示并刷新后重试。'))
       }, timeout)
       readyWaiters.add(waiter)
     })
@@ -329,8 +256,7 @@ export function useCanvasEditor(options = {}) {
   function syncEditorPanels() {
     syncZoom()
     artboardControls.syncArtboardControls()
-    artboardControls.syncPrintAreaControls()
-    artboardControls.syncProductionAreaPreview()
+
     layerControls.refreshLayers()
     imageControls.syncImageProperties()
     selectionToolbarControls.syncSelectionToolbar()
@@ -508,85 +434,15 @@ export function useCanvasEditor(options = {}) {
     fontOptions: textControls.fontOptions,
     loadFontList: textControls.loadFontList,
     addText: textControls.addText,
-    backgroundInputRef: artboardControls.backgroundInputRef,
-    backgroundUploading: artboardControls.backgroundUploading,
-    maskInputRef: artboardControls.maskInputRef,
-    maskUploading: artboardControls.maskUploading,
-    printAreaDetecting: artboardControls.printAreaDetecting,
-    printAreaAvailable: artboardControls.printAreaAvailable,
-    productionAreaPreviewEnabled: artboardControls.productionAreaPreviewEnabled,
-    artboardWidth: artboardControls.artboardWidth,
-    artboardHeight: artboardControls.artboardHeight,
-    printAreaX: artboardControls.printAreaX,
-    printAreaY: artboardControls.printAreaY,
-    printAreaWidth: artboardControls.printAreaWidth,
-    printAreaHeight: artboardControls.printAreaHeight,
-    artboardMillimeterSize: artboardControls.artboardMillimeterSize,
-    printAreaMillimeterSize: artboardControls.printAreaMillimeterSize,
-    productionAreaX: artboardControls.productionAreaX,
-    productionAreaY: artboardControls.productionAreaY,
-    productionAreaWidth: artboardControls.productionAreaWidth,
-    productionAreaHeight: artboardControls.productionAreaHeight,
-    productionAreaMillimeterSize: artboardControls.productionAreaMillimeterSize,
-    updateArtboardSize: artboardControls.updateArtboardSize,
-    openBackgroundImagePicker: artboardControls.openBackgroundImagePicker,
-    handleBackgroundImageChange: artboardControls.handleBackgroundImageChange,
-    openMaskImagePicker: artboardControls.openMaskImagePicker,
-    handleMaskImageChange: artboardControls.handleMaskImageChange,
-    openRoleImageReplacementPicker: artboardControls.openRoleImageReplacementPicker,
-    addPrintArea: artboardControls.addPrintArea,
-    deletePrintArea: artboardControls.deletePrintArea,
-    toggleProductionAreaPreview: artboardControls.toggleProductionAreaPreview,
-    alignSelectedToPrintArea: artboardControls.alignSelectedToPrintArea,
-    detectPrintAreaFromMask: artboardControls.detectPrintAreaFromMask,
-    capturePrintArea: artboardControls.capturePrintArea,
-    captureCanvas: artboardControls.captureCanvas,
-    imageInputRef: assetControls.imageInputRef,
-    imageUploading: assetControls.imageUploading,
-    materialGroups: materialGroupControls.materialGroups,
-    aiSubjects,
-    setAiSubjects,
-    aiSubjectLoading,
-    aiSubjectLoadingMore,
-    aiSubjectHasMore,
-    aiSubjectError,
-    activeMaterialGroupId: materialGroupControls.activeMaterialGroupId,
-    activeMaterialGroup: materialGroupControls.activeMaterialGroup,
-    materials: materialGroupControls.materials,
-    materialTotal: materialGroupControls.materialTotal,
-    materialLoading: materialGroupControls.materialLoading,
-    materialLoadingMore: materialGroupControls.materialLoadingMore,
-    materialHasMore: materialGroupControls.materialHasMore,
-    materialError: materialGroupControls.materialError,
-    addingMaterialId: materialGroupControls.addingMaterialId,
-    imageReplacementInputRef: assetControls.imageReplacementInputRef,
-    imageReplacing: assetControls.imageReplacing,
-    imageProperties: imageControls.imageProperties,
-    watermarkValue: assetControls.watermarkValue,
-    openImagePicker: assetControls.openImagePicker,
-    handleImageChange: assetControls.handleImageChange,
-    setMaterialGroups: materialGroupControls.setMaterialGroups,
-    selectMaterialGroup: materialGroupControls.selectMaterialGroup,
-    loadMoreMaterials: materialGroupControls.loadMoreMaterials,
-    retryMaterials: materialGroupControls.retryMaterials,
-    addMaterialToCanvas: materialGroupControls.addMaterialToCanvas,
-    toggleMaterialCustomization: materialGroupControls.toggleMaterialCustomization,
-    isMaterialCustomizationEnabled: materialGroupControls.isMaterialCustomizationEnabled,
-    openSelectedImageReplacementPicker: assetControls.openSelectedImageReplacementPicker,
-    handleSelectedImageReplacementChange: assetControls.handleSelectedImageReplacementChange,
-    updateSelectedImageProperties: imageControls.updateSelectedImageProperties,
-    resetSelectedImageSize: imageControls.resetSelectedImageSize,
-    addWatermark: assetControls.addWatermark,
-    deleteWatermark: assetControls.deleteWatermark,
+    ...artboardControls,
+    ...assetControls,
+    ...imageControls,
     layerMenu: layerMenuControls.layerMenu,
     selectionToolbar: selectionToolbarControls.selectionToolbar,
-    enableCustomization,
     activeAttributeElementId,
     openSelectedElementAttributes,
-    openSelectedProductionAreaAttributes,
     openLayerElementAttributes,
     closeElementAttributes,
-    deleteSelectedProductionArea,
     toggleSelectionLock: selectionToolbarControls.toggleSelectionLock,
     duplicateSelection: selectionToolbarControls.duplicateSelection,
     deleteSelection: selectionToolbarControls.deleteSelection,
@@ -604,23 +460,11 @@ export function useCanvasEditor(options = {}) {
     toggleLayerLock: layerControls.toggleLayerLock,
     toggleLayerVisibility: layerControls.toggleLayerVisibility,
     toggleLayerPointerThrough: layerControls.toggleLayerPointerThrough,
-    toggleLayerCustomization,
     moveLayerUp: layerControls.moveLayerUp,
     moveLayerDown: layerControls.moveLayerDown,
     moveLayerToFront: layerControls.moveLayerToFront,
     hoverLayer: layerControls.hoverLayer,
     getLayerThumbnail: layerControls.getLayerThumbnail,
-    getSelectedElementAttributes: elementDataControls.getSelectedElementAttributes,
-    setSelectedElementAttributes: elementDataControls.setSelectedElementAttributes,
-    removeSelectedElementAttributes: elementDataControls.removeSelectedElementAttributes,
-    clearSelectedElementAttributes: elementDataControls.clearSelectedElementAttributes,
-    exportElementAttributes: elementDataControls.exportElementAttributes,
-    getElementAttributesById: elementDataControls.getElementAttributesById,
-    setElementAttributesById: elementDataControls.setElementAttributesById,
-    setElementCustomizationById: elementDataControls.setElementCustomizationById,
-    removeElementAttributesById: elementDataControls.removeElementAttributesById,
-    getElementsByAttribute: elementDataControls.getElementsByAttribute,
-    setElementsVisibilityByAttribute: elementDataControls.setElementsVisibilityByAttribute,
     loadDocument,
     exportDocument,
     undo,

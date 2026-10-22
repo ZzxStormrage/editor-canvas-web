@@ -1,106 +1,50 @@
-<!--
- * @Author: zzx 452436275@qq.com
- * @Date: 2026-05-12 17:53:58
- * @LastEditors: zzx 452436275@qq.com
- * @LastEditTime: 2026-08-19 15:19:22
- * @FilePath: /ele-editor-v2/README.md
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
--->
-node 22
-https://ele-editor-v2.ele007.com
+# Canvas Editor
 
-https://zhwy-editor.ele007.com
+基于 Vue、Vuetify 和 LeaferJS 的浏览器画布编辑器。保留完整的工作台布局、主题样式、组件和通用编辑能力，无需后端服务。
 
-https://www.leaferjs.com/
+支持文字样式、图片导入与替换、背景图、画板尺寸、图层排序与锁定、组合、缩放和平移、撤销重做，以及本地 JSON 文档导入导出。图片以数据地址写入文档，重新打开文件时可继续使用。
 
-┌─────────────────────────────────────────────────────┐
-│                    命令层 (Command)                  │
-│  - 封装所有编辑操作（添加/删除/变换/滤镜等）          │
-│  - 支持撤销/重做、命令合并                            │
-└─────────────────────────┬───────────────────────────┘
-                          │ 调用
-                          ▼
-┌─────────────────────────────────────────────────────┐
-│                    数据层 (Store)                    │
-│  - 不可变全局状态（画布、图层树、选区、历史配置）      │
-│  - 发布-订阅机制，通知变化                           │
-└─────────────────────────┬───────────────────────────┘
-                          │ 订阅
-                          ▼
-┌─────────────────────────────────────────────────────┐
-│                  渲染同步层 (Renderer)               │
-│  - 监听 Store 变化，增量更新 Leafer 元素              │
-│  - 将 Leafer 交互事件（拖拽/缩放）转换为命令          │
-└─────────────────────────┬───────────────────────────┘
-                          │ 操作
-                          ▼
-┌─────────────────────────────────────────────────────┐
-│                   引擎层 (Leafer)                    │
-│  - Leafer 应用实例 + Editor 插件                     │
-│  - 提供画布渲染、图形变换、事件系统                   │
-└─────────────────────────────────────────────────────┘
+## 本地运行
 
-canvas-editor-core/
-├── src/
-│   ├── index.ts                      # 编辑器主类（对外 API）
-│   │
-│   ├── core/
-│   │   ├── Editor.ts                 # 聚合 Store、CommandManager、Renderer，提供 use() 插件方法
-│   │   ├── Store.ts                  # 不可变状态管理 + 发布订阅
-│   │   ├── CommandManager.ts         # 撤销/重做栈
-│   │   └── Renderer.ts               # 渲染器接口定义
-│   │
-│   ├── commands/                     # 所有内置命令
-│   │   ├── base/
-│   │   │   └── ICommand.ts           # 命令接口
-│   │   ├── layer/
-│   │   │   ├── AddLayerCommand.ts
-│   │   │   ├── RemoveLayerCommand.ts
-│   │   │   ├── MoveLayerCommand.ts
-│   │   │   ├── ResizeLayerCommand.ts
-│   │   │   └── RotateLayerCommand.ts
-│   │   ├── properties/
-│   │   │   ├── UpdateFillCommand.ts
-│   │   │   ├── UpdateOpacityCommand.ts
-│   │   │   └── UpdateTextCommand.ts
-│   │   ├── filter/
-│   │   │   └── ApplyFilterCommand.ts
-│   │   └── selection/
-│   │       └── SelectLayerCommand.ts
-│   │
-│   ├── store/                        # 数据模型与状态定义
-│   │   ├── state.ts                  # EditorState 接口定义
-│   │   ├── layer.ts                  # Layer 及其子类型（RectLayer, ImageLayer...）
-│   │   └── mutations.ts              # 辅助更新函数（如 updateLayerById）
-│   │
-│   ├── renderers/                    # 具体渲染引擎实现
-│   │   └── leafer/
-│   │       ├── LeaferRenderer.ts     # 实现 Renderer 接口，同步 Store 到 Leafer
-│   │       ├── nodeFactory.ts        # 根据 Layer 类型创建 Leafer 节点（Rect, Image, Text...）
-│   │       └── eventBridge.ts        # 监听 Leafer 的变换事件，生成对应 Command
-│   │
-│   ├── plugins/                      # 插件系统
-│   │   ├── PluginContext.ts          # 提供给插件的 API 上下文
-│   │   ├── PluginManager.ts          # 注册/卸载插件
-│   │   └── builtin/                  # 内置插件示例
-│   │       ├── basicShapes.ts        # 注册矩形、圆形等命令
-│   │       └── imageFilters.ts       # 注册滤镜命令
-│   │
-│   ├── utils/                        # 工具函数
-│   │   ├── geometry.ts               # 坐标变换、碰撞检测
-│   │   ├── id.ts                     # 生成唯一 ID
-│   │   ├── immer.ts                  # 不可变辅助（如 produce）
-│   │   └── diff.ts                   # 状态变更差异计算（优化增量同步）
-│   │
-│   └── types/                        # 全局类型声明
-│       ├── global.d.ts
-│       └── leafer.d.ts               # LeaferJS 类型扩展
-│
-├── tests/                            # 单元测试
-├── package.json
-└── tsconfig.json
+需要 Node.js 22.12 或更高版本。
 
-https://ele-editor-v2.ele007.com
+```sh
+npm ci
+npm run dev
+```
 
-## 百家信
-https://ele-editor-v2.ele007.com/#/h5-page/hundred-family-surnames?productInfoId=2822&skuId=538&skuCustomId=2277&templateId=111&quantity=1&flowId=custom-1785398734264-uzd886sy&seriesType=1&aiSubjectIds=&themeFlowId=custom-1785398734264-uzd886sy&redirectPath=%252FsubPackage2%252Fcustom-order%252Fcallback%253FflowId%253Dcustom-1785398734264-uzd886sy%2526source%253DSERIES&token=eyJhbGciOiJIUzI1NiJ9.eyJnZW5kZXIiOjAsIm9wZW5pZCI6Im9MS1VpNDUtQThFQ21wVWpON0hYOVF6dlFqY0kiLCJjcmVkZW50aWFsc05vbkV4cGlyZWQiOnRydWUsIm1vYmlsZSI6Im9MS1VpNDUtQThFQ21wVWpON0hYOVF6dlFqY0kiLCJhdmF0YXIiOiJodHRwczovL2VsZS1haWtldGllLmVsZTAwNy5jb20veWlueGlhbmcvMjAyNjA0L2M3ZGYyOGEyLTgxY2ItNDEwYi1hZjVlLTEyMGJhZDZhM2VhNy5qcGVnIiwiZW5hYmxlZCI6ZmFsc2UsImxhc3RMb2dpblRpbWUiOjE3ODQ4NjQ0Nzg5NTIsImNyZWF0ZVRpbWUiOjE3NjIxMzk1MTgwMDAsIm5pY2tuYW1lIjoi55So5oi377yaNjY2OSIsImFjY291bnROb25FeHBpcmVkIjp0cnVlLCJpZCI6MjEsImFjY291bnROb25Mb2NrZWQiOnRydWUsInVzZXJuYW1lIjoib0xLVWk0NS1BOEVDbXBVak43SFg5UXp2UWpjSSIsInN1YiI6Im9MS1VpNDUtQThFQ21wVWpON0hYOVF6dlFqY0kiLCJpYXQiOjE3ODQ4NjQ0NzgsImV4cCI6MTg1Njg2NDQ3OH0.7EtJP59RC7hS7o50jd38RmfFe5FBRffbNbB9fARV_YM
+打开终端显示的本地地址，进入完整编辑器。顶部“打开 JSON”读取本地文档，“导出 JSON”下载当前文档。图片与背景图均从本机选择；字体列表使用系统字体。
+
+```sh
+npm run check       # 静态检查、测试、生产构建、公开文件扫描
+npm run build       # 输出可部署的静态站点到 dist/
+npm run preview     # 预览生产构建
+```
+
+不包含登录认证、业务接口、在线素材库、定制模板、AI 业务、H5 定制页面或生产区流程。应用没有预设的接口地址和令牌。手动导入的文档若包含外部图片或字体地址，浏览器仍会加载相应资源。
+
+## 代码结构
+
+- `src/components/editor-shell/`：原有工作台、通用面板和编辑组件。
+- `src/assets/scss/editor-workbench.scss`、`src/config/vuetify-theme.js`：工作台样式与主题。
+- `src/composables/`：Vue 状态、画布交互与本地文件操作。
+- `src/core/`、`src/plugins/feature-plugins/`、`src/viewport/`：通用画布内核。
+- `src/index.js`：内核入口，可在其他浏览器界面中复用。
+- `examples/`：独立的轻量内核示例；主页面为完整工作台。
+
+## 导出独立仓库
+
+当前 Git 历史仍可能含旧业务代码与凭证。公开时使用白名单导出的全新仓库，避免推送原仓库历史。
+
+```sh
+npm run export:public
+cd .public-export/canvas-editor
+npm ci
+npm run check
+```
+
+导出器复制允许公开的源代码、组件、测试和配置，初始化无提交、无远程地址的新 Git 仓库；不复制旧 Git 历史、环境文件、依赖目录、开发工具配置和旧构建产物。目标目录已存在时拒绝覆盖。
+
+## 许可证
+
+许可证草案为 MIT，见 [LICENSE](LICENSE)。发布前由维护者确认源代码权属与署名。依赖说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

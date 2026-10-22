@@ -31,7 +31,7 @@ const EMPTY_TOOLBAR = {
 /**
  * 管理 Vue 选区工具条的视图状态和编辑器 API 调用。
  *
- * @param {() => import('../../canvas-editor-core/src/core/Editor.js').Editor | null} getEditor
+ * @param {() => import('../../core/Editor.js').Editor | null} getEditor
  * 获取编辑器实例。
  * @param {import('vue').Ref<HTMLElement | null>} canvasRef 画布宿主元素。
  * @returns {Object} 工具条状态、生命周期和选区操作。

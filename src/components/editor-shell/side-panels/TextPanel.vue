@@ -224,7 +224,7 @@ const styleSelections = computed({
 })
 
 /**
- * 选择接口返回的字体。
+ * 选择本机字体。
  *
  * @param {{ fontName: string }} font 字体选项。
  * @returns {void}
