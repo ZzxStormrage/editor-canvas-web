@@ -1,9 +1,6 @@
 <template>
   <main class="canvas-workspace-panel">
-    <div class="workspace-meta">
-      <v-chip class="artboard-chip" color="surface" prepend-icon="mdi-artboard" variant="flat">
-        {{ editor.artboardWidth.value }} x {{ editor.artboardHeight.value }}
-      </v-chip>
+    <div ref="workspaceMeta" class="workspace-meta" :style="workspaceMetaStyle">
       <div class="zoom-cluster" aria-label="画布操作">
         <v-btn
           class="editor-icon-button"
@@ -79,7 +76,7 @@
           size="small"
           variant="text"
           aria-label="垂直居中"
-          @click="editor.centerArtboard"
+          @click="centerArtboardInVisibleViewport"
         >
           <v-icon icon="mdi-crosshairs-gps" size="18" />
           <v-tooltip
@@ -153,6 +150,7 @@
         <div
           v-if="editor.ready.value && editor.layers.value.length === 0 && !firstRunDismissed"
           class="first-run"
+          :style="firstRunStyle"
         >
           <svg class="first-run__filter-defs" aria-hidden="true" focusable="false">
             <filter id="first-run-lens-filter" x="-25%" y="-35%" width="150%" height="170%">
@@ -186,7 +184,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import CanvasScrollbars from './CanvasScrollbars.vue';
 import SelectionActionToolbar from './SelectionActionToolbar.vue';
@@ -202,11 +200,22 @@ const workspaceShortcuts = Object.freeze([
 ]);
 const shortcutsMenuOpen = ref(false);
 const canvasHost = ref(null);
+const workspaceMeta = ref(null);
+const workspaceMetaStyle = ref({ left: '0px', right: '18px' });
+const firstRunStyle = ref({ left: '50%', top: '50%' });
+let workspaceResizeObserver = null;
+let workspaceMutationObserver = null;
+let positionFrame = 0;
+let removeWorkspaceResizeListener = null;
 
 const props = defineProps({
   editor: {
     type: Object,
     required: true
+  },
+  sidePanelCollapsed: {
+    type: Boolean,
+    default: false
   },
   document: {
     type: [Object, String],
@@ -239,14 +248,24 @@ const emit = defineEmits(['document-loaded', 'document-error', 'open-document', 
 watch(
   [() => props.editor?.ready?.value, () => props.document],
   async ([isReady, document]) => {
-    if (!isReady || !document) {
+    if (!isReady) {
+      return;
+    }
+
+    if (!document) {
+      await nextTick();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => centerArtboardInVisibleViewport({ animate: false }));
+      });
       return;
     }
 
     try {
       const loadedDocument = await props.editor.loadDocument(document, props.documentOptions);
       if (props.fitOptions !== false) {
-        props.editor.fitArtboardToView(props.fitOptions);
+        fitArtboardToVisibleViewport(props.fitOptions);
+      } else {
+        centerArtboardInVisibleViewport({ animate: false });
       }
       emit('document-loaded', loadedDocument);
     } catch (error) {
@@ -255,6 +274,49 @@ watch(
   },
   { immediate: true }
 );
+
+onMounted(() => {
+  const workbench = workspaceMeta.value?.closest('.editor-workbench');
+  if (!workbench) return;
+
+  const updatePosition = () => {
+    cancelAnimationFrame(positionFrame);
+    positionFrame = requestAnimationFrame(() => {
+      const workspaceRect = workspaceMeta.value?.parentElement?.getBoundingClientRect();
+      const hostRect = canvasHost.value?.getBoundingClientRect();
+      if (!workspaceRect || !hostRect) return;
+
+      const viewport = getVisibleCanvasViewport(canvasHost.value);
+      const visibleLeft = hostRect.left + viewport.x;
+      const visibleRight = visibleLeft + viewport.width;
+
+      workspaceMetaStyle.value = {
+        left: `${Math.max(0, visibleLeft - workspaceRect.left)}px`,
+        right: `${Math.max(18, workspaceRect.right - visibleRight + 18)}px`
+      };
+      updateFirstRunPosition(viewport);
+    });
+  };
+
+  workspaceResizeObserver = new ResizeObserver(updatePosition);
+  workspaceResizeObserver.observe(workbench);
+  if (canvasHost.value) workspaceResizeObserver.observe(canvasHost.value);
+  workspaceMutationObserver = new MutationObserver(() => {
+    updatePosition();
+    nextTick(updatePosition);
+  });
+  workspaceMutationObserver.observe(workbench, { childList: true, subtree: true });
+  window.addEventListener('resize', updatePosition, { passive: true });
+  removeWorkspaceResizeListener = () => window.removeEventListener('resize', updatePosition);
+  updatePosition();
+});
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(positionFrame);
+  workspaceResizeObserver?.disconnect();
+  workspaceMutationObserver?.disconnect();
+  removeWorkspaceResizeListener?.();
+});
 
 /**
  * 把画布挂载节点交给 canvas-editor-core 初始化。
@@ -271,6 +333,70 @@ function setCanvasRef(element) {
 /** @returns {void} Open the local image picker. */
 function openImage() {
   props.editor.openImagePicker();
+}
+
+/**
+ * 计算被顶部栏、rail 和侧栏实际占用后的画布区域，避免居中结果落在浮层下方。
+ * @returns {void}
+ */
+function centerArtboardInVisibleViewport({ animate = true } = {}) {
+  const host = canvasHost.value;
+  if (!host) {
+    props.editor.centerArtboard();
+    return;
+  }
+
+  const viewport = getVisibleCanvasViewport(host);
+  updateFirstRunPosition(viewport);
+  props.editor.centerArtboard({ animate, viewport });
+}
+
+/** @param {number | Object} [options=0] Fit settings. @returns {void} Fit to unobstructed canvas area. */
+function fitArtboardToVisibleViewport(options = 0) {
+  const host = canvasHost.value;
+  if (!host) {
+    props.editor.fitArtboardToView(options);
+    return;
+  }
+
+  const viewport = getVisibleCanvasViewport(host);
+  updateFirstRunPosition(viewport);
+  const fitOptions = typeof options === 'number' ? { padding: options } : { ...options };
+  props.editor.fitArtboardToView({ ...fitOptions, viewport });
+}
+
+defineExpose({ centerArtboardInVisibleViewport, fitArtboardToVisibleViewport });
+
+/** @param {HTMLElement} host Canvas viewport host. @returns {Object} Visible host-relative bounds. */
+function getVisibleCanvasViewport(host) {
+  const hostRect = host.getBoundingClientRect();
+  const topBarRect = document.querySelector('.editor-top-bar')?.getBoundingClientRect();
+  const attributeRect = document.querySelector('.editor-attribute-drawer')?.getBoundingClientRect();
+  const isMobile = window.matchMedia('(max-width: 760px)').matches;
+  const railWidth = isMobile ? 56 : 54;
+  const leftInset = railWidth + (!isMobile && !props.sidePanelCollapsed ? 329 : 0);
+  const topEdge = Math.max(topBarRect?.bottom ?? hostRect.top, hostRect.top);
+  const rightEdge = attributeRect?.left ?? hostRect.right;
+  const x = Math.min(hostRect.width, leftInset);
+  const y = Math.max(0, topEdge - hostRect.top);
+  const right = Math.max(0, Math.min(hostRect.width, rightEdge - hostRect.left));
+  const bottom = Math.max(0, hostRect.height);
+
+  return {
+    x,
+    y,
+    width: Math.max(1, right - x),
+    height: Math.max(1, bottom - y)
+  };
+}
+
+/** @param {Object} viewport Visible host-relative bounds. @returns {void} Align the first-run card. */
+function updateFirstRunPosition(viewport) {
+  firstRunStyle.value = {
+    left: `${viewport.x + viewport.width / 2}px`,
+    top: `${viewport.y + viewport.height / 2}px`,
+    maxWidth: `${Math.max(1, viewport.width - 48)}px`
+  };
 }
 
 /** @param {() => Promise<boolean>} action First-run action. @returns {Promise<void>} */

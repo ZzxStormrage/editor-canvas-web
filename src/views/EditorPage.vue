@@ -3,8 +3,6 @@
     <EditorTopBar
       :disabled="loading || !editor.ready.value"
       :saving="saving"
-      :status="statusText"
-      :draft-state="draftState"
       @save="saveProject"
       @open="projectInput?.click()"
       @export-image="exportImage"
@@ -13,9 +11,31 @@
       :disabled="loading || saving" @change="openProject" />
     <div class="editor-workbench">
       <EditorRail :model-value="activePanel" @update:model-value="selectPanel" />
-      <EditorSidePanel :active-panel="activePanel" :editor="editor" />
+      <Transition name="editor-panel" @after-enter="recenterCanvasForVisibleArea" @after-leave="recenterCanvasForVisibleArea">
+        <EditorSidePanel
+          v-if="!sidePanelCollapsed"
+          :active-panel="activePanel"
+          :editor="editor"
+          @collapse="sidePanelCollapsed = true"
+        />
+      </Transition>
+      <Transition name="editor-panel-toggle">
+        <v-btn
+          v-if="sidePanelCollapsed"
+          class="editor-side-panel__expand"
+          icon
+          variant="text"
+          aria-label="展开侧栏"
+          @click="sidePanelCollapsed = false"
+        >
+          <v-icon icon="mdi-panel-left-open" size="18" />
+          <v-tooltip activator="parent" location="right">展开侧栏</v-tooltip>
+        </v-btn>
+      </Transition>
       <CanvasWorkspace
+        ref="canvasWorkspace"
         :editor="editor"
+        :side-panel-collapsed="sidePanelCollapsed"
         :create-example-action="createExample"
         :add-text-action="addStarterText"
         :first-run-dismissed="firstRunDismissed"
@@ -60,8 +80,10 @@ import {
 import '../assets/scss/editor-workbench.scss';
 
 const activePanel = ref('artboard');
+const sidePanelCollapsed = ref(false);
 const firstRunDismissed = ref(false);
 const projectInput = ref(null);
+const canvasWorkspace = ref(null);
 const loading = ref(false);
 const saving = ref(false);
 const draftState = ref('saved');
@@ -71,22 +93,24 @@ const recoveryDialog = ref(false);
 const recoveryDate = computed(() => savedDraft.value
   ? new Date(savedDraft.value.updatedAt).toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' })
   : '');
-const statusText = computed(() => {
-  if (draftState.value === 'saving') return '正在保存草稿';
-  if (draftState.value === 'error') return '草稿未保存';
-  if (draftState.value === 'pending') return '有未保存修改';
-  return `${projectName.value} · 本地草稿已保存`;
-});
 const message = reactive({ visible: false, text: '', color: 'error' });
 let suppressDraftWrites = true;
 let draftTimer = 0;
 let writeChain = Promise.resolve();
 let pendingWrites = 0;
+let initialPanelEntryCompleted = false;
 const editor = useCanvasEditor({ onMessage: showMessage, onDocumentChange: scheduleDraftSave });
 
 /** @param {string} panel Selected panel key. @returns {void} Switch the active editor panel. */
 function selectPanel(panel) {
   activePanel.value = panel;
+}
+
+/** Recenter and repaint the canvas after the side panel changes the visible workspace. */
+function recenterCanvasForVisibleArea() {
+  const animate = initialPanelEntryCompleted;
+  initialPanelEntryCompleted = true;
+  requestAnimationFrame(() => canvasWorkspace.value?.centerArtboardInVisibleViewport({ animate }));
 }
 
 /** @returns {void} Debounce writes so typing and dragging do not serialize each frame. */
@@ -138,7 +162,7 @@ async function openProject(event) {
     const document = JSON.parse(await file.text());
     await editor.whenReady();
     await editor.loadDocument(document);
-    editor.fitArtboardToView();
+    canvasWorkspace.value?.fitArtboardToVisibleViewport();
     projectName.value = getProjectFileStem(file.name);
     await saveLocalDraft(document);
     draftState.value = 'saved';
@@ -196,7 +220,7 @@ async function createExample() {
       x: 78, y: 470, width: 620, fontFamily: 'Arial', fontSize: 24,
       fill: '#435f55', textAlign: 'left'
     });
-    editor.fitArtboardToView();
+    canvasWorkspace.value?.fitArtboardToVisibleViewport();
     projectName.value = 'Canvas Study 01';
     showMessage('示例已打开。文字、图片和图层都可以继续编辑。', 'success');
     return true;
@@ -231,7 +255,7 @@ async function restoreDraft() {
   try {
     await editor.whenReady();
     await editor.loadDocument(savedDraft.value.document);
-    editor.fitArtboardToView();
+    canvasWorkspace.value?.fitArtboardToVisibleViewport();
     projectName.value = '恢复的项目';
     showMessage('本地草稿已恢复。', 'success');
   } catch (error) {

@@ -7,7 +7,7 @@ import {
   AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, BringToFront, Check,
   ChevronDown, ChevronUp, CircleAlert, Crop, Crosshair, Eye, EyeOff, FileImage,
   FolderOpen, Group, Image, ImagePlus, ImageUp, Keyboard, Layers, Link, Link2Off,
-  Lock, LockOpen, Maximize, Minus, MousePointer2, PanelRightClose, Plus,
+  Lock, LockOpen, Maximize, Minus, MousePointer2, PanelLeftClose, PanelLeftOpen, PanelRightClose, Plus,
   Redo2, RotateCcw, Save, Shapes, Sparkles, Strikethrough, TextCursorInput,
   Trash2, Type, Underline, Undo2, Ungroup, X, ZoomIn, ZoomOut, Droplets,
   Italic, Settings2, GripVertical, ImageDown, Ruler, Palette, RotateCw
@@ -82,6 +82,8 @@ export function createVuetifyPlugin() {
     'mdi-sparkles': Sparkles,
     'mdi-rotate-right': RotateCw,
     'mdi-panel-right-close': PanelRightClose,
+    'mdi-panel-left-close': PanelLeftClose,
+    'mdi-panel-left-open': PanelLeftOpen,
     'mdi-zoom-in': ZoomIn,
     'mdi-zoom-out': ZoomOut
   };

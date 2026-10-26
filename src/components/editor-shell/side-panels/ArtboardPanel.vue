@@ -47,7 +47,7 @@
         </v-btn>
         <div class="quick-actions">
           <v-btn
-            class="editor-action-button canvas-action-button"
+            class="editor-action-button editor-action-button--primary canvas-action-button"
             color="primary"
             density="compact"
             :disabled="editor.backgroundUploading.value"

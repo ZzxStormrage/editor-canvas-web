@@ -10,7 +10,11 @@ coverage/
 .env.*
 !.env.example
 .agents/
-.codex/
+.codex/*
+!.codex/skills/
+.codex/skills/*
+!.codex/skills/canvas-editor-design-system/
+!.codex/skills/canvas-editor-design-system/**
 .vscode/
 .idea/
 .pnpm-store/

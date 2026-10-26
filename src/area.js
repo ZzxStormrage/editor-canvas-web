@@ -1,120 +1,75 @@
-import { Group, Path, Rect, Bounds } from 'leafer-ui';
+import { Group } from 'leafer-ui';
 
-const areaParts = new WeakMap();
+const areaViews = new WeakMap();
+const viewStyles = new WeakMap();
+const BACKGROUND_STYLES = [
+  'backgroundColor', 'backgroundImage', 'backgroundRepeat',
+  'backgroundSize', 'backgroundPosition'
+];
 
 /**
- * 创建画布区域背景。
- *
- * @author zzx
- * @since 2026-06-30
+ * 创建画布区域；装饰背景由 CSS 绘制，不进入 Canvas 命中检测。
  * @param {{ width: number, height: number }} size 画布尺寸。
  * @param {Object} options 归一化后的初始化参数。
- * @returns {Group} 区域背景节点组。
+ * @param {HTMLElement} view Leafer 的交互 DOM 容器。
+ * @returns {Group} 不含绘制节点的区域容器。
  */
-export function createArea(size, options) {
-  const background = new Rect({
-    x: 0,
-    y: 0,
-    width: size.width,
-    height: size.height,
-    fill: options.background,
-    hittable: false,
-    editable: false,
-    draggable: false
-  });
-  const minorGrid = createGridDotsNode(options.grid.color);
-  const majorGrid = createGridDotsNode(options.grid.majorColor);
+export function createArea(size, options, view) {
   const area = new Group({
     x: 0,
     y: 0,
     width: size.width,
     height: size.height,
     hittable: false,
+    hitSelf: false,
     hitChildren: false,
     editable: false,
     draggable: false
   });
 
-  areaParts.set(area, {
-    background,
-    minorGrid,
-    majorGrid
-  });
-
-  area.add([background, minorGrid, majorGrid]);
+  areaViews.set(area, view);
+  viewStyles.set(view, Object.fromEntries(
+    BACKGROUND_STYLES.map((key) => [key, view.style[key]])
+  ));
   updateArea(area, size, options);
-
   return area;
 }
 
 /**
- * 同步区域背景。
- *
- * @param {Group} area 区域背景节点组。
+ * 同步区域背景；网格显示、颜色和间距继续使用编辑器原有配置。
+ * @param {Group} area 区域容器。
  * @param {{ width: number, height: number }} size 画布尺寸。
  * @param {Object} options 区域配置。
  * @returns {void}
  */
 export function updateArea(area, size, options) {
-  const { background, minorGrid, majorGrid } = areaParts.get(area);
-
+  const view = areaViews.get(area);
   area.width = size.width;
   area.height = size.height;
-  background.width = size.width;
-  background.height = size.height;
-  background.fill = options.grid.backgroundColor;
 
   const showGrid = options.showGrid ?? options.areaType === 'grid';
-  minorGrid.visible = showGrid;
-  // Freeform-style canvas surfaces use one quiet dot rhythm instead of
-  // competing minor and major line grids.
-  majorGrid.visible = false;
-
-  if (!showGrid) {
-    return;
-  }
-
-  minorGrid.fill = options.grid.color;
-  minorGrid.path = createDotPath(size, options.grid.size, 1.35);
-}
-
-/**
- * 创建网格点节点。
- *
- * @param {string} color 点颜色。
- * @returns {Path} 网格线节点。
- */
-function createGridDotsNode(color) {
-  return new Path({
-    path: '',
-    fill: color,
-    strokeWidth: 0,
-    hittable: false,
-    editable: false,
-    draggable: false
+  const step = options.grid.size;
+  // 固定屏幕坐标的点阵不随内容变换，不需要逐帧生成路径。
+  Object.assign(view.style, {
+    backgroundColor: options.grid.backgroundColor ?? options.background,
+    backgroundImage: showGrid
+      ? 'radial-gradient(circle, ' + options.grid.color + ' 1.35px, transparent 1.5px)'
+      : 'none',
+    backgroundRepeat: 'repeat',
+    backgroundSize: step + 'px ' + step + 'px',
+    backgroundPosition: -step / 2 + 'px ' + -step / 2 + 'px'
   });
 }
 
 /**
- * 使用 Bounds 创建网格 Path 字符串。
- *
- * @param {{ width: number, height: number }} size 画布尺寸。
- * @param {number} step 网格间距。
- * @param {number} [skipStep] 跳过的主网格间距。
- * @returns {string} Path 字符串。
+ * 销毁装饰背景，还原容器原有样式。
+ * @param {HTMLElement} view 编辑器交互容器。
+ * @returns {void}
  */
-function createDotPath(size, step, radius) {
-  const paths = [];
-  const bounds = new Bounds(0, 0, size.width, size.height);
-
-  for (let x = bounds.minX; x <= bounds.maxX; x += step) {
-    for (let y = bounds.minY; y <= bounds.maxY; y += step) {
-      paths.push(
-        `M ${x - radius} ${y} A ${radius} ${radius} 0 1 0 ${x + radius} ${y} `
-        + `A ${radius} ${radius} 0 1 0 ${x - radius} ${y}`
-      );
-    }
+export function destroyArea(view) {
+  const styles = viewStyles.get(view);
+  if (styles) {
+    Object.assign(view.style, styles);
+    viewStyles.delete(view);
   }
-
-  return paths.join(' ');
 }

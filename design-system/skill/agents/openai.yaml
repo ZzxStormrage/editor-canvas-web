@@ -1,0 +1,6 @@
+interface:
+  display_name: "Canvas Editor Design System"
+  short_description: "跨项目统一画布编辑器的 macOS 风格、主题和交互规范"
+  default_prompt: "Use $canvas-editor-design-system to adapt this project's existing tokens, components, and canvas architecture to a coherent macOS or iOS inspired editor experience."
+policy:
+  allow_implicit_invocation: true

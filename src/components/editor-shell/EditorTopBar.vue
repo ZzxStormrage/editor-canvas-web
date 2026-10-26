@@ -5,11 +5,7 @@
         <v-icon color="primary" icon="mdi-vector-square" size="20" />
         <strong>Canvas Editor</strong>
       </div>
-
-      <div class="top-bar-title">图形画布编辑器</div>
-
       <div class="top-bar-actions">
-        <span class="top-bar-status" :class="`top-bar-status--${draftState}`">{{ status }}</span>
         <v-btn class="top-bar-docs-button" density="compact"
           prepend-icon="mdi-folder-open-outline" size="small" variant="text" :disabled="saving || disabled" @click="emit('open')">
           打开项目
@@ -55,11 +51,6 @@ defineProps({
     type: Boolean,
     default: false
   },
-  status: {
-    type: String,
-    default: '本地文档'
-  },
-  draftState: { type: String, default: 'saved' }
 })
 
 const emit = defineEmits(['save', 'open', 'export-image'])

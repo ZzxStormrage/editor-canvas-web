@@ -32,6 +32,9 @@ export const EDITOR_THEME_COLORS = {
   warning: '#f59e0b',
   'on-warning': '#172033',
   'primary-soft': '#e8f2ff',
+  // macOS light sidebar and control surfaces.
+  rail: '#e5e5ea',
+  'rail-border': '#d1d1d6',
   panel: '#ffffff',
   workspace: '#ececf0',
   canvas: '#f2f2f5',

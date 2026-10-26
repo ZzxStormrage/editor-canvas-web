@@ -12,7 +12,7 @@
       </div>
       <div class="editor-attribute-drawer__content">
         <ImagePropertiesEditor v-if="activeLayer.type === 'image'" :editor="editor" />
-        <TextPanel v-else :editor="editor" />
+        <TextPropertiesEditor v-else :editor="editor" />
       </div>
     </aside>
   </Transition>
@@ -21,7 +21,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
-import TextPanel from './side-panels/TextPanel.vue';
+import TextPropertiesEditor from './side-panels/TextPropertiesEditor.vue';
 import ImagePropertiesEditor from './images/ImagePropertiesEditor.vue';
 
 const props = defineProps({

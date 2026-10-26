@@ -1,5 +1,7 @@
 import { Bounds } from 'leafer-ui'
 
+import { destroyArea } from '../area.js'
+
 /**
  * 编辑器外观 —— **外观模式**
  *
@@ -486,7 +488,7 @@ export class Editor {
   /**
    * 按当前画布可视区域缩放画板并居中。
    *
-   * @param {number | { padding?: number, viewportRatio?: number, expandZoomRange?: boolean }} [options] 适配选项。
+   * @param {number | { padding?: number, viewportRatio?: number, expandZoomRange?: boolean, viewport?: Object }} [options] 适配选项。
    * @returns {Editor} 当前编辑器实例。
    */
   fitArtboardToView(options) {
@@ -497,7 +499,7 @@ export class Editor {
   /**
    * 不改变缩放，将画板指定方向居中到当前可视区域。
    *
-   * @param {{ horizontal?: boolean, vertical?: boolean }} [options] 居中方向。
+   * @param {{ horizontal?: boolean, vertical?: boolean, viewport?: { x?: number, y?: number, width: number, height: number }, animate?: boolean }} [options] 居中方向、可见视口和过渡选项。
    * @returns {Editor} 当前编辑器实例。
    */
   centerArtboard(options) {
@@ -765,6 +767,7 @@ export class Editor {
     this.#pluginManager.destroy()
     this.#commands.clear()
     this.#bus.clear()
+    destroyArea(this.#leafer.interaction?.view)
     this.#leafer.destroy()
     this.#state.destroyed = true
   }

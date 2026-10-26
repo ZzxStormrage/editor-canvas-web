@@ -1,0 +1,16 @@
+/* Shell base — requires <div class="editor-app"> on the app root. */
+.editor-app,
+.editor-app *,
+.editor-app *::before,
+.editor-app *::after {
+  box-sizing: border-box;
+}
+
+.editor-app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  color: var(--ds-ui-text);
+  background: var(--ds-ui-shell-background);
+  font-family: var(--ds-ui-font-family);
+}

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>macOS Design System — Primitives</title>
+    <link rel="stylesheet" href="../tokens/tokens.css" />
+    <link rel="stylesheet" href="../styles/base.css" />
+    <link rel="stylesheet" href="../styles/primitives.css" />
+    <style>
+      .preview {
+        height: 100vh;
+        overflow: auto;
+        padding: var(--ds-space-5);
+        display: flex;
+        flex-direction: column;
+        gap: var(--ds-space-4);
+        font-size: var(--ds-ui-font-body);
+        color: var(--ds-ui-text);
+      }
+      .preview h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+      }
+      .preview h2 {
+        margin: 0;
+        color: var(--ds-ui-muted);
+        font-size: var(--ds-ui-font-small);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .preview .ds-row {
+        flex-wrap: wrap;
+      }
+      .preview .ds-field {
+        width: 168px;
+      }
+      .preview .ds-select {
+        min-width: 128px;
+      }
+      .preview section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ds-space-2);
+      }
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+        gap: var(--ds-space-2);
+      }
+      .swatch {
+        padding: var(--ds-space-2);
+        border-radius: var(--ds-ui-radius-card);
+        border: 1px solid rgba(var(--ds-line), 0.9);
+        background: rgb(var(--ds-surface));
+        font-size: var(--ds-ui-font-micro);
+        color: var(--ds-ui-muted);
+      }
+      .swatch i {
+        display: block;
+        height: 24px;
+        margin-bottom: var(--ds-space-1);
+        border-radius: var(--ds-ui-radius-field);
+      }
+    </style>
+  </head>
+  <body class="editor-app preview">
+    <h1>macOS Canvas Design System · 控件预览</h1>
+
+    <section>
+      <h2>Palette</h2>
+      <div class="swatches">
+        <div class="swatch"><i style="background: rgb(var(--ds-primary))"></i>primary</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-secondary))"></i>secondary</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-accent))"></i>accent</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-error))"></i>error</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-success))"></i>success</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-warning))"></i>warning</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-rail))"></i>rail</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-workspace))"></i>workspace</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-canvas))"></i>canvas</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-muted))"></i>muted</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-line))"></i>line</div>
+        <div class="swatch"><i style="background: rgb(var(--ds-outline))"></i>outline</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Buttons · 34px / radius 8 / 12px 600</h2>
+      <div class="ds-row">
+        <button class="ds-btn ds-btn--primary">主要操作</button>
+        <button class="ds-btn">次要操作</button>
+        <button class="ds-btn ds-btn--plain">纯文本</button>
+        <button class="ds-btn ds-btn--danger">删除</button>
+        <button class="ds-btn ds-btn--icon" aria-label="更多">⋯</button>
+        <button class="ds-btn ds-btn--sm">小号</button>
+        <button class="ds-btn" aria-pressed="true">选中态</button>
+        <button class="ds-btn" disabled>禁用</button>
+      </div>
+      <div class="ds-row">
+        <div class="ds-toolbar">
+          <button class="ds-btn ds-btn--plain ds-btn--icon" aria-label="撤销">↶</button>
+          <button class="ds-btn ds-btn--plain ds-btn--icon" aria-label="重做">↷</button>
+          <span class="ds-divider" style="width: 1px; height: 18px; margin: 0"></span>
+          <button class="ds-btn ds-btn--plain ds-btn--icon" aria-label="缩放">⌕</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Segmented / Chips</h2>
+      <div class="ds-row">
+        <div class="ds-segmented">
+          <button class="ds-segmented__item is-selected">设计</button>
+          <button class="ds-segmented__item">预览</button>
+          <button class="ds-segmented__item">导出</button>
+          <button class="ds-segmented__item" disabled>锁定</button>
+        </div>
+        <span class="ds-chip">默认</span>
+        <span class="ds-chip is-selected">已选</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Fields · 36px / radius 6 / 13px</h2>
+      <div class="ds-row" style="align-items: flex-end; gap: var(--ds-space-3)">
+        <label class="ds-field">
+          <span class="ds-field__label">宽度</span>
+          <input class="ds-input" placeholder="输入宽度" />
+        </label>
+        <label class="ds-field">
+          <span class="ds-field__label">模式</span>
+          <select class="ds-select">
+            <option>等比缩放</option>
+            <option>自由缩放</option>
+          </select>
+        </label>
+        <label class="ds-field">
+          <span class="ds-field__label">字号</span>
+          <div class="ds-number">
+            <input class="ds-number__input" value="24" />
+            <button class="ds-number__step" aria-label="减小">−</button>
+            <button class="ds-number__step" aria-label="增大">+</button>
+          </div>
+        </label>
+        <label class="ds-field is-error">
+          <span class="ds-field__label">不透明度</span>
+          <input class="ds-input" value="-10" />
+          <span class="ds-field__hint">需在 0–100 之间</span>
+        </label>
+        <label class="ds-field">
+          <span class="ds-field__label">禁用</span>
+          <input class="ds-input" value="只读" disabled />
+        </label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Slider / Switch</h2>
+      <div class="ds-row" style="gap: var(--ds-space-4)">
+        <input class="ds-slider" type="range" min="0" max="100" value="62" style="width: 220px" />
+        <label class="ds-switch"><input class="ds-switch__input" type="checkbox" checked /> 等比</label>
+        <label class="ds-switch"><input class="ds-switch__input" type="checkbox" /> 锁定</label>
+        <label class="ds-switch"><input class="ds-switch__input" type="checkbox" disabled /> 禁用</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Panel · radius 12 / glass</h2>
+      <div class="ds-row" style="align-items: stretch; gap: var(--ds-space-3)">
+        <div class="ds-panel" style="width: 260px">
+          <div class="ds-panel__header">
+            <span>属性</span>
+            <button class="ds-btn ds-btn--plain ds-btn--icon" aria-label="关闭">✕</button>
+          </div>
+          <div class="ds-panel__body">
+            <label class="ds-field">
+              <span class="ds-field__label">圆角</span>
+              <input class="ds-input" value="8" />
+            </label>
+            <label class="ds-field">
+              <span class="ds-field__label">阴影</span>
+              <input class="ds-slider" type="range" value="40" />
+            </label>
+            <div class="ds-row">
+              <button class="ds-btn ds-btn--primary" style="flex: 1">应用</button>
+              <button class="ds-btn">重置</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

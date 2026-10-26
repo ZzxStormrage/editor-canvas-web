@@ -1,4 +1,6 @@
 import { Text as LeaferText } from 'leafer-ui'
+import { DragEvent } from '@leafer-ui/core'
+import { Direction9 } from '@leafer-ui/draw'
 import { EditorEvent, EditorMoveEvent, EditorScaleEvent, InnerEditorEvent } from '@leafer-in/editor'
 import '@leafer-in/text-editor'
 
@@ -53,6 +55,8 @@ export class TextPlugin {
     this._view = null
     /** @private @type {WeakMap<LeaferText, number>} */
     this._textCenterRestoreVersions = new WeakMap()
+    this._textScaleBaseline = null
+    this._scaleEndEventIds = []
     this._handleNativeDoubleClick = this._handleNativeDoubleClick.bind(this)
   }
 
@@ -94,9 +98,13 @@ export class TextPlugin {
     this._view = context.leafer?.view ?? null
     context.innerEditor?.on_(EditorEvent.SELECT, this._handleSelect, this)
     context.innerEditor?.on_(EditorMoveEvent.MOVE, this._handleMove, this)
+    context.innerEditor?.on_(EditorScaleEvent.BEFORE_SCALE, this._handleBeforeScale, this)
     context.innerEditor?.on_(EditorScaleEvent.SCALE, this._handleScale, this)
     context.innerEditor?.on_(InnerEditorEvent.OPEN, this._handleInnerOpen, this)
     context.innerEditor?.on_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
+    this._scaleEndEventIds = context.innerEditor?.app?.on_([
+      [DragEvent.END, this._handleScaleEnd, this]
+    ]) ?? []
     this._view?.addEventListener('dblclick', this._handleNativeDoubleClick)
   }
 
@@ -446,9 +454,13 @@ export class TextPlugin {
     this._view?.removeEventListener('dblclick', this._handleNativeDoubleClick)
     this._context?.innerEditor?.off_(EditorEvent.SELECT, this._handleSelect, this)
     this._context?.innerEditor?.off_(EditorMoveEvent.MOVE, this._handleMove, this)
+    this._context?.innerEditor?.off_(EditorScaleEvent.BEFORE_SCALE, this._handleBeforeScale, this)
     this._context?.innerEditor?.off_(EditorScaleEvent.SCALE, this._handleScale, this)
     this._context?.innerEditor?.off_(InnerEditorEvent.OPEN, this._handleInnerOpen, this)
     this._context?.innerEditor?.off_(InnerEditorEvent.CLOSE, this._handleInnerClose, this)
+    this._context?.innerEditor?.app?.off_(this._scaleEndEventIds)
+    this._scaleEndEventIds = []
+    this._textScaleBaseline = null
     this._context = null
     this._activeText = null
     this._view = null
@@ -491,6 +503,7 @@ export class TextPlugin {
       text: normalizedOptions.text ?? '',
       x: inputOptions.x ?? this._getDefaultTextX(bounds, explicitWidth),
       y: inputOptions.y ?? bounds.y + bounds.height / 2 - (normalizedOptions.fontSize ?? 32) / 2,
+      textAlign: normalizedOptions.textAlign ?? 'center',
       ...normalizedOptions,
       ...placementOptions
     }
@@ -556,8 +569,7 @@ export class TextPlugin {
   /**
    * 为 Text 节点设置尺寸编辑基线。
    *
-   * 四角控制点由选区插件单独切换为 font-size 模式；左右手柄保持
-   * size 模式，只修改文本框宽度。
+   * 文字选框由选区插件控制角点；节点变换会折算为字体尺寸，避免字形拉伸。
    *
    * @param {Object} renderOptions 文本渲染配置。
    * @returns {void}
@@ -1449,11 +1461,110 @@ export class TextPlugin {
       return
     }
 
-    this._normalizeScaledTextPixels(text)
+    const baseline = this._textScaleBaseline?.text === text ? this._textScaleBaseline : null
+    if (baseline?.direction === Direction9.topLeft) {
+      this._applyTextFontScale(text, event, baseline)
+    } else if (!baseline) {
+      this._normalizeScaledTextPixels(text)
+    }
     this._syncTextGeometryAnchor(text)
     this._activeText = text
     this._context?.innerEditor?.updateEditBox?.()
     this._emitSelected(text)
+  }
+
+  /**
+   * 记录单选文字缩放手势的字号和节点变换基线。
+   *
+   * @param {import('@leafer-in/interface').IEditorScaleEvent} event 缩放开始事件。
+   * @returns {void}
+   * @private
+   */
+  _handleBeforeScale(event) {
+    const text = event?.target
+    const innerEditor = this._context?.innerEditor
+
+    if (
+      !isTextElement(text) ||
+      innerEditor?.list?.length !== 1 ||
+      !innerEditor?.editBox?.dragging ||
+      this._textScaleBaseline?.text === text
+    ) {
+      return
+    }
+
+    this._textScaleBaseline = {
+      text,
+      fontSize: this._positiveNumber(text.fontSize ?? text.__?.fontSize, 12),
+      lineHeight: this._nullablePositiveNumber(text.lineHeight ?? text.__?.lineHeight),
+      letterSpacing: Number(text.letterSpacing ?? text.__?.letterSpacing) || 0,
+      direction: event.direction,
+      scaleX: Number(text.scaleX) || 1,
+      scaleY: Number(text.scaleY) || 1
+    }
+  }
+
+  /**
+   * 将节点缩放折算为文字尺寸变化，并还原节点缩放，避免字形被拉伸。
+   *
+   * @param {LeaferText} text 缩放中的文本节点。
+   * @param {import('@leafer-in/interface').IEditorScaleEvent} event 当前缩放事件。
+   * @param {Object} baseline 手势开始时的文字样式与节点缩放值。
+   * @returns {void}
+   * @private
+   */
+  _applyTextFontScale(text, event, baseline) {
+    const currentScaleX = Number(text.scaleX) || baseline.scaleX
+    const currentScaleY = Number(text.scaleY) || baseline.scaleY
+    const ratioX = Math.abs(currentScaleX / baseline.scaleX)
+    const ratioY = Math.abs(currentScaleY / baseline.scaleY)
+    const ratio = Math.sqrt(ratioX * ratioY)
+
+    if (!Number.isFinite(ratio) || ratio <= 0 || !event?.worldOrigin) {
+      return
+    }
+
+    const style = { fontSize: this._roundPixel(baseline.fontSize * ratio) }
+    if (baseline.lineHeight !== null) {
+      style.lineHeight = this._roundPixel(baseline.lineHeight * ratio)
+    }
+    if (baseline.letterSpacing !== 0) {
+      style.letterSpacing = this._roundPixel(baseline.letterSpacing * ratio)
+    }
+
+    text.set?.(style)
+    text.forceUpdate?.()
+    text.updateLayout?.()
+    text.scaleOfWorld?.(event.worldOrigin, 1 / ratio, 1 / ratio, false, false)
+    text.forceUpdate?.()
+    text.updateLayout?.()
+  }
+
+  /**
+   * 在缩放手势结束后归整文字像素值并清理手势基线。
+   *
+   * @returns {void}
+   * @private
+   */
+  _handleScaleEnd() {
+    const baseline = this._textScaleBaseline
+    const text = baseline?.text
+    this._textScaleBaseline = null
+
+    if (!isTextElement(text)) {
+      return
+    }
+
+    if (baseline.direction === Direction9.topLeft) {
+      this._normalizeScaledTextPixels(text)
+    }
+    this._syncTextGeometryAnchor(text)
+    this._context?.innerEditor?.updateEditBox?.()
+    this._emitSelected(text)
+    this._context?.eventBus.emit('text:updated', {
+      text,
+      options: { fontSize: text.fontSize ?? text.__?.fontSize }
+    })
   }
 
   /**

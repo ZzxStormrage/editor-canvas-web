@@ -354,9 +354,12 @@ export function useCanvasEditor(options = {}) {
     syncZoom()
   }
 
-  /** 不改变缩放，仅将画板移动到视口中心。 */
-  function centerArtboard() {
-    editor?.centerArtboard()
+  /**
+   * 不改变缩放，将画板移动到当前可见画布区域中心。
+   * @param {{ horizontal?: boolean, vertical?: boolean, viewport?: Object }} [options={}] 居中选项。
+   */
+  function centerArtboard(options = {}) {
+    editor?.centerArtboard(options)
   }
 
   /**

@@ -120,7 +120,7 @@ export class EditorBuilder {
   //
   //   app (App)
   //   ├── tree (Leafer, type: 'design')
-  //   │   ├── area (Group)          ← 背景/网格，不参与缩放
+  //   │   ├── area (Group)          ← 空区域容器，背景由 DOM CSS 绘制
   //   │   ├── stage (Group, scale)  ← 缩放容器
   //   │       └── contentLayer      ← 可编辑元素 (editable: true)
   //   │   └── guideLayer (Group)    ← 矢量吸附线，固定屏幕描边
@@ -146,7 +146,7 @@ export class EditorBuilder {
       editable: false,
       draggable: false
     })
-    this.#area = createArea(this.#size, this.#options)
+    this.#area = createArea(this.#size, this.#options, this.#leafer.interaction.view)
     this.#artboard = new ArtboardManager(this.#options.artboard, this.#size)
 
     // 内容层挂到缩放容器下

@@ -93,6 +93,97 @@ test('centerArtboard still centers both axes by default', () => {
   assert.equal(stage.y, 10);
 });
 
+test('centerArtboard uses the visible canvas rectangle when overlays cover the viewport', () => {
+  const { stage, viewport } = createViewport();
+
+  viewport.centerArtboard({
+    viewport: { x: 382, y: 44, width: 918, height: 456 }
+  });
+
+  assert.equal(stage.x, 721);
+  assert.equal(stage.y, 32);
+});
+
+test('fitArtboardToView falls back to editor dimensions when the DOM view is not measured', () => {
+  const { stage, state, viewport } = createViewport({
+    viewportWidth: 0,
+    viewportHeight: 0,
+    state: {
+      width: 300,
+      height: 500,
+      zoom: 1,
+      artboard: { x: 0, y: 0, width: 100, height: 200 }
+    }
+  });
+
+  viewport.fitArtboardToView();
+
+  assert.equal(state.zoom, 2.5);
+  assert.equal(stage.x, 25);
+  assert.equal(stage.y, 0);
+});
+
+test('fitArtboardToView scales and centers inside a supplied visible viewport', () => {
+  const { stage, state, viewport } = createViewport({
+    viewportWidth: 0,
+    viewportHeight: 0,
+    state: {
+      zoom: 1,
+      artboard: { x: 0, y: 0, width: 100, height: 200 }
+    }
+  });
+
+  viewport.fitArtboardToView({
+    viewport: { x: 80, y: 30, width: 180, height: 300 }
+  });
+
+  assert.equal(state.zoom, 1.5);
+  assert.equal(stage.x, 95);
+  assert.equal(stage.y, 30);
+});
+
+test('centerArtboard can smoothly animate to the visible canvas center', () => {
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
+  const originalMatchMedia = globalThis.matchMedia;
+  const frames = new Map();
+  let nextFrameId = 0;
+  globalThis.requestAnimationFrame = (callback) => {
+    const id = ++nextFrameId;
+    frames.set(id, callback);
+    return id;
+  };
+  globalThis.cancelAnimationFrame = (id) => frames.delete(id);
+  globalThis.matchMedia = () => ({ matches: false });
+
+  try {
+    const { stage, viewport } = createViewport();
+    const initialX = stage.x;
+    const initialY = stage.y;
+    viewport.centerArtboard({ animate: true });
+
+    const firstFrame = frames.entries().next().value;
+    frames.delete(firstFrame[0]);
+    firstFrame[1](performance.now() + 190);
+    assert.notEqual(stage.x, initialX);
+    assert.notEqual(stage.y, initialY);
+    assert.notEqual(stage.x, 30);
+
+    const finalFrame = frames.entries().next().value;
+    frames.delete(finalFrame[0]);
+    finalFrame[1](performance.now() + 500);
+    assert.equal(stage.x, 30);
+    assert.equal(stage.y, 10);
+  } finally {
+    if (originalRequestAnimationFrame) globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+    else delete globalThis.requestAnimationFrame;
+    if (originalCancelAnimationFrame) globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
+    else delete globalThis.cancelAnimationFrame;
+    if (originalMatchMedia) globalThis.matchMedia = originalMatchMedia;
+    else delete globalThis.matchMedia;
+  }
+});
+
 test('pinch zoom transforms from the previous center to the current center', () => {
   const { stage, state, viewport } = createViewport();
 

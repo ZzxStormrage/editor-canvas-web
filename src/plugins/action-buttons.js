@@ -60,8 +60,7 @@ const ROTATE_ANGLE_WIDTH = 50
 const ROTATE_ANGLE_HEIGHT = 24
 const RESIZE_HANDLE_CURSORS = ['nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize']
 const RESIZE_LINE_CURSORS = ['ns-resize', 'ew-resize', 'ns-resize', 'ew-resize']
-const TEXT_HEIGHT_RESIZE_POINT_INDEXES = new Set([1, 5])
-const TEXT_HEIGHT_RESIZE_LINE_INDEXES = new Set([0, 2])
+const TEXT_RESIZE_POINT_INDEXES = new Set([0, 3])
 const EDITOR_GROUP_KEY = '__canvasEditorGroup'
 const EDITOR_GROUP_NAME = '组合'
 
@@ -919,7 +918,7 @@ export class EditorActionButtons {
     const selected = this.#innerEditor?.list ?? []
 
     if (selected.some(isTextElement)) {
-      this.#hideTextHeightResizeControls(this.#innerEditor?.editBox)
+      this.#syncTextResizeControls(this.#innerEditor?.editBox)
     }
   }
 
@@ -1010,9 +1009,12 @@ export class EditorActionButtons {
    */
   #syncResizeControls(editBox, selected = []) {
     const isTextSelected = Array.isArray(selected) && selected.some(isTextElement)
+    editBox.config = isTextSelected
+      ? { ...(editBox.config ?? {}), editSize: 'size', lockRatio: false }
+      : undefined
 
     editBox?.resizePoints?.forEach((point, index) => {
-      if (isTextSelected && TEXT_HEIGHT_RESIZE_POINT_INDEXES.has(index)) {
+      if (isTextSelected && !TEXT_RESIZE_POINT_INDEXES.has(index)) {
         hideResizeControl(point)
         return
       }
@@ -1020,15 +1022,15 @@ export class EditorActionButtons {
       showResizeControl(point, this.#getResizeHandleCursor(index))
       if (isTextSelected) {
         point.editConfig = {
-          editSize: index % 2 === 0 ? 'font-size' : 'size',
-          lockRatio: index % 2 === 0
+          editSize: index === 0 ? 'font-size' : 'size',
+          lockRatio: index === 0
         }
       }
       this.#bindImmediateCursorHover(point)
     })
 
     editBox?.resizeLines?.forEach((line, index) => {
-      if (isTextSelected && TEXT_HEIGHT_RESIZE_LINE_INDEXES.has(index)) {
+      if (isTextSelected) {
         hideResizeControl(line)
         return
       }
@@ -1074,27 +1076,21 @@ export class EditorActionButtons {
   }
 
   /**
-   * 隐藏文本选择框的上下高度控件，保留左右宽度手柄和四角字号缩放。
+   * 保留文字选框左上角和右侧中点，并隐藏其它缩放控制点。
    *
    * @param {import('@leafer-in/interface').IEditBox} editBox 编辑框实例。
    * @returns {void}
    */
-  #hideTextHeightResizeControls(editBox) {
+  #syncTextResizeControls(editBox) {
     editBox?.resizePoints?.forEach((point, index) => {
-      if (!TEXT_HEIGHT_RESIZE_POINT_INDEXES.has(index)) {
+      if (TEXT_RESIZE_POINT_INDEXES.has(index)) {
         return
       }
 
       hideResizeControl(point)
     })
 
-    editBox?.resizeLines?.forEach((line, index) => {
-      if (!TEXT_HEIGHT_RESIZE_LINE_INDEXES.has(index)) {
-        return
-      }
-
-      hideResizeControl(line)
-    })
+    editBox?.resizeLines?.forEach(hideResizeControl)
   }
 
   /**
