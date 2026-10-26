@@ -1462,9 +1462,8 @@ export class TextPlugin {
     }
 
     const baseline = this._textScaleBaseline?.text === text ? this._textScaleBaseline : null
-    if (baseline?.direction === Direction9.topLeft) {
-      this._applyTextFontScale(text, event, baseline)
-    } else if (!baseline) {
+    // Leafer 已在 SCALE 前处理字号模式；该模式不会改变节点自身的 scaleX/scaleY。
+    if (!baseline) {
       this._normalizeScaledTextPixels(text)
     }
     this._syncTextGeometryAnchor(text)
@@ -1474,7 +1473,7 @@ export class TextPlugin {
   }
 
   /**
-   * 记录单选文字缩放手势的字号和节点变换基线。
+   * 记录单选文字缩放手势的控制点方向，供结束时归整字号。
    *
    * @param {import('@leafer-in/interface').IEditorScaleEvent} event 缩放开始事件。
    * @returns {void}
@@ -1495,49 +1494,8 @@ export class TextPlugin {
 
     this._textScaleBaseline = {
       text,
-      fontSize: this._positiveNumber(text.fontSize ?? text.__?.fontSize, 12),
-      lineHeight: this._nullablePositiveNumber(text.lineHeight ?? text.__?.lineHeight),
-      letterSpacing: Number(text.letterSpacing ?? text.__?.letterSpacing) || 0,
-      direction: event.direction,
-      scaleX: Number(text.scaleX) || 1,
-      scaleY: Number(text.scaleY) || 1
+      direction: event?.direction ?? innerEditor.editBox?.dragPoint?.direction
     }
-  }
-
-  /**
-   * 将节点缩放折算为文字尺寸变化，并还原节点缩放，避免字形被拉伸。
-   *
-   * @param {LeaferText} text 缩放中的文本节点。
-   * @param {import('@leafer-in/interface').IEditorScaleEvent} event 当前缩放事件。
-   * @param {Object} baseline 手势开始时的文字样式与节点缩放值。
-   * @returns {void}
-   * @private
-   */
-  _applyTextFontScale(text, event, baseline) {
-    const currentScaleX = Number(text.scaleX) || baseline.scaleX
-    const currentScaleY = Number(text.scaleY) || baseline.scaleY
-    const ratioX = Math.abs(currentScaleX / baseline.scaleX)
-    const ratioY = Math.abs(currentScaleY / baseline.scaleY)
-    const ratio = Math.sqrt(ratioX * ratioY)
-
-    if (!Number.isFinite(ratio) || ratio <= 0 || !event?.worldOrigin) {
-      return
-    }
-
-    const style = { fontSize: this._roundPixel(baseline.fontSize * ratio) }
-    if (baseline.lineHeight !== null) {
-      style.lineHeight = this._roundPixel(baseline.lineHeight * ratio)
-    }
-    if (baseline.letterSpacing !== 0) {
-      style.letterSpacing = this._roundPixel(baseline.letterSpacing * ratio)
-    }
-
-    text.set?.(style)
-    text.forceUpdate?.()
-    text.updateLayout?.()
-    text.scaleOfWorld?.(event.worldOrigin, 1 / ratio, 1 / ratio, false, false)
-    text.forceUpdate?.()
-    text.updateLayout?.()
   }
 
   /**

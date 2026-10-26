@@ -4,6 +4,7 @@ import { EditorEvent, EditorMoveEvent, EditorRotateEvent, EditorScaleEvent } fro
 import rotateIconSvg from '../assets/icons/rotate.svg?raw'
 import { cloneElementData } from '../utils/element-data.js'
 import { isTextElement } from '../utils/text.js'
+import { getTextResizePointEditConfig, syncTextResizeControls } from '../utils/text-resize.js'
 
 /**
  * 编辑器选区交互管理器。
@@ -60,7 +61,6 @@ const ROTATE_ANGLE_WIDTH = 50
 const ROTATE_ANGLE_HEIGHT = 24
 const RESIZE_HANDLE_CURSORS = ['nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize']
 const RESIZE_LINE_CURSORS = ['ns-resize', 'ew-resize', 'ns-resize', 'ew-resize']
-const TEXT_RESIZE_POINT_INDEXES = new Set([0, 3])
 const EDITOR_GROUP_KEY = '__canvasEditorGroup'
 const EDITOR_GROUP_NAME = '组合'
 
@@ -1014,18 +1014,14 @@ export class EditorActionButtons {
       : undefined
 
     editBox?.resizePoints?.forEach((point, index) => {
-      if (isTextSelected && !TEXT_RESIZE_POINT_INDEXES.has(index)) {
+      const textEditConfig = isTextSelected ? getTextResizePointEditConfig(index) : null
+      if (isTextSelected && !textEditConfig) {
         hideResizeControl(point)
         return
       }
 
       showResizeControl(point, this.#getResizeHandleCursor(index))
-      if (isTextSelected) {
-        point.editConfig = {
-          editSize: index === 0 ? 'font-size' : 'size',
-          lockRatio: index === 0
-        }
-      }
+      if (isTextSelected) point.editConfig = textEditConfig
       this.#bindImmediateCursorHover(point)
     })
 
@@ -1082,15 +1078,7 @@ export class EditorActionButtons {
    * @returns {void}
    */
   #syncTextResizeControls(editBox) {
-    editBox?.resizePoints?.forEach((point, index) => {
-      if (TEXT_RESIZE_POINT_INDEXES.has(index)) {
-        return
-      }
-
-      hideResizeControl(point)
-    })
-
-    editBox?.resizeLines?.forEach(hideResizeControl)
+    syncTextResizeControls(editBox)
   }
 
   /**
