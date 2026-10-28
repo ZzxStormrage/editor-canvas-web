@@ -99,7 +99,16 @@ let draftTimer = 0;
 let writeChain = Promise.resolve();
 let pendingWrites = 0;
 let initialPanelEntryCompleted = false;
-const editor = useCanvasEditor({ onMessage: showMessage, onDocumentChange: scheduleDraftSave });
+const editor = useCanvasEditor({
+  onMessage: showMessage,
+  onCanvasChange: dismissFirstRun,
+  onDocumentChange: scheduleDraftSave
+});
+
+/** @returns {void} Dismiss first-run after any canvas change. */
+function dismissFirstRun() {
+  firstRunDismissed.value = true;
+}
 
 /** @param {string} panel Selected panel key. @returns {void} Switch the active editor panel. */
 function selectPanel(panel) {

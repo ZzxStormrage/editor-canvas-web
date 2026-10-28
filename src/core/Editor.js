@@ -281,6 +281,26 @@ export class Editor {
     return this
   }
 
+  /** @returns {Object | null} 开始裁剪当前单选图片并返回预览数据。 */
+  beginSelectedImageCrop() {
+    return this.image?.beginSelectedCrop?.() ?? null
+  }
+
+  /** @returns {Object | null} 当前裁剪节点的画布宿主投影。 */
+  getImageCropProjection() {
+    return this.image?.getCropProjection?.() ?? null
+  }
+
+  /** @param {Object} crop 裁剪框及图片变换。 @returns {Object | null} 更新后的图片属性。 */
+  commitSelectedImageCrop(crop) {
+    return this.image?.commitSelectedCrop?.(crop) ?? null
+  }
+
+  /** @returns {boolean} 是否取消了活动裁剪。 */
+  cancelSelectedImageCrop() {
+    return this.image?.cancelSelectedCrop?.() ?? false
+  }
+
   /**
    * 替换当前严格单选图片。
    *

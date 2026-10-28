@@ -11,6 +11,12 @@ import { getElementDataContainer } from '../../../utils/element-data.js';
 import { normalizeOptionalPositiveNumber } from '../../../utils/number.js';
 import { normalizeImageOptions } from '../../../utils/image.js';
 import {
+  createImageCropTransform,
+  getImageCropContentBox,
+  getImageCropMapping,
+  normalizeImageCropRect
+} from '../../../utils/image-crop.js';
+import {
   normalizeImageReplacementFit,
   toLeaferImageMode
 } from '../../../utils/image-fit.js';
@@ -25,6 +31,7 @@ const ORIGINAL_HEIGHT_KEY = '__canvasEditorOriginalHeight';
 const IMAGE_FIT_KEY = '__canvasEditorImageFit';
 const IMAGE_ALIGN_KEY = '__canvasEditorImageAlign';
 const DEFERRED_IMAGE_RESOURCE_KEY = '__canvasEditorDeferredImageResource';
+const IMAGE_CROP_KEY = '__canvasEditorCropSettings';
 
 /**
  * 图片插件 —— 全部基于 leafer-ui 原生 API。
@@ -42,6 +49,10 @@ export class ImagePlugin {
     this._unsubscribeDuplicated = null;
     /** @private @type {Function | null} */
     this._unsubscribeVisibilityChanged = null;
+    /** @private @type {{ image: LeaferImage, opacity: number } | null} */
+    this._cropSession = null;
+    /** @private @type {WeakMap<Object, { width: number, height: number }>} 裁剪图片最近一次的框尺寸 */
+    this._cropFrameSizes = new WeakMap();
   }
 
   /**
@@ -81,6 +92,7 @@ export class ImagePlugin {
     this._context = context;
     context.innerEditor?.on_(EditorEvent.SELECT, this._emitSelectionChanged, this);
     context.innerEditor?.on_(EditorMoveEvent.MOVE, this._emitSelectionChanged, this);
+    context.innerEditor?.on_(EditorScaleEvent.SCALE, this._handleCropFrameScale, this);
     context.innerEditor?.on_(EditorScaleEvent.SCALE, this._emitSelectionChanged, this);
     context.innerEditor?.on_(EditorRotateEvent.ROTATE, this._emitSelectionChanged, this);
     this._unsubscribeDuplicated = context.eventBus.on(
@@ -91,6 +103,16 @@ export class ImagePlugin {
       'element:visibility-changed',
       this._handleVisibilityChanged.bind(this)
     );
+    // 裁剪期间文档被替换（撤销、打开项目、清空）或目标被删除时，节点会被销毁，
+    // 这里主动结束会话并通知视图层退出遮罩，避免遮罩停留在失效投影上。
+    this._unsubscribeCropTarget = [
+      'document:loaded',
+      'document:cleared',
+      'selection:deleted',
+      'layers:changed'
+    ].map((eventName) => {
+      return context.eventBus.on(eventName, () => this._endCropIfTargetLost());
+    });
   }
 
   /**
@@ -138,15 +160,21 @@ export class ImagePlugin {
       image[IMAGE_SOURCE_FORMAT_KEY] = imageSource.format;
       getElementDataContainer(image, true);
       contentLayer.add(image);
+      image.forceUpdate?.();
+      image.updateLayout?.();
       if (imageSource.ownedObjectUrl) {
         this._ownedObjectUrls.add(imageSource.url);
       }
       if (shouldSelect) {
         // 等待节点进入 Leafer 渲染管线后再创建选框。
-        await new Promise(resolve => requestAnimationFrame(resolve));
+        await waitForRenderFrame();
         this._context.innerEditor?.select(image);
       }
       eventBus.emit('image:added', { image });
+      this._context.innerEditor?.update?.();
+      this._context.innerEditor?.updateEditBox?.();
+      this._context.leafer?.forceRender?.();
+      await waitForRenderFrame();
 
       return image;
     } catch (error) {
@@ -317,6 +345,8 @@ export class ImagePlugin {
 
     if (options.deferResource && url) {
       this._clearImageResource(target);
+    } else if (source.crop && url) {
+      this._setImageCropResource(target, url, source.crop);
     } else {
       this._setImageResourceAndFit(target, url, fit, align);
     }
@@ -326,6 +356,7 @@ export class ImagePlugin {
     target[IMAGE_ALIGN_KEY] = align;
     target[IMAGE_SOURCE_URL_KEY] = url;
     target[IMAGE_SOURCE_FORMAT_KEY] = isSvgImageSource(url) ? 'svg' : 'image';
+    target[IMAGE_CROP_KEY] = source.crop ? normalizeCropSettings(source.crop) : null;
     target[DEFERRED_IMAGE_RESOURCE_KEY] = Boolean(options.deferResource && url);
     return target;
   }
@@ -358,12 +389,17 @@ export class ImagePlugin {
       }
 
       // 3. 资源进入 Leafer 缓存后再绑定 fill，并同步场景和编辑器视图。
-      this._setImageResourceAndFit(
-        target,
-        url,
-        target[IMAGE_FIT_KEY] ?? 'stretch',
-        target[IMAGE_ALIGN_KEY] ?? 'center'
-      );
+      const cropSettings = target[IMAGE_CROP_KEY];
+      if (cropSettings) {
+        this._setImageCropResource(target, url, cropSettings);
+      } else {
+        this._setImageResourceAndFit(
+          target,
+          url,
+          target[IMAGE_FIT_KEY] ?? 'stretch',
+          target[IMAGE_ALIGN_KEY] ?? 'center'
+        );
+      }
       target.forceUpdate?.();
       target.updateLayout?.();
       this._context.artboard?.syncAllElements?.();
@@ -416,6 +452,165 @@ export class ImagePlugin {
   getSelectedProperties() {
     const image = this._getSelectedImage();
     return image ? this._createPropertiesSnapshot(image) : null;
+  }
+
+  /**
+   * 开始裁剪当前单选图片，并返回不包含 Leafer 节点引用的预览数据。
+   *
+   * @returns {Object | null} 裁剪预览数据；未选中可编辑图片时返回 null。
+   */
+  beginSelectedCrop() {
+    this._assertReady();
+    const image = this._getSelectedImage();
+    if (!image || image.locked || this._cropSession) return null;
+
+    const source = this.getSource(image);
+    const mapping = this._getCropImageMapping(image);
+    if (!source || !mapping) return null;
+    const projection = this._getCropProjection(image, mapping.frameWidth, mapping.frameHeight);
+    if (!projection) return null;
+
+    const editBox = this._context.innerEditor?.editBox;
+    this._cropSession = {
+      image,
+      opacity: this._getFiniteNumber(image.opacity, 1),
+      editBoxVisible: editBox?.visible !== false
+    };
+    image.opacity = 0;
+    if (editBox) editBox.visible = false;
+    // 取消选区：官方编辑框、缩放控制点、旋转按钮和操作按钮都跟随选区显隐，
+    // 进入裁剪后必须整体隐藏，避免与裁剪遮罩的选框和控制条叠在一起。
+    this._context.innerEditor?.cancel?.();
+    // 画板内的不透明预览是内容层的克隆副本，必须同步剔除被隐藏的原图，
+    // 否则拖动裁剪框时会在原位留下一张不会移动的“重影”。
+    this._context.artboard?.syncAllElements?.();
+    this._context.leafer?.forceRender?.();
+    return {
+      source,
+      opacity: this._cropSession.opacity,
+      frameWidth: mapping.frameWidth,
+      frameHeight: mapping.frameHeight,
+      contentLeft: mapping.left,
+      contentTop: mapping.top,
+      contentWidth: mapping.width,
+      contentHeight: mapping.height,
+      projection
+    };
+  }
+
+  /**
+   * 读取裁剪预览节点当前在画布宿主内的 CSS 投影。
+   *
+   * @returns {Object | null} 宿主局部原点和两个局部轴；未处于裁剪时返回 null。
+   */
+  getCropProjection() {
+    const image = this._cropSession?.image;
+    if (!image || image.destroyed || !image.parent) return null;
+    return this._getCropProjection(image, image.width, image.height);
+  }
+
+  /**
+   * 确认裁剪并更新原图片节点及可序列化资源变换。
+   *
+   * @param {{ left: number, top: number, width: number, height: number,
+   * zoom: number, panX: number, panY: number }} crop 裁剪窗口与图片变换。
+   * @returns {Object | null} 更新后的图片属性；裁剪目标失效时返回 null。
+   */
+  commitSelectedCrop(crop = {}) {
+    const session = this._cropSession;
+    const image = session?.image;
+    if (!image || image.destroyed || !image.parent) {
+      this._restoreCropSession(false, 'target-lost');
+      return null;
+    }
+
+    const mapping = this._getCropImageMapping(image);
+    if (!mapping) {
+      this._restoreCropSession(true);
+      throw new EditorError('Image crop geometry is invalid.', 'IMAGE_CROP_GEOMETRY_INVALID');
+    }
+    // 裁剪框允许超出原节点框（放大/cover 后内容会更大），但不能超出预览里看到的
+    // 内容范围。这里必须用「缩放 + 拖拽之后」的内容框，否则放大后提交会被截断。
+    const contentBox = getImageCropContentBox({
+      mapping,
+      zoom: crop.zoom,
+      panX: crop.panX,
+      panY: crop.panY
+    });
+    const rect = normalizeImageCropRect(crop, mapping.frameWidth, mapping.frameHeight, contentBox);
+    if (!rect) {
+      this._restoreCropSession(true);
+      throw new EditorError('Crop bounds must have a positive size.', 'IMAGE_CROP_BOUNDS_INVALID');
+    }
+
+    const settings = normalizeCropSettings(createImageCropTransform({
+      mapping,
+      rect,
+      zoom: crop.zoom,
+      panX: crop.panX,
+      panY: crop.panY
+    }));
+    const cropOrigin = image.getWorldPoint({ x: rect.left, y: rect.top });
+
+    image.set({
+      url: undefined,
+      width: rect.width,
+      height: rect.height,
+      fill: {
+        type: 'image',
+        url: this.getSource(image),
+        mode: 'clip',
+        scale: { x: settings.scaleX, y: settings.scaleY },
+        offset: { x: settings.offsetX, y: settings.offsetY }
+      }
+    });
+    image[IMAGE_CROP_KEY] = settings;
+    image[IMAGE_FIT_KEY] = 'stretch';
+    image[IMAGE_ALIGN_KEY] = 'center';
+    // 记录裁剪后的外框尺寸，后续拖角点缩放时按比例同步裁剪映射。
+    this._cropFrameSizes.set(image, { width: rect.width, height: rect.height });
+    image.forceUpdate?.();
+    image.updateLayout?.();
+    const nextOrigin = image.getWorldPoint({ x: 0, y: 0 });
+    image.moveWorld(cropOrigin.x - nextOrigin.x, cropOrigin.y - nextOrigin.y);
+    this._restoreCropSession(false);
+    image.opacity = session.opacity;
+    image.forceUpdate?.();
+    image.updateLayout?.();
+    this._context.artboard?.syncAllElements?.();
+    this._context.innerEditor?.select?.(image);
+    this._context.innerEditor?.update?.();
+    this._context.innerEditor?.updateEditBox?.();
+
+    const properties = this._createPropertiesSnapshot(image);
+    this._context.eventBus.emit('image:updated', { image, properties, crop: rect });
+    this._context.leafer?.forceRender?.();
+    this._emitSelectionChanged();
+    return properties;
+  }
+
+  /**
+   * 取消裁剪并还原原图和选区。
+   *
+   * @returns {boolean} 是否取消了活动裁剪。
+   */
+  cancelSelectedCrop() {
+    if (!this._cropSession) return false;
+    this._restoreCropSession(true);
+    return true;
+  }
+
+  /**
+   * 获取节点需要附加到编辑器文档的裁剪映射。
+   *
+   * @param {LeaferImage} target 图片节点。
+   * @returns {{ scaleX: number, scaleY: number, offsetX: number, offsetY: number } | null}
+   * 已保存的图片裁剪映射。
+   */
+  getCropSettings(target) {
+    return target instanceof LeaferImage && target[IMAGE_CROP_KEY]
+      ? { ...target[IMAGE_CROP_KEY] }
+      : null;
   }
 
   /**
@@ -485,14 +680,18 @@ export class ImagePlugin {
    * @returns {void}
    */
   destroy() {
+    this._restoreCropSession(false, 'destroyed');
     this._context?.innerEditor?.off_(EditorEvent.SELECT, this._emitSelectionChanged, this);
     this._context?.innerEditor?.off_(EditorMoveEvent.MOVE, this._emitSelectionChanged, this);
+    this._context?.innerEditor?.off_(EditorScaleEvent.SCALE, this._handleCropFrameScale, this);
     this._context?.innerEditor?.off_(EditorScaleEvent.SCALE, this._emitSelectionChanged, this);
     this._context?.innerEditor?.off_(EditorRotateEvent.ROTATE, this._emitSelectionChanged, this);
     this._unsubscribeDuplicated?.();
     this._unsubscribeDuplicated = null;
     this._unsubscribeVisibilityChanged?.();
     this._unsubscribeVisibilityChanged = null;
+    (this._unsubscribeCropTarget ?? []).forEach((unsubscribe) => unsubscribe());
+    this._unsubscribeCropTarget = [];
     this._ownedObjectUrls.forEach((url) => URL.revokeObjectURL(url));
     this._ownedObjectUrls.clear();
     this._context = null;
@@ -669,6 +868,135 @@ export class ImagePlugin {
     });
     image[IMAGE_SOURCE_URL_KEY] = url;
     image[IMAGE_ALIGN_KEY] = align;
+    image[IMAGE_CROP_KEY] = null;
+  }
+
+  /** @private @param {LeaferImage} image 图片节点。 @param {string} url 图片来源。
+   * @param {Object} settings 可序列化的裁剪映射。 @returns {void} */
+  _setImageCropResource(image, url, settings) {
+    const crop = normalizeCropSettings(settings);
+    image.set({
+      url: undefined,
+      fill: {
+        type: 'image',
+        url,
+        mode: 'clip',
+        scale: { x: crop.scaleX, y: crop.scaleY },
+        offset: { x: crop.offsetX, y: crop.offsetY }
+      }
+    });
+    image[IMAGE_CROP_KEY] = crop;
+    image[IMAGE_SOURCE_URL_KEY] = url;
+    // 记录当前外框尺寸，作为后续角点缩放时同步裁剪映射的基准。
+    this._cropFrameSizes.set(image, {
+      width: this._getPositiveNumber(image.width, 0),
+      height: this._getPositiveNumber(image.height, 0)
+    });
+  }
+
+  /** @private @param {LeaferImage} image 图片节点。
+   * @param {number} frameWidth 局部宽度。 @param {number} frameHeight 局部高度。
+   * @returns {Object | null} 图片资源在节点局部坐标中的映射。 */
+  _getCropImageMapping(image) {
+    const frameWidth = this._getPositiveNumber(image.width, 1);
+    const frameHeight = this._getPositiveNumber(image.height, 1);
+    const sourceWidth = this._getPositiveNumber(
+      image[ORIGINAL_WIDTH_KEY] ?? image.image?.width,
+      frameWidth
+    );
+    const sourceHeight = this._getPositiveNumber(
+      image[ORIGINAL_HEIGHT_KEY] ?? image.image?.height,
+      frameHeight
+    );
+    const inputFill = image.__?.__input?.fill;
+    const paint = Array.isArray(inputFill) ? inputFill[0] : inputFill;
+    const mapping = getImageCropMapping({
+      frameWidth,
+      frameHeight,
+      sourceWidth,
+      sourceHeight,
+      fit: image[IMAGE_CROP_KEY]
+        ? 'clip'
+        : paint?.mode === 'fit'
+          ? 'contain'
+          : paint?.mode ?? 'stretch',
+      crop: image[IMAGE_CROP_KEY],
+      scale: paint?.scale,
+      offset: paint?.offset,
+      align: paint?.align
+    });
+    return mapping;
+  }
+
+  /** @private @param {LeaferImage} image 图片节点。
+   * @param {number} width 图片局部宽度。 @param {number} height 图片局部高度。
+   * @returns {Object | null} 图片局部坐标到画布宿主 CSS 坐标的投影。 */
+  _getCropProjection(image, width, height) {
+    if (![width, height].every((value) => Number.isFinite(value) && value > 0)) return null;
+    const points = [
+      image.getWorldPoint({ x: 0, y: 0 }),
+      image.getWorldPoint({ x: width, y: 0 }),
+      image.getWorldPoint({ x: 0, y: height })
+    ];
+    const toClient = (point) => this._context?.leafer?.getClientPointByWorld?.(point);
+    const [origin, horizontal, vertical] = points.map(toClient);
+    const view = this._context?.leafer?.view;
+    const host = view?.parentElement;
+    const hostBounds = host?.getBoundingClientRect?.();
+
+    if (!origin || !horizontal || !vertical || !hostBounds) return null;
+
+    return {
+      left: origin.x - hostBounds.left,
+      top: origin.y - hostBounds.top,
+      basisX: { x: (horizontal.x - origin.x) / width, y: (horizontal.y - origin.y) / width },
+      basisY: { x: (vertical.x - origin.x) / height, y: (vertical.y - origin.y) / height }
+    };
+  }
+
+  /** @private @param {boolean} restoreSelection 是否恢复图片选中状态。
+   * @param {string} [reason='finished'] 会话结束原因，随事件通知视图层。
+   * @returns {void} */
+  _restoreCropSession(restoreSelection, reason = 'finished') {
+    const session = this._cropSession;
+    if (!session) return;
+
+    this._cropSession = null;
+    const { image, opacity } = session;
+    if (image && !image.destroyed) {
+      image.opacity = opacity;
+      image.forceUpdate?.();
+      if (restoreSelection && image.parent) this._context?.innerEditor?.select?.(image);
+    }
+    const editBox = this._context?.innerEditor?.editBox;
+    if (editBox) {
+      this._context?.innerEditor?.update?.();
+      this._context?.innerEditor?.updateEditBox?.();
+      editBox.visible = session.editBoxVisible;
+    }
+    // 恢复原图透明度后重建画板预览副本，保证退出裁剪时原位内容重新出现。
+    this._context?.artboard?.syncAllElements?.();
+    this._context?.leafer?.forceRender?.();
+    this._context?.eventBus?.emit('image:crop-ended', { image, reason });
+  }
+
+  /**
+   * 裁剪目标被删除或文档被替换时结束会话。
+   *
+   * @private
+   * @returns {void}
+   */
+  _endCropIfTargetLost() {
+    const check = () => {
+      const image = this._cropSession?.image;
+      if (!image) return;
+      if (!image.destroyed && image.parent) return;
+      this._restoreCropSession(false, 'target-lost');
+    };
+
+    // 删除动作可能在事件之后才真正移除节点，补一次延迟复查。
+    check();
+    setTimeout(check, 0);
   }
 
   /** @private @param {LeaferImage} image 图片节点。 @returns {void} */
@@ -1051,7 +1379,50 @@ export class ImagePlugin {
   }
 
   /**
-   * 通知应用层当前图片选区属性发生变化。
+   * 拖拽选框角点缩放裁剪后的图片时，同步缩放裁剪映射。
+   *
+   * 裁剪后的图片用 `fill.mode = 'clip'` 渲染，scale/offset 是绝对局部坐标；
+   * 只改外框尺寸不会让内容跟着缩放，看起来就是「缩放不生效」或「露出空白」。
+   * 这里按外框尺寸变化比例同步缩放 scale 与 offset。
+   *
+   * @private
+   * @param {Object} event 缩放事件。
+   * @returns {void}
+   */
+  _handleCropFrameScale(event) {
+    const image = event?.target;
+    if (!(image instanceof LeaferImage)) return;
+    const crop = image[IMAGE_CROP_KEY];
+    if (!crop) return;
+
+    const width = this._getPositiveNumber(image.width, 0);
+    const height = this._getPositiveNumber(image.height, 0);
+    const previous = this._cropFrameSizes.get(image);
+
+    if (!previous || !width || !height || !previous.width || !previous.height) {
+      this._cropFrameSizes.set(image, { width, height });
+      return;
+    }
+
+    const ratioX = width / previous.width;
+    const ratioY = height / previous.height;
+    this._cropFrameSizes.set(image, { width, height });
+    if (![ratioX, ratioY].every((value) => Number.isFinite(value) && value > 0)) return;
+    if (Math.abs(ratioX - 1) < 0.0001 && Math.abs(ratioY - 1) < 0.0001) return;
+
+    const scaled = normalizeCropSettings({
+      scaleX: crop.scaleX * ratioX,
+      scaleY: crop.scaleY * ratioY,
+      offsetX: crop.offsetX * ratioX,
+      offsetY: crop.offsetY * ratioY
+    });
+    this._setImageCropResource(image, this.getSource(image), scaled);
+    image.forceUpdate?.();
+    image.updateLayout?.();
+  }
+
+  /**
+   * 发布当前单选图片的属性。
    *
    * @private
    * @returns {void}
@@ -1115,6 +1486,7 @@ export class ImagePlugin {
       clone[ORIGINAL_HEIGHT_KEY] = source[ORIGINAL_HEIGHT_KEY];
       clone[IMAGE_FIT_KEY] = source[IMAGE_FIT_KEY];
       clone[IMAGE_ALIGN_KEY] = source[IMAGE_ALIGN_KEY];
+      clone[IMAGE_CROP_KEY] = source[IMAGE_CROP_KEY] ? { ...source[IMAGE_CROP_KEY] } : null;
       clone[IMAGE_SOURCE_URL_KEY] = sourceUrl;
       clone[DEFERRED_IMAGE_RESOURCE_KEY] = source[DEFERRED_IMAGE_RESOURCE_KEY] === true;
       clone[IMAGE_SOURCE_FORMAT_KEY] = source[IMAGE_SOURCE_FORMAT_KEY]
@@ -1376,4 +1748,32 @@ export class ImagePlugin {
       throw new EditorError('Editor has been destroyed.', 'EDITOR_DESTROYED');
     }
   }
+}
+
+/**
+ * 等待一帧，让 Leafer 完成新增节点的布局和绘制。
+ * @returns {Promise<void>} 下一帧完成时结束。
+ */
+function waitForRenderFrame() {
+  return new Promise((resolve) => {
+    const request = globalThis.requestAnimationFrame ?? ((callback) => setTimeout(callback, 16));
+    request(() => resolve());
+  });
+}
+
+/** @private @param {Object} settings 已保存的裁剪映射。
+ * @returns {{ scaleX: number, scaleY: number, offsetX: number, offsetY: number }} */
+function normalizeCropSettings(settings) {
+  const normalized = {
+    scaleX: Number(settings?.scaleX),
+    scaleY: Number(settings?.scaleY),
+    offsetX: Number(settings?.offsetX),
+    offsetY: Number(settings?.offsetY)
+  };
+  if (!Number.isFinite(normalized.scaleX) || normalized.scaleX <= 0
+    || !Number.isFinite(normalized.scaleY) || normalized.scaleY <= 0
+    || !Number.isFinite(normalized.offsetX) || !Number.isFinite(normalized.offsetY)) {
+    throw new EditorError('Image crop settings are invalid.', 'IMAGE_CROP_SETTINGS_INVALID');
+  }
+  return normalized;
 }

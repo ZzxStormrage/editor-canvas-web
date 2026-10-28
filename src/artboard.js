@@ -595,7 +595,11 @@ export class ArtboardManager {
    */
   #getContentCloneSources() {
     return (this.#contentLayer?.children ?? []).filter((child) => {
-      return child?.visible !== false && !child.textEditing && !child[ARTBOARD_OVERFLOW_KEY] && !child.__snapGuide
+      return child?.visible !== false
+        && (child.opacity ?? 1) > 0
+        && !child.textEditing
+        && !child[ARTBOARD_OVERFLOW_KEY]
+        && !child.__snapGuide
     })
   }
 

@@ -208,7 +208,9 @@ export class EditorBuilder {
   }
 
   #bindAreaState() {
-    const syncArea = () => {
+    let areaFrame = null
+
+    const applyArea = () => {
       const state = this.#state.proxy
       updateArea(
         this.#area,
@@ -217,6 +219,7 @@ export class EditorBuilder {
           background: state.background,
           showGrid: state.showGrid,
           areaType: state.areaType,
+          zoom: state.zoom,
           grid: {
             ...state.grid,
             backgroundColor: state.background
@@ -225,13 +228,28 @@ export class EditorBuilder {
       )
     }
 
+    // 缩放是高频事件，合并到下一帧再写样式，避免每帧多次强制重绘背景。
+    const scheduleArea = () => {
+      if (areaFrame !== null) return
+      if (typeof requestAnimationFrame !== 'function') {
+        applyArea()
+        return
+      }
+      areaFrame = requestAnimationFrame(() => {
+        areaFrame = null
+        applyArea()
+      })
+    }
+
     ;[
       'canvas:resized',
       'canvas:background-changed',
       'canvas:grid-visibility-changed',
       'canvas:area-type-changed',
       'canvas:grid-changed'
-    ].forEach((eventName) => this.#eventBus.on(eventName, syncArea))
+    ].forEach((eventName) => this.#eventBus.on(eventName, applyArea))
+
+    this.#eventBus.on('viewport:zoom-changed', scheduleArea)
   }
 
   // ───────────── 步骤 4：组装 Editor ─────────────

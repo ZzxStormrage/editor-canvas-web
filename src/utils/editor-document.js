@@ -5,6 +5,7 @@ export const DOCUMENT_NODE_SOURCE_KEY = '__canvasEditorDocumentSource';
 
 const DOCUMENT_METADATA_KEYS = new Set([
   'attributes',
+  'crop',
   'elementId',
   'fontUrl',
   'objectFit',
@@ -215,6 +216,12 @@ function validateDocumentNode(element) {
 
   if (element.fontUrl !== undefined && typeof element.fontUrl !== 'string') {
     throw new EditorError('Document text fontUrl must be a string.', 'DOCUMENT_FONT_URL_INVALID');
+  }
+
+  if (element.crop !== undefined && (!element.crop || typeof element.crop !== 'object'
+    || !['scaleX', 'scaleY', 'offsetX', 'offsetY'].every((key) => Number.isFinite(element.crop[key]))
+    || element.crop.scaleX <= 0 || element.crop.scaleY <= 0)) {
+    throw new EditorError('Document image crop settings are invalid.', 'DOCUMENT_IMAGE_CROP_INVALID');
   }
 
   (element.children ?? []).forEach((child) => validateDocumentNode(child));

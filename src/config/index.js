@@ -193,8 +193,8 @@ export const DEFAULT_CANVAS_CONFIG = {
 
   /** 画布网格配置。 */
   grid: {
-    /** 小网格尺寸。 */
-    size: 24,
+    /** 小网格尺寸（点距基准，实际渲染会乘以画布缩放）。 */
+    size: 20,
     /** 网格点颜色。 */
     color: '#c9cbd1',
     /** 大网格尺寸。 */
@@ -207,7 +207,7 @@ export const DEFAULT_CANVAS_CONFIG = {
     background:
       'radial-gradient(circle, #d0d1d6 1.25px, transparent 1.45px), #fbfbfc',
     /** CSS 背景尺寸，需与小网格尺寸保持一致。 */
-    backgroundSize: '24px 24px'
+    backgroundSize: '20px 20px'
   },
 
   /** 内层白色画板配置，后续素材新增、吸附和超出透明度都以它为操作区域。 */

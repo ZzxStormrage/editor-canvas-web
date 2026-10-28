@@ -1,5 +1,16 @@
 <template>
-  <main class="canvas-workspace-panel">
+  <main
+    class="canvas-workspace-panel"
+    :class="{ 'canvas-workspace-panel--cropping': editor.imageCropActive.value }"
+  >
+    <input
+      :ref="setImageInputRef"
+      class="side-file-input"
+      type="file"
+      :accept="IMAGE_FILE_ACCEPT"
+      :disabled="editor.imageUploading.value"
+      @change="editor.handleImageChange"
+    />
     <div ref="workspaceMeta" class="workspace-meta" :style="workspaceMetaStyle">
       <div class="zoom-cluster" aria-label="画布操作">
         <v-btn
@@ -142,6 +153,12 @@
           :editor="editor"
           :toolbar="editor.selectionToolbar.value"
         />
+        <ImageCropOverlay
+          v-if="editor.imageCropActive.value"
+          :editor="editor"
+          :state="editor.imageCropState.value"
+          :host="canvasHost"
+        />
         <SelectionLayerMenu
           :menu="editor.layerMenu.value"
           @action="editor.runLayerAction"
@@ -186,7 +203,9 @@
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
+import { IMAGE_FILE_ACCEPT } from '../../config/image-upload.js';
 import CanvasScrollbars from './CanvasScrollbars.vue';
+import ImageCropOverlay from './ImageCropOverlay.vue';
 import SelectionActionToolbar from './SelectionActionToolbar.vue';
 import SelectionLayerMenu from './SelectionLayerMenu.vue';
 
@@ -327,6 +346,16 @@ onBeforeUnmount(() => {
 function setCanvasRef(element) {
   if (props.editor?.canvasRef) {
     props.editor.canvasRef.value = element;
+  }
+}
+
+/**
+ * @param {HTMLInputElement | null} element 图片文件选择器。
+ * @returns {void} 设置共享的图片选择器引用。
+ */
+function setImageInputRef(element) {
+  if (props.editor?.imageInputRef) {
+    props.editor.imageInputRef.value = element;
   }
 }
 

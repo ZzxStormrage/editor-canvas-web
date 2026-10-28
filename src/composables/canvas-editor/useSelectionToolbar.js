@@ -177,9 +177,9 @@ function createToolbarViewState(state, host) {
   }
 
   const hostBounds = host.getBoundingClientRect()
-  const contextActionCount = Number(
-    state.selectionCount > 1 || state.canUngroup === true || state.isImageSelection === true
-  ) + Number(state.canEditAttributes === true)
+  const contextActionCount = Number(state.selectionCount > 1 || state.canUngroup === true)
+    + Number(state.isImageSelection === true) * 3
+    + Number(state.canEditAttributes === true && state.isImageSelection !== true)
   const width = TOOLBAR_BASE_WIDTH + contextActionCount * TOOLBAR_CONTEXT_ACTION_WIDTH
   const position = getToolbarPosition(state.bounds, hostBounds, width)
 
@@ -200,6 +200,7 @@ function createToolbarViewState(state, host) {
       duplicate: Boolean(state.disabled?.duplicate),
       delete: Boolean(state.disabled?.delete),
       layer: Boolean(state.disabled?.layer),
+      crop: Boolean(state.disabled?.crop),
       group: Boolean(state.disabled?.group),
       ungroup: Boolean(state.disabled?.ungroup)
     }

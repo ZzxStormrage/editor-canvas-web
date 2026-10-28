@@ -20,6 +20,16 @@ import { isSvgImageSource } from '../../../utils/image-runtime.js';
  *
  * 负责 JSON 校验、资源预加载、Leafer 官方反序列化、元素元数据恢复和无损导出。
  * 外部调用方应通过文档 API 恢复场景，不应自行创建节点代替反序列化流程。
+ *
+ * ⚠️ 新增元素属性时，必须同时完成以下 5 步，漏一步会导致静默丢数据
+ * （历史撤销、本地草稿、导入导出都依赖这条链路）：
+ *   1. 插件实现 `restoreDocumentState(target, source)` 恢复运行时状态；
+ *   2. 插件提供 `getXxx(target)` 读取器，并在本文件 `_serializeNode` 中调用；
+ *   3. `utils/editor-document.js` 的 `DOCUMENT_METADATA_KEYS` 加入该键，
+ *      否则它会被当作 Leafer 渲染属性透传给节点构造函数；
+ *   4. `parseEditorDocument` 的 `validateDocumentNode` 补校验（非法值应抛
+ *      `DOCUMENT_*_INVALID`）；
+ *   5. 补 round-trip 测试（参考 `tests/image-crop-document.test.js`）。
  */
 export class DocumentPlugin {
   constructor() {
@@ -211,13 +221,19 @@ export class DocumentPlugin {
     const imagePlugin = this._context.pluginManager?.get('image');
     const imageSource = imagePlugin?.getSource?.(element);
     const fit = imagePlugin?.getFit?.(element);
+    const crop = imagePlugin?.getCropSettings?.(element);
     if (imageSource) {
       result.url = imageSource;
-      delete result.fill;
+      if (!crop) delete result.fill;
     }
     if (fit) {
       result.objectFit = toCssObjectFit(fit);
       result.objectPosition = source.objectPosition ?? 'center center';
+    }
+    if (crop) {
+      result.crop = crop;
+    } else {
+      delete result.crop;
     }
 
     const fontUrl = this._context.pluginManager?.get('text')?.getFontUrl?.(element);

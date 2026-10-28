@@ -112,6 +112,7 @@ function getLayerMetaText(layer) {
     background-color 160ms ease,
     border-color 160ms ease,
     box-shadow 160ms ease,
+    transform 160ms ease,
     opacity 160ms ease;
 }
 
@@ -124,9 +125,21 @@ function getLayerMetaText(layer) {
 
 .layer-item--selected {
   box-shadow:
-    inset 0 0 0 1px rgba(var(--v-theme-primary), 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 3px 8px rgba(var(--v-theme-primary), 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    inset 0 0 0 1px rgba(var(--v-theme-primary), 0.2),
+    0 1px 2px rgba(var(--v-theme-shadow), 0.12),
+    0 4px 8px rgba(var(--v-theme-primary), 0.24);
+  transform: translateY(-1px);
+  z-index: 1;
+}
+
+.layer-item--selected:hover,
+.layer-item--selected:focus-visible {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 0 0 1px rgba(var(--v-theme-primary), 0.24),
+    0 1px 2px rgba(var(--v-theme-shadow), 0.14),
+    0 4px 8px rgba(var(--v-theme-primary), 0.28);
 }
 
 @media (prefers-reduced-motion: reduce) {

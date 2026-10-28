@@ -173,3 +173,46 @@ test('detached deferred image ignores a completed resource load', async () => {
     Resource.loadImage = originalLoadImage;
   }
 });
+
+test('cropped image restoration keeps its clip fill and source mapping', async () => {
+  const plugin = new ImagePlugin();
+  const image = new LeaferImage({ width: 120, height: 80, url: 'https://example.com/old.png' });
+  const parent = new Group();
+  const originalLoadImage = Resource.loadImage;
+  const crop = { scaleX: 0.5, scaleY: 0.5, offsetX: -30, offsetY: -10 };
+  const source = 'https://example.com/cropped.png';
+  parent.add(image);
+  Resource.loadImage = async () => ({ width: 480, height: 320 });
+  plugin._context = {
+    state: { destroyed: false },
+    eventBus: { emit: () => {} }
+  };
+
+  try {
+    plugin.restoreDocumentState(image, {
+      tag: 'Image',
+      url: source,
+      sourceWidth: 480,
+      sourceHeight: 320,
+      width: 120,
+      height: 80,
+      crop
+    }, undefined, { deferResource: true });
+
+    assert.equal(image.url, '');
+    assert.equal(image.__?.__input?.fill, undefined);
+    assert.deepEqual(plugin.getCropSettings(image), crop);
+    assert.equal(await plugin.activateDeferredSource(image), true);
+    assert.equal(image.url, '');
+    assert.deepEqual(image.__?.__input?.fill, {
+      type: 'image',
+      url: source,
+      mode: 'clip',
+      scale: { x: crop.scaleX, y: crop.scaleY },
+      offset: { x: crop.offsetX, y: crop.offsetY }
+    });
+    assert.deepEqual(plugin.getCropSettings(image), crop);
+  } finally {
+    Resource.loadImage = originalLoadImage;
+  }
+});

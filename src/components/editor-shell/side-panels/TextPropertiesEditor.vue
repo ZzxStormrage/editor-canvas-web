@@ -79,7 +79,7 @@
     </PanelGroup>
 
     <PanelGroup>
-      <PanelSliderField v-model="editor.fontSize.value" label="字号" :max="1000" :min="8" />
+      <PanelSliderField v-model="editor.fontSize.value" label="字号" :max="1000" :min="8" :value-width="128" />
       <PanelSegmentedControl v-model="editor.fontWeight.value" aria-label="字重" :options="fontWeightOptions" />
     </PanelGroup>
 

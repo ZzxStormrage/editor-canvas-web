@@ -1,10 +1,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { createEditor } from '../index.js'
+import { subscribeCanvasChanges } from './canvas-editor/canvas-change-events.js'
 import { useArtboardControls } from './canvas-editor/useArtboardControls.js'
 import { useAssetControls } from './canvas-editor/useAssetControls.js'
 import { useCanvasPan } from './canvas-editor/useCanvasPan.js'
 import { useImageControls } from './canvas-editor/useImageControls.js'
+import { useImageCrop } from './canvas-editor/useImageCrop.js'
 import { useLayerMenu } from './canvas-editor/useLayerMenu.js'
 import { useLayerControls } from './canvas-editor/useLayerControls.js'
 import { useSelectionToolbar } from './canvas-editor/useSelectionToolbar.js'
@@ -62,6 +64,7 @@ export function useCanvasEditor(options = {}) {
   const selectionToolbarControls = useSelectionToolbar(getEditor, canvasRef)
   const layerControls = useLayerControls(getEditor)
   const imageControls = useImageControls(getEditor)
+  const imageCropControls = useImageCrop(getEditor, notify)
   const canvasPanControls = useCanvasPan(getEditor)
 
   /**
@@ -141,14 +144,10 @@ export function useCanvasEditor(options = {}) {
       })
 
       unsubscribeEvents = [
-        ...[
-          'artboard:fill-changed', 'artboard:resized', 'element-data:changed',
-          'image:added', 'image:replaced', 'image:updated', 'layers:changed',
-          'selection:deleted', 'selection:group-changed', 'selection:layer-changed',
-          'text:added', 'text:replaced', 'text:updated'
-        ].map((eventName) => editor.eventBus.on(eventName, () => {
-          options.onDocumentChange?.()
-        })),
+        subscribeCanvasChanges(editor.eventBus, {
+          onCanvasChange: options.onCanvasChange,
+          onDocumentChange: options.onDocumentChange
+        }),
         editor.eventBus.on('text:selected', ({ options }) => {
           if (!assetControls.isAddingWatermark()) {
             textControls.applyTextOptionsToUI(options)
@@ -168,26 +167,34 @@ export function useCanvasEditor(options = {}) {
         editor.eventBus.on('viewport:zoom-changed', ({ zoom: nextZoom }) => {
           zoom.value = nextZoom
           selectionToolbarControls.syncSelectionToolbar()
+          imageCropControls.refreshImageCropProjection()
         }),
         editor.eventBus.on('viewport:transform-end', () => {
           selectionToolbarControls.syncSelectionToolbar()
+          imageCropControls.refreshImageCropProjection()
         }),
         editor.eventBus.on('viewport:pan-changed', () => {
           selectionToolbarControls.syncSelectionToolbar()
+          imageCropControls.refreshImageCropProjection()
         }),
         editor.eventBus.on('history:changed', syncHistoryState),
+        editor.eventBus.on('image:crop-ended', imageCropControls.handleCropEnded),
         editor.eventBus.on('canvas:resized', () => {
           selectionToolbarControls.syncSelectionToolbar()
+          imageCropControls.refreshImageCropProjection()
         }),
         editor.eventBus.on('artboard:resized', () => {
           artboardControls.syncArtboardControls()
 
           imageControls.syncImageProperties()
+          imageCropControls.refreshImageCropProjection()
         }),
         editor.eventBus.on('layers:changed', ({ layers }) => {
           layerControls.setLayers(layers)
           imageControls.syncImageProperties()
           selectionToolbarControls.syncSelectionToolbar()
+          // 图层结构变化是节点被删除的最终信号：裁剪目标消失时在此退出遮罩。
+          imageCropControls.refreshImageCropProjection()
         })
       ]
 
@@ -251,6 +258,7 @@ export function useCanvasEditor(options = {}) {
 
   /** 销毁事件桥接及 Editor 管理的全部 Leafer 资源。 */
   function destroyCanvas() {
+    imageCropControls.cancelSelectedImageCrop()
     unsubscribeEvents.forEach((unsubscribe) => unsubscribe())
     unsubscribeEvents = []
     selectionToolbarControls.stopSelectionToolbar()
@@ -449,6 +457,7 @@ export function useCanvasEditor(options = {}) {
     ...artboardControls,
     ...assetControls,
     ...imageControls,
+    ...imageCropControls,
     layerMenu: layerMenuControls.layerMenu,
     selectionToolbar: selectionToolbarControls.selectionToolbar,
     activeAttributeElementId,

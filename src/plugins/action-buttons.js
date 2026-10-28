@@ -701,6 +701,7 @@ export class EditorActionButtons {
    *   canUngroup: boolean,
    *   disabled: {
    *     replace: boolean,
+   *     crop: boolean,
    *     attributes: boolean,
    *     duplicate: boolean,
    *     delete: boolean,
@@ -732,6 +733,7 @@ export class EditorActionButtons {
       canUngroup,
       disabled: {
         replace: !isImageSelection || locked,
+        crop: !isImageSelection || locked,
         attributes: !canEditAttributes,
         duplicate: !visible || locked,
         delete: !visible || locked,

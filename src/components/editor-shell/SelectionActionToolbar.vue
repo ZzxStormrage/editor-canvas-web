@@ -9,7 +9,7 @@
   />
   <Transition name="selection-toolbar">
     <div
-      v-if="toolbar.visible"
+      v-if="toolbar.visible && !editor.imageCropActive.value"
       class="selection-action-toolbar"
       role="toolbar"
       aria-label="元素操作"
@@ -81,6 +81,13 @@ const actions = computed(() => {
 
   if (props.toolbar.isImageSelection) {
     items.push({
+      key: 'crop',
+      label: '裁剪',
+      icon: 'mdi-crop-free',
+      iconSize: 18,
+      disabled: props.toolbar.disabled?.crop || props.editor.imageCropActive.value
+    });
+    items.push({
       key: 'replace',
       label: '替换',
       icon: 'mdi-image-sync-outline',
@@ -147,7 +154,7 @@ const toolbarStyle = computed(() => ({
 /**
  * 将工具条命令委托给应用层编辑器 API。
  *
- * @param {'lock' | 'duplicate' | 'replace' | 'attributes' | 'group' | 'ungroup' | 'delete' | 'layer'} action
+ * @param {'lock' | 'duplicate' | 'replace' | 'crop' | 'attributes' | 'group' | 'ungroup' | 'delete' | 'layer'} action
  * 选区动作。
  * @param {MouseEvent} event 按钮点击事件。
  * @returns {void}
@@ -159,6 +166,8 @@ function handleAction(action, event) {
     props.editor.duplicateSelection();
   } else if (action === 'replace') {
     props.editor.openSelectedImageReplacementPicker();
+  } else if (action === 'crop') {
+    props.editor.startSelectedImageCrop();
   } else if (action === 'attributes') {
     props.editor.openSelectedElementAttributes();
   } else if (action === 'delete') {
